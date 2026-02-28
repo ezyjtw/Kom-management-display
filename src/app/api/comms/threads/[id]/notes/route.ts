@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 
 /**
  * POST /api/comms/threads/:id/notes
- * Add an internal note to a thread. Counts as "activity" for SLA.
+ * Add an internal note to a thread. Uses authenticated session user as author.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
-    const { authorId, content } = body;
+    const { content } = body;
 
-    if (!authorId || !content) {
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
       return NextResponse.json(
-        { success: false, error: "authorId and content are required" },
+        { success: false, error: "content is required" },
         { status: 400 }
       );
     }
@@ -32,13 +36,14 @@ export async function POST(
     }
 
     const now = new Date();
+    const authorId = auth.employeeId || auth.id;
 
-    // Create note
+    // Create note with authenticated user as author
     const note = await prisma.threadNote.create({
       data: {
         threadId: params.id,
         authorId,
-        content,
+        content: content.trim(),
       },
       include: {
         author: { select: { id: true, name: true } },
@@ -54,7 +59,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: note }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

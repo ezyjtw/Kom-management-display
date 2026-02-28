@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthUser } from "@/lib/auth-user";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,13 +27,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: alerts });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
     const { alertId, action } = body;
@@ -41,6 +44,13 @@ export async function PATCH(request: NextRequest) {
     if (!alertId || !action) {
       return NextResponse.json(
         { success: false, error: "Missing alertId or action" },
+        { status: 400 }
+      );
+    }
+
+    if (!["acknowledge", "resolve"].includes(action)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid action. Must be acknowledge or resolve" },
         { status: 400 }
       );
     }
@@ -59,28 +69,24 @@ export async function PATCH(request: NextRequest) {
       data,
     });
 
-    // Write audit log for alert action
-    const authUser = await getAuthUser();
-    if (authUser) {
-      await prisma.auditLog.create({
-        data: {
-          action: `alert_${action}`,
-          entityType: "alert",
-          entityId: alertId,
-          userId: authUser.id,
-          details: JSON.stringify({
-            alertType: alert.type,
-            alertMessage: alert.message,
-            threadId: alert.threadId,
-          }),
-        },
-      });
-    }
+    await prisma.auditLog.create({
+      data: {
+        action: `alert_${action}`,
+        entityType: "alert",
+        entityId: alertId,
+        userId: auth.id,
+        details: JSON.stringify({
+          alertType: alert.type,
+          alertMessage: alert.message,
+          threadId: alert.threadId,
+        }),
+      },
+    });
 
     return NextResponse.json({ success: true, data: alert });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

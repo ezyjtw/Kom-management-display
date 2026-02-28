@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
-import { getAuthUser } from "@/lib/auth-user";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import type { ThreadPriority } from "@/types";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
@@ -61,7 +64,7 @@ export async function GET(
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
@@ -71,13 +74,14 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const authPatch = await requireAuth();
+  if (authPatch instanceof NextResponse) return authPatch;
+
   try {
     const body = await request.json();
     const { status, ownerUserId, priority, queue, linkedRecords, handoverNote } = body;
 
-    // Get authenticated user — this is the real actor
-    const authUser = await getAuthUser();
-    const actorId = authUser?.id || body.actionBy; // session first, fallback for API callers
+    const actorId = authPatch.id;
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
@@ -106,29 +110,27 @@ export async function PATCH(
       };
 
       // Log ownership change with authenticated actor
-      if (actorId) {
-        await prisma.ownershipChange.create({
-          data: {
-            threadId: params.id,
-            oldOwnerId: thread.ownerUserId,
-            newOwnerId: ownerUserId || null,
-            changedById: actorId,
-            reason: body.reason || "",
-            handoverNote: handoverNote || "",
-          },
-        });
+      await prisma.ownershipChange.create({
+        data: {
+          threadId: params.id,
+          oldOwnerId: thread.ownerUserId,
+          newOwnerId: ownerUserId || null,
+          changedById: actorId,
+          reason: body.reason || "",
+          handoverNote: handoverNote || "",
+        },
+      });
 
-        // Create alert for ownership change
-        await prisma.alert.create({
-          data: {
-            threadId: params.id,
-            type: "ownership_change",
-            priority: thread.priority,
-            message: `Ownership changed on: ${thread.subject}`,
-            destination: "in_app",
-          },
-        });
-      }
+      // Create alert for ownership change
+      await prisma.alert.create({
+        data: {
+          threadId: params.id,
+          type: "ownership_change",
+          priority: thread.priority,
+          message: `Ownership changed on: ${thread.subject}`,
+          destination: "in_app",
+        },
+      });
 
       // Set TTFA deadline when owner assigned
       if (ownerUserId) {
@@ -168,7 +170,7 @@ export async function PATCH(
     });
 
     // Write audit log for all changes
-    if (actorId && Object.keys(auditDetails).length > 0) {
+    if (Object.keys(auditDetails).length > 0) {
       const actions = Object.keys(auditDetails);
       await prisma.auditLog.create({
         data: {
@@ -187,7 +189,7 @@ export async function PATCH(
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

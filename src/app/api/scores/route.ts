@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rawIndexToScore, computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
 import type { Category } from "@/types";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get("employeeId");
@@ -147,13 +151,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: scores });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
 }
 
+/**
+ * POST /api/scores
+ * Create or update a category score. Admin or lead only.
+ */
 export async function POST(request: NextRequest) {
+  const auth = await requireRole("admin", "lead");
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
     const { employeeId, periodId, category, rawIndex, evidence, metadata } = body;
@@ -191,10 +202,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await prisma.auditLog.create({
+      data: {
+        action: "score_updated",
+        entityType: "score",
+        entityId: categoryScore.id,
+        userId: auth.id,
+        details: JSON.stringify({ employeeId, periodId, category, rawIndex, score }),
+      },
+    });
+
     return NextResponse.json({ success: true, data: categoryScore });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

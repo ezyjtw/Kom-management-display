@@ -248,7 +248,7 @@ async function generateAlerts() {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: "An internal error occurred" },
       { status: 500 }
     );
   }

@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireRole, safeErrorMessage } from "@/lib/auth-user";
 
+const MAX_PAGE_SIZE = 100;
+
+/**
+ * GET /api/audit
+ * List audit logs. Admin only.
+ */
 export async function GET(request: NextRequest) {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const entityType = searchParams.get("entityType");
     const entityId = searchParams.get("entityId");
     const action = searchParams.get("action");
-    const page = parseInt(searchParams.get("page") || "1");
-    const pageSize = parseInt(searchParams.get("pageSize") || "50");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(searchParams.get("pageSize") || "50") || 50));
 
     const where: Record<string, unknown> = {};
     if (entityType) where.entityType = entityType;
@@ -37,38 +47,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { action, entityType, entityId, userId, details } = body;
-
-    if (!action || !entityType || !entityId || !userId) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    const log = await prisma.auditLog.create({
-      data: {
-        action,
-        entityType,
-        entityId,
-        userId,
-        details: JSON.stringify(details || {}),
-      },
-    });
-
-    return NextResponse.json({ success: true, data: log }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

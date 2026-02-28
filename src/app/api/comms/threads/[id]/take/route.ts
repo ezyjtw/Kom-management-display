@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import type { ThreadPriority } from "@/types";
 
 /**
  * POST /api/comms/threads/:id/take
- * Take ownership of an unassigned thread.
+ * Take ownership of a thread. Uses authenticated session user.
  */
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    const body = await request.json();
-    const { userId } = body;
-
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "userId is required" },
-        { status: 400 }
-      );
-    }
-
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
     });
@@ -33,9 +27,16 @@ export async function POST(
       );
     }
 
-    const now = new Date();
+    if (thread.ownerUserId && auth.role !== "admin") {
+      return NextResponse.json(
+        { success: false, error: "Thread is already assigned. Use transfer instead." },
+        { status: 409 }
+      );
+    }
 
-    // Update thread with new owner
+    const now = new Date();
+    const userId = auth.employeeId || auth.id;
+
     const updated = await prisma.commsThread.update({
       where: { id: params.id },
       data: {
@@ -49,30 +50,26 @@ export async function POST(
       },
     });
 
-    // Log ownership change
     await prisma.ownershipChange.create({
       data: {
         threadId: params.id,
         oldOwnerId: thread.ownerUserId,
         newOwnerId: userId,
-        changedById: userId,
+        changedById: auth.id,
         reason: "Took ownership",
       },
     });
 
-    // Write audit log
     await prisma.auditLog.create({
       data: {
         action: "ownership_change",
         entityType: "thread",
         entityId: params.id,
-        userId,
+        userId: auth.id,
         details: JSON.stringify({
           action: "take",
           previousOwner: thread.ownerUserId,
           newOwner: userId,
-          previousStatus: thread.status,
-          newStatus: updated.status,
         }),
       },
     });
@@ -80,7 +77,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

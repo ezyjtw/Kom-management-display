@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncEmailInbox, sendEmailNotification } from "@/lib/integrations/email";
+import { syncEmailInbox } from "@/lib/integrations/email";
+import { requireRole, safeErrorMessage } from "@/lib/auth-user";
 
 /**
  * POST /api/integrations/email
- * Trigger a sync of the configured email inbox.
- *
- * Body: { queue?: string }
+ * Trigger a sync of the configured email inbox. Admin only.
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
     const { queue } = body;
@@ -17,7 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
@@ -25,9 +27,12 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/integrations/email
- * Get current email integration status.
+ * Get current email integration status. Admin only.
  */
 export async function GET() {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
+
   const configured =
     !!process.env.IMAP_HOST &&
     !!process.env.IMAP_USER &&

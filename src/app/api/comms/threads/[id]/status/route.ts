@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 
 const VALID_STATUSES = [
   "Unassigned",
@@ -13,19 +14,22 @@ const VALID_STATUSES = [
 
 /**
  * POST /api/comms/threads/:id/status
- * Change thread status. Updates lastActionAt + TTFA tracking.
+ * Change thread status. Uses authenticated session user.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
-    const { status, userId } = body;
+    const { status } = body;
 
-    if (!status || !userId) {
+    if (!status) {
       return NextResponse.json(
-        { success: false, error: "status and userId are required" },
+        { success: false, error: "status is required" },
         { status: 400 }
       );
     }
@@ -51,7 +55,6 @@ export async function POST(
     const now = new Date();
     const previousStatus = thread.status;
 
-    // Any status change counts as an "action"
     const updateData: Record<string, unknown> = {
       status,
       lastActionAt: now,
@@ -70,13 +73,13 @@ export async function POST(
       },
     });
 
-    // Write audit log
+    // Write audit log with authenticated user
     await prisma.auditLog.create({
       data: {
         action: "status_change",
         entityType: "thread",
         entityId: params.id,
-        userId,
+        userId: auth.id,
         details: JSON.stringify({
           previousStatus,
           newStatus: status,
@@ -88,7 +91,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

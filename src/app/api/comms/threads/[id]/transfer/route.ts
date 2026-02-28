@@ -1,27 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import type { ThreadPriority } from "@/types";
 
 /**
  * POST /api/comms/threads/:id/transfer
- * Transfer ownership of a thread to another user.
- * Requires handoverNote (strongly encouraged) and reason.
+ * Transfer ownership. Only the current owner or admin/lead can transfer.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
-    const { newOwnerId, changedById, reason, handoverNote } = body;
-
-    if (!changedById) {
-      return NextResponse.json(
-        { success: false, error: "changedById is required" },
-        { status: 400 }
-      );
-    }
+    const { newOwnerId, reason, handoverNote } = body;
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
@@ -34,9 +30,19 @@ export async function POST(
       );
     }
 
-    const now = new Date();
+    // Only owner, admin, or lead can transfer
+    const actorId = auth.employeeId || auth.id;
+    if (
+      thread.ownerUserId !== actorId &&
+      !["admin", "lead"].includes(auth.role)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Only the thread owner or a lead/admin can transfer ownership" },
+        { status: 403 }
+      );
+    }
 
-    // Update thread
+    const now = new Date();
     const updateData: Record<string, unknown> = {
       ownerUserId: newOwnerId || null,
       lastActionAt: now,
@@ -58,19 +64,17 @@ export async function POST(
       },
     });
 
-    // Log ownership change
     await prisma.ownershipChange.create({
       data: {
         threadId: params.id,
         oldOwnerId: thread.ownerUserId,
         newOwnerId: newOwnerId || null,
-        changedById,
+        changedById: auth.id,
         reason: reason || "Transfer",
         handoverNote: handoverNote || "",
       },
     });
 
-    // Create ownership change alert
     await prisma.alert.create({
       data: {
         threadId: params.id,
@@ -83,13 +87,10 @@ export async function POST(
       },
     });
 
-    // Check for excessive bouncing (>2 changes in 24h)
+    // Check for excessive bouncing
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentChanges = await prisma.ownershipChange.count({
-      where: {
-        threadId: params.id,
-        changedAt: { gte: dayAgo },
-      },
+      where: { threadId: params.id, changedAt: { gte: dayAgo } },
     });
 
     if (recentChanges > 2) {
@@ -98,19 +99,18 @@ export async function POST(
           threadId: params.id,
           type: "ownership_bounce",
           priority: "P1",
-          message: `Thread "${thread.subject}" has been reassigned ${recentChanges} times in 24h — investigate`,
+          message: `Thread "${thread.subject}" has been reassigned ${recentChanges} times in 24h`,
           destination: "in_app",
         },
       });
     }
 
-    // Write audit log
     await prisma.auditLog.create({
       data: {
         action: "ownership_change",
         entityType: "thread",
         entityId: params.id,
-        userId: changedById,
+        userId: auth.id,
         details: JSON.stringify({
           action: "transfer",
           previousOwner: thread.ownerUserId,
@@ -125,7 +125,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
