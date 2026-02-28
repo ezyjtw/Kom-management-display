@@ -1,13 +1,13 @@
 "use client";
 
 const statusStyles: Record<string, string> = {
-  Unassigned: "bg-slate-100 text-slate-700",
-  Assigned: "bg-blue-100 text-blue-700",
-  InProgress: "bg-indigo-100 text-indigo-700",
-  WaitingExternal: "bg-amber-100 text-amber-700",
-  WaitingInternal: "bg-orange-100 text-orange-700",
-  Done: "bg-emerald-100 text-emerald-700",
-  Closed: "bg-slate-100 text-slate-500",
+  Unassigned: "bg-muted text-muted-foreground",
+  Assigned: "bg-blue-500/10 text-blue-400",
+  InProgress: "bg-indigo-500/10 text-indigo-400",
+  WaitingExternal: "bg-amber-500/10 text-amber-400",
+  WaitingInternal: "bg-orange-500/10 text-orange-400",
+  Done: "bg-emerald-500/10 text-emerald-400",
+  Closed: "bg-muted text-muted-foreground",
 };
 
 const statusLabels: Record<string, string> = {
@@ -23,15 +23,15 @@ const statusLabels: Record<string, string> = {
 const priorityStyles: Record<string, string> = {
   P0: "bg-red-600 text-white",
   P1: "bg-orange-500 text-white",
-  P2: "bg-yellow-400 text-yellow-900",
-  P3: "bg-slate-200 text-slate-600",
+  P2: "bg-amber-500/20 text-amber-300",
+  P3: "bg-muted text-muted-foreground",
 };
 
 export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${
-        statusStyles[status] || "bg-slate-100 text-slate-600"
+        statusStyles[status] || "bg-muted text-muted-foreground"
       }`}
     >
       {statusLabels[status] || status}
@@ -43,7 +43,7 @@ export function PriorityBadge({ priority }: { priority: string }) {
   return (
     <span
       className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded font-bold ${
-        priorityStyles[priority] || "bg-slate-200 text-slate-600"
+        priorityStyles[priority] || "bg-muted text-muted-foreground"
       }`}
     >
       {priority}

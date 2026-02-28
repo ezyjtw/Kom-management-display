@@ -21,25 +21,25 @@ export function StatsCards({ employees }: StatsCardsProps) {
       label: "Team Size",
       value: totalEmployees,
       icon: Users,
-      color: "text-blue-600 bg-blue-50",
+      color: "text-blue-400 bg-blue-500/10",
     },
     {
       label: "Avg Score",
       value: avgScore.toFixed(1),
       icon: TrendingUp,
-      color: "text-emerald-600 bg-emerald-50",
+      color: "text-emerald-400 bg-emerald-500/10",
     },
     {
       label: "Active Flags",
       value: flagCount,
       icon: AlertTriangle,
-      color: flagCount > 0 ? "text-amber-600 bg-amber-50" : "text-slate-500 bg-slate-50",
+      color: flagCount > 0 ? "text-amber-400 bg-amber-500/10" : "text-muted-foreground bg-muted/50",
     },
     {
       label: "High Performers",
       value: highPerformers,
       icon: CheckCircle2,
-      color: "text-emerald-600 bg-emerald-50",
+      color: "text-emerald-400 bg-emerald-500/10",
     },
   ];
 
@@ -48,10 +48,10 @@ export function StatsCards({ employees }: StatsCardsProps) {
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <div key={stat.label} className="bg-white rounded-xl border border-slate-200 p-5">
+          <div key={stat.label} className="bg-card rounded-xl border border-border p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-500">{stat.label}</p>
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
                 <p className="text-2xl font-bold mt-1">{stat.value}</p>
               </div>
               <div className={`p-3 rounded-xl ${stat.color}`}>

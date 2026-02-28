@@ -27,8 +27,8 @@ const categoryIcons: Record<string, typeof FileText> = {
 
 export function EvidencePanel({ category, evidence, metadata }: EvidencePanelProps) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <h4 className="text-sm font-semibold text-slate-700 mb-3 capitalize">
+    <div className="bg-card rounded-xl border border-border p-5">
+      <h4 className="text-sm font-semibold text-foreground mb-3 capitalize">
         {category.replace("_", " ")} Evidence
       </h4>
 
@@ -36,8 +36,8 @@ export function EvidencePanel({ category, evidence, metadata }: EvidencePanelPro
       {metadata && Object.keys(metadata).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           {Object.entries(metadata).map(([key, value]) => (
-            <div key={key} className="bg-slate-50 rounded-lg p-2.5">
-              <p className="text-xs text-slate-500 capitalize">{key.replace(/_/g, " ")}</p>
+            <div key={key} className="bg-muted/50 rounded-lg p-2.5">
+              <p className="text-xs text-muted-foreground capitalize">{key.replace(/_/g, " ")}</p>
               <p className="text-sm font-semibold">{String(value)}</p>
             </div>
           ))}
@@ -51,23 +51,23 @@ export function EvidencePanel({ category, evidence, metadata }: EvidencePanelPro
           return (
             <div
               key={i}
-              className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 text-sm"
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 text-sm"
             >
-              <Icon size={16} className="text-slate-400 flex-shrink-0" />
+              <Icon size={16} className="text-muted-foreground flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <span className="text-slate-800">{item.label}</span>
+                <span className="text-foreground">{item.label}</span>
                 {item.details && (
-                  <span className="text-slate-500 ml-2">— {item.details}</span>
+                  <span className="text-muted-foreground ml-2">-- {item.details}</span>
                 )}
               </div>
               {item.severity && (
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded ${
                     item.severity === "high"
-                      ? "bg-red-100 text-red-700"
+                      ? "bg-red-500/10 text-red-400"
                       : item.severity === "medium"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-600"
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   {item.severity}
@@ -78,7 +78,7 @@ export function EvidencePanel({ category, evidence, metadata }: EvidencePanelPro
                   href={item.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-500 hover:text-blue-700 flex-shrink-0"
+                  className="text-primary hover:text-primary/80 flex-shrink-0"
                 >
                   <ExternalLink size={14} />
                 </a>
@@ -87,7 +87,7 @@ export function EvidencePanel({ category, evidence, metadata }: EvidencePanelPro
           );
         })}
         {evidence.length === 0 && (
-          <p className="text-sm text-slate-400 text-center py-4">
+          <p className="text-sm text-muted-foreground text-center py-4">
             No evidence items for this period
           </p>
         )}

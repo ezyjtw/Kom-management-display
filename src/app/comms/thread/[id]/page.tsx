@@ -79,7 +79,7 @@ export default function ThreadDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-500">
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
         Loading thread...
       </div>
     );
@@ -88,8 +88,8 @@ export default function ThreadDetailPage() {
   if (!thread) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-500">Thread not found</p>
-        <Link href="/comms" className="text-blue-600 hover:underline mt-2 inline-block">
+        <p className="text-muted-foreground">Thread not found</p>
+        <Link href="/comms" className="text-primary hover:underline mt-2 inline-block">
           Back to Communications
         </Link>
       </div>
@@ -99,10 +99,10 @@ export default function ThreadDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/comms" className="text-slate-400 hover:text-slate-600">
+        <Link href="/comms" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-xl font-bold text-slate-900">Thread Detail</h1>
+        <h1 className="text-xl font-bold text-foreground">Thread Detail</h1>
       </div>
 
       <ThreadDetail

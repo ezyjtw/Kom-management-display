@@ -14,7 +14,7 @@ export function TrendIndicator({ delta, direction, size = "sm" }: TrendIndicator
 
   if (direction === "up") {
     return (
-      <span className={`inline-flex items-center gap-0.5 text-emerald-600 ${textSize}`}>
+      <span className={`inline-flex items-center gap-0.5 text-emerald-400 ${textSize}`}>
         <TrendingUp size={iconSize} />
         +{Math.abs(delta).toFixed(1)}
       </span>
@@ -23,7 +23,7 @@ export function TrendIndicator({ delta, direction, size = "sm" }: TrendIndicator
 
   if (direction === "down") {
     return (
-      <span className={`inline-flex items-center gap-0.5 text-red-600 ${textSize}`}>
+      <span className={`inline-flex items-center gap-0.5 text-red-400 ${textSize}`}>
         <TrendingDown size={iconSize} />
         -{Math.abs(delta).toFixed(1)}
       </span>
@@ -31,7 +31,7 @@ export function TrendIndicator({ delta, direction, size = "sm" }: TrendIndicator
   }
 
   return (
-    <span className={`inline-flex items-center gap-0.5 text-slate-400 ${textSize}`}>
+    <span className={`inline-flex items-center gap-0.5 text-muted-foreground ${textSize}`}>
       <Minus size={iconSize} />
       0.0
     </span>

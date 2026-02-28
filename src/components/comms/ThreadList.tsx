@@ -30,16 +30,16 @@ function getAgeLabel(dateStr: string): string {
 export function ThreadList({ threads }: ThreadListProps) {
   if (threads.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-        <MessageCircle size={32} className="mx-auto text-slate-300 mb-3" />
-        <p className="text-slate-500">No threads matching your filters</p>
+      <div className="bg-card rounded-xl border border-border p-12 text-center">
+        <MessageCircle size={32} className="mx-auto text-muted-foreground mb-3" />
+        <p className="text-muted-foreground">No threads matching your filters</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="divide-y divide-slate-100">
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <div className="divide-y divide-border">
         {threads.map((thread) => {
           const SourceIcon = thread.source === "email" ? Mail : MessageCircle;
           const mostUrgentSla = [
@@ -59,15 +59,15 @@ export function ThreadList({ threads }: ThreadListProps) {
             <Link
               key={thread.id}
               href={`/comms/thread/${thread.id}`}
-              className={`flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors ${
-                isBreaching ? "bg-red-50/50" : ""
+              className={`flex items-center gap-4 px-5 py-4 hover:bg-accent/50 transition-colors ${
+                isBreaching ? "bg-red-500/10" : ""
               }`}
             >
               {/* Source icon */}
               <div className="flex-shrink-0">
                 <SourceIcon
                   size={18}
-                  className={thread.source === "email" ? "text-blue-500" : "text-purple-500"}
+                  className={thread.source === "email" ? "text-primary" : "text-purple-500"}
                 />
               </div>
 
@@ -75,13 +75,13 @@ export function ThreadList({ threads }: ThreadListProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <PriorityBadge priority={thread.priority} />
-                  <span className="text-sm font-medium text-slate-900 truncate">
+                  <span className="text-sm font-medium text-foreground truncate">
                     {thread.subject}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   {thread.clientOrPartnerTag && (
-                    <span className="bg-slate-100 px-1.5 py-0.5 rounded">
+                    <span className="bg-muted px-1.5 py-0.5 rounded">
                       {thread.clientOrPartnerTag}
                     </span>
                   )}
@@ -97,12 +97,12 @@ export function ThreadList({ threads }: ThreadListProps) {
               <div className="flex items-center gap-3 flex-shrink-0">
                 <StatusBadge status={thread.status} />
                 {thread.ownerName ? (
-                  <span className="flex items-center gap-1 text-xs text-slate-600">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <User size={12} />
                     {thread.ownerName}
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-400 italic">Unassigned</span>
+                  <span className="text-xs text-muted-foreground italic">Unassigned</span>
                 )}
               </div>
 

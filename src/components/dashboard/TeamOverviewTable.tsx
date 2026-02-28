@@ -22,33 +22,33 @@ export function TeamOverviewTable({ employees }: TeamOverviewTableProps) {
   const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="text-left px-4 py-3 font-semibold text-slate-700">Employee</th>
-              <th className="text-left px-3 py-3 font-semibold text-slate-700">Role</th>
-              <th className="text-center px-3 py-3 font-semibold text-slate-700">Overall</th>
+            <tr className="bg-muted/50 border-b border-border">
+              <th className="text-left px-4 py-3 font-semibold text-foreground">Employee</th>
+              <th className="text-left px-3 py-3 font-semibold text-foreground">Role</th>
+              <th className="text-center px-3 py-3 font-semibold text-foreground">Overall</th>
               {categories.map((cat) => (
-                <th key={cat} className="text-center px-3 py-3 font-semibold text-slate-700">
+                <th key={cat} className="text-center px-3 py-3 font-semibold text-foreground">
                   {categoryLabels[cat]}
                 </th>
               ))}
-              <th className="text-center px-3 py-3 font-semibold text-slate-700">Trend</th>
-              <th className="text-left px-3 py-3 font-semibold text-slate-700">Flags</th>
+              <th className="text-center px-3 py-3 font-semibold text-foreground">Trend</th>
+              <th className="text-left px-3 py-3 font-semibold text-foreground">Flags</th>
             </tr>
           </thead>
           <tbody>
             {employees.map((emp) => (
-              <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+              <tr key={emp.id} className="border-b border-border hover:bg-accent/50 transition-colors">
                 <td className="px-4 py-3">
-                  <Link href={`/employee/${emp.id}`} className="font-medium text-blue-600 hover:underline">
+                  <Link href={`/employee/${emp.id}`} className="font-medium text-primary hover:underline">
                     {emp.name}
                   </Link>
-                  <div className="text-xs text-slate-500">{emp.team}</div>
+                  <div className="text-xs text-muted-foreground">{emp.team}</div>
                 </td>
-                <td className="px-3 py-3 text-slate-600">{emp.role}</td>
+                <td className="px-3 py-3 text-muted-foreground">{emp.role}</td>
                 <td className="px-3 py-3 text-center">
                   <ScoreBadge score={emp.overallScore} size="md" />
                 </td>
@@ -74,7 +74,7 @@ export function TeamOverviewTable({ employees }: TeamOverviewTableProps) {
             ))}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                   No employee data available. Add employees and scores to get started.
                 </td>
               </tr>

@@ -32,9 +32,9 @@ export function EmployeeScorecard({ overallScore, categoryScores, trends }: Empl
   return (
     <div className="space-y-6">
       {/* Overall Score */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="bg-card rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-900">Overall Score</h3>
+          <h3 className="text-lg font-semibold text-foreground">Overall Score</h3>
           {trends.overall && (
             <TrendIndicator
               delta={trends.overall.delta}
@@ -49,14 +49,14 @@ export function EmployeeScorecard({ overallScore, categoryScores, trends }: Empl
             <ScoreBar score={overallScore} />
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-3">
+        <p className="text-xs text-muted-foreground mt-3">
           Weighted composite score (3-8 scale). Min 3, Max 8.
         </p>
       </div>
 
       {/* Category Breakdown */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Category Breakdown</h3>
+      <div className="bg-card rounded-xl border border-border p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Category Breakdown</h3>
         <div className="space-y-5">
           {categories.map((cat) => {
             const score = categoryScores[cat] ?? 3;
@@ -65,10 +65,10 @@ export function EmployeeScorecard({ overallScore, categoryScores, trends }: Empl
               <div key={cat}>
                 <div className="flex items-center justify-between mb-1">
                   <div>
-                    <span className="text-sm font-medium text-slate-800">
+                    <span className="text-sm font-medium text-foreground">
                       {categoryLabels[cat]}
                     </span>
-                    <span className="text-xs text-slate-500 ml-2">
+                    <span className="text-xs text-muted-foreground ml-2">
                       {categoryDescriptions[cat]}
                     </span>
                   </div>

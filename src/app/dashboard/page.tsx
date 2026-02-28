@@ -46,20 +46,20 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Team Overview</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Team Overview</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Performance scores across all categories with trends and flags
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={fetchData}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
           >
             <RefreshCw size={16} />
             Refresh
           </button>
-          <button className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+          <button className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90">
             <Download size={16} />
             Export
           </button>
@@ -70,13 +70,13 @@ export default function DashboardPage() {
       <StatsCards employees={filteredEmployees} />
 
       {/* Filters */}
-      <div className="flex items-center gap-4 bg-white rounded-xl border border-slate-200 p-4">
+      <div className="flex items-center gap-4 bg-card rounded-xl border border-border p-4">
         <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Period</label>
+          <label className="text-xs font-medium text-muted-foreground block mb-1">Period</label>
           <select
             value={periodType}
             onChange={(e) => setPeriodType(e.target.value as "week" | "month" | "quarter")}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5"
+            className="text-sm border border-border rounded-lg px-3 py-1.5"
           >
             <option value="week">Weekly</option>
             <option value="month">Monthly</option>
@@ -84,11 +84,11 @@ export default function DashboardPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Team</label>
+          <label className="text-xs font-medium text-muted-foreground block mb-1">Team</label>
           <select
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5"
+            className="text-sm border border-border rounded-lg px-3 py-1.5"
           >
             <option value="">All Teams</option>
             {teams.map((t) => (
@@ -97,11 +97,11 @@ export default function DashboardPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Role</label>
+          <label className="text-xs font-medium text-muted-foreground block mb-1">Role</label>
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5"
+            className="text-sm border border-border rounded-lg px-3 py-1.5"
           >
             <option value="">All Roles</option>
             {roles.map((r) => (
@@ -113,7 +113,7 @@ export default function DashboardPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
           <RefreshCw size={24} className="mx-auto mb-3 animate-spin" />
           Loading performance data...
         </div>
