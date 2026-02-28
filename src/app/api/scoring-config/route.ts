@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getDefaultScoringConfig } from "@/lib/scoring";
+import { getAuthUser } from "@/lib/auth-user";
 
 export async function GET() {
   try {
@@ -60,6 +61,22 @@ export async function POST(request: NextRequest) {
         active: true,
         createdBy,
         notes: notes || "",
+      },
+    });
+
+    // Write audit log for config change
+    const authUser = await getAuthUser();
+    await prisma.auditLog.create({
+      data: {
+        action: "config_update",
+        entityType: "scoring_config",
+        entityId: newConfig.id,
+        userId: authUser?.id || createdBy,
+        details: JSON.stringify({
+          version,
+          notes: notes || "",
+          previouslyDeactivated: true,
+        }),
       },
     });
 

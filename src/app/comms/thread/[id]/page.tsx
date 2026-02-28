@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ThreadDetail } from "@/components/comms/ThreadDetail";
 
 export default function ThreadDetailPage() {
   const params = useParams();
+  const { data: session } = useSession();
   const [thread, setThread] = useState<any>(null);
   const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -44,12 +46,12 @@ export default function ThreadDetailPage() {
   }
 
   async function handleOwnerChange(ownerId: string | null, handoverNote: string) {
+    // actionBy is no longer needed — the API extracts it from the session
     const res = await fetch(`/api/comms/threads/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ownerUserId: ownerId,
-        actionBy: ownerId || thread?.ownerUserId, // use new or old owner as actor
         handoverNote,
       }),
     });
@@ -62,17 +64,20 @@ export default function ThreadDetailPage() {
   }
 
   async function handleAddNote(content: string) {
-    // For MVP, add note directly (in production, use proper auth)
-    const authorId = thread?.ownerUserId || employees[0]?.id;
-    if (!authorId) return;
+    // Use the dedicated notes endpoint with session-derived author
+    const currentUserId = (session?.user as any)?.employeeId || (session?.user as any)?.id;
+    if (!currentUserId || !content.trim()) return;
 
-    const res = await fetch(`/api/comms/threads/${params.id}`, {
-      method: "PATCH",
+    await fetch(`/api/comms/threads/${params.id}/notes`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: thread?.status }), // touch lastActionAt
+      body: JSON.stringify({
+        content,
+        authorId: currentUserId,
+      }),
     });
 
-    // Refetch thread
+    // Refetch thread to show new note
     const fresh = await fetch(`/api/comms/threads/${params.id}`).then((r) => r.json());
     if (fresh.success) setThread(fresh.data);
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth-user";
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,6 +58,24 @@ export async function PATCH(request: NextRequest) {
       where: { id: alertId },
       data,
     });
+
+    // Write audit log for alert action
+    const authUser = await getAuthUser();
+    if (authUser) {
+      await prisma.auditLog.create({
+        data: {
+          action: `alert_${action}`,
+          entityType: "alert",
+          entityId: alertId,
+          userId: authUser.id,
+          details: JSON.stringify({
+            alertType: alert.type,
+            alertMessage: alert.message,
+            threadId: alert.threadId,
+          }),
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, data: alert });
   } catch (error) {

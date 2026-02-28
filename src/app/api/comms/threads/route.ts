@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus } from "@/lib/sla";
+import { getAuthUser } from "@/lib/auth-user";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,9 +17,14 @@ export async function GET(request: NextRequest) {
 
     if (view === "unassigned") {
       where.status = "Unassigned";
-    } else if (view === "my_threads" && ownerUserId) {
-      where.ownerUserId = ownerUserId;
-      where.status = { notIn: ["Done", "Closed"] };
+    } else if (view === "my_threads") {
+      // Extract owner from session — fall back to query param for API callers
+      const authUser = await getAuthUser();
+      const effectiveOwnerId = authUser?.employeeId || ownerUserId;
+      if (effectiveOwnerId) {
+        where.ownerUserId = effectiveOwnerId;
+        where.status = { notIn: ["Done", "Closed"] };
+      }
     } else {
       if (status) where.status = status;
       if (ownerUserId) where.ownerUserId = ownerUserId;

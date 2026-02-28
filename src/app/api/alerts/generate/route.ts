@@ -1,14 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, isExcessiveBouncing } from "@/lib/sla";
 
 /**
  * POST /api/alerts/generate
  * Background job: scan all active threads and generate alerts for SLA breaches.
- * Call this on a schedule (cron every 5 minutes) or on-demand.
+ * Call this on a schedule (cron every 1-5 minutes) or on-demand from the admin panel.
  * De-duplicates: won't create a new alert if an active one already exists for the same thread+type.
+ *
+ * Also available via GET for cron services (e.g. Vercel Cron, external cron).
+ * Protect with CRON_SECRET in production.
  */
+export async function GET(request: NextRequest) {
+  // Verify cron secret in production
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+  }
+  return generateAlerts();
+}
+
 export async function POST() {
+  return generateAlerts();
+}
+
+async function generateAlerts() {
   try {
     const now = new Date();
     let alertsCreated = 0;

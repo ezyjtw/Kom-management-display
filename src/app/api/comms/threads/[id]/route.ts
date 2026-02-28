@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
+import { getAuthUser } from "@/lib/auth-user";
 import type { ThreadPriority } from "@/types";
 
 export async function GET(
@@ -72,7 +73,11 @@ export async function PATCH(
 ) {
   try {
     const body = await request.json();
-    const { status, ownerUserId, priority, queue, linkedRecords, actionBy, handoverNote } = body;
+    const { status, ownerUserId, priority, queue, linkedRecords, handoverNote } = body;
+
+    // Get authenticated user — this is the real actor
+    const authUser = await getAuthUser();
+    const actorId = authUser?.id || body.actionBy; // session first, fallback for API callers
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
@@ -87,20 +92,27 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {};
     const now = new Date();
+    const auditDetails: Record<string, unknown> = {};
 
     // Handle ownership change
     if (ownerUserId !== undefined && ownerUserId !== thread.ownerUserId) {
       data.ownerUserId = ownerUserId || null;
       data.lastActionAt = now;
 
-      // Log ownership change
-      if (actionBy) {
+      auditDetails.ownershipChange = {
+        previousOwner: thread.ownerUserId,
+        newOwner: ownerUserId || null,
+        handoverNote: handoverNote || null,
+      };
+
+      // Log ownership change with authenticated actor
+      if (actorId) {
         await prisma.ownershipChange.create({
           data: {
             threadId: params.id,
             oldOwnerId: thread.ownerUserId,
             newOwnerId: ownerUserId || null,
-            changedById: actionBy,
+            changedById: actorId,
             reason: body.reason || "",
             handoverNote: handoverNote || "",
           },
@@ -129,12 +141,22 @@ export async function PATCH(
 
     // Handle status change
     if (status && status !== thread.status) {
+      auditDetails.statusChange = {
+        previousStatus: thread.status,
+        newStatus: status,
+      };
       data.status = status;
       data.lastActionAt = now;
     }
 
-    if (priority) data.priority = priority;
-    if (queue) data.queue = queue;
+    if (priority && priority !== thread.priority) {
+      auditDetails.priorityChange = { previous: thread.priority, new: priority };
+      data.priority = priority;
+    }
+    if (queue && queue !== thread.queue) {
+      auditDetails.queueChange = { previous: thread.queue, new: queue };
+      data.queue = queue;
+    }
     if (linkedRecords) data.linkedRecords = JSON.stringify(linkedRecords);
 
     const updated = await prisma.commsThread.update({
@@ -144,6 +166,23 @@ export async function PATCH(
         owner: { select: { id: true, name: true } },
       },
     });
+
+    // Write audit log for all changes
+    if (actorId && Object.keys(auditDetails).length > 0) {
+      const actions = Object.keys(auditDetails);
+      await prisma.auditLog.create({
+        data: {
+          action: actions.includes("ownershipChange") ? "ownership_change" : actions.includes("statusChange") ? "status_change" : "thread_update",
+          entityType: "thread",
+          entityId: params.id,
+          userId: actorId,
+          details: JSON.stringify({
+            threadSubject: thread.subject,
+            ...auditDetails,
+          }),
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
