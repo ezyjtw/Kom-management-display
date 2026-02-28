@@ -31,6 +31,8 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("active");
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAlerts();
@@ -67,14 +69,45 @@ export default function AlertsPage() {
             SLA breaches, ownership changes, and performance warnings
           </p>
         </div>
-        <button
-          onClick={fetchAlerts}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
-        >
-          <RefreshCw size={16} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              setScanning(true);
+              setScanResult(null);
+              try {
+                const res = await fetch("/api/alerts/generate", { method: "POST" });
+                const json = await res.json();
+                if (json.success) {
+                  setScanResult(`Scanned ${json.data.threadsScanned} threads, created ${json.data.alertsCreated} new alerts`);
+                  fetchAlerts();
+                }
+              } catch (err) {
+                setScanResult("Scan failed");
+              } finally {
+                setScanning(false);
+              }
+            }}
+            disabled={scanning}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Bell size={16} />
+            {scanning ? "Scanning..." : "Run Alert Scan"}
+          </button>
+          <button
+            onClick={fetchAlerts}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {scanResult && (
+        <div className="p-3 rounded-lg text-sm bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          {scanResult}
+        </div>
+      )}
 
       {/* Status Filter */}
       <div className="flex gap-2">

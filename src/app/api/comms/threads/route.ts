@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus } from "@/lib/sla";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -16,8 +20,10 @@ export async function GET(request: NextRequest) {
 
     if (view === "unassigned") {
       where.status = "Unassigned";
-    } else if (view === "my_threads" && ownerUserId) {
-      where.ownerUserId = ownerUserId;
+    } else if (view === "my_threads") {
+      // Use session user's employeeId for "my threads" filtering
+      const effectiveOwnerId = auth.employeeId || auth.id;
+      where.ownerUserId = effectiveOwnerId;
       where.status = { notIn: ["Done", "Closed"] };
     } else {
       if (status) where.status = status;
@@ -90,13 +96,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: filtered });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
+  const authPost = await requireAuth();
+  if (authPost instanceof NextResponse) return authPost;
+
   try {
     const body = await request.json();
     const {
@@ -148,7 +157,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: thread }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }

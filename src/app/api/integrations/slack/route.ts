@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncSlackChannel, sendSlackNotification } from "@/lib/integrations/slack";
+import { syncSlackChannel } from "@/lib/integrations/slack";
+import { requireRole, safeErrorMessage } from "@/lib/auth-user";
 
 /**
  * POST /api/integrations/slack
- * Trigger a sync of a Slack channel.
- *
- * Body: { channelId: string, queue?: string }
+ * Trigger a sync of a Slack channel. Admin only.
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
     const { channelId, queue } = body;
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
@@ -32,9 +34,12 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/integrations/slack
- * Get current Slack integration status.
+ * Get current Slack integration status. Admin only.
  */
 export async function GET() {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
+
   const configured = !!process.env.SLACK_BOT_TOKEN;
 
   return NextResponse.json({

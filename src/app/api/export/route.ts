@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import { requireRole, safeErrorMessage } from "@/lib/auth-user";
 import type { Category } from "@/types";
 
+/**
+ * GET /api/export
+ * Export performance data as CSV or JSON. Admin or lead only.
+ */
 export async function GET(request: NextRequest) {
+  const auth = await requireRole("admin", "lead");
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "csv";
@@ -85,7 +93,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: String(error) },
+      { success: false, error: safeErrorMessage(error) },
       { status: 500 }
     );
   }
