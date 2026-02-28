@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ─── Core Employee & Org Models ───
+
+model Employee {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   // Analyst, Senior, Lead
+  team      String   // Ops, Settlements, Staking Ops, etc.
+  region    String   @default("Global")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  scores            CategoryScore[]
+  knowledgeScores   KnowledgeScore[]
+  employeeNotes     EmployeeNote[]
+  ownedThreads      CommsThread[]       @relation("ThreadOwner")
+  ownershipChangesFrom OwnershipChange[] @relation("OldOwner")
+  ownershipChangesTo   OwnershipChange[] @relation("NewOwner")
+  ownershipChangesBy   OwnershipChange[] @relation("ChangedBy")
+  alerts               Alert[]
+  auditLogs            AuditLog[]
+  threadNotes          ThreadNote[]
+}
+
+// ─── User / Auth ───
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      String   // admin, lead, employee
+  password  String   // hashed
+  employeeId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Scoring System ───
+
+model TimePeriod {
+  id        String   @id @default(cuid())
+  type      String   // week, month, quarter
+  startDate DateTime
+  endDate   DateTime
+  label     String   // e.g. "2026-W09", "2026-02"
+  createdAt DateTime @default(now())
+
+  scores         CategoryScore[]
+  knowledgeScores KnowledgeScore[]
+
+  @@unique([type, startDate])
+}
+
+model CategoryScore {
+  id           String   @id @default(cuid())
+  employeeId   String
+  periodId     String
+  category     String   // daily_tasks, projects, asset_actions, quality, knowledge
+  rawIndex     Float    // 0-1 raw performance index
+  score        Float    // 3-8 clamped score
+  configVersion String  // scoring config version used
+  evidence     String   @default("[]") // JSON array of evidence links
+  metadata     String   @default("{}") // JSON object with detailed metrics
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+  period     TimePeriod @relation(fields: [periodId], references: [id])
+
+  @@unique([employeeId, periodId, category])
+}
+
+model KnowledgeScore {
+  id                    String   @id @default(cuid())
+  employeeId            String
+  periodId              String
+  operationalUnderstanding Float @default(0) // 1-10
+  assetKnowledge        Float    @default(0) // 1-10
+  complianceAwareness   Float    @default(0) // 1-10
+  incidentResponse      Float    @default(0) // 1-10
+  overallRaw            Float    @default(0) // 1-10 average
+  mappedScore           Float    @default(3) // 3-8 mapped
+  notes                 String   @default("")
+  scoredBy              String   // user who scored
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+  period     TimePeriod @relation(fields: [periodId], references: [id])
+
+  @@unique([employeeId, periodId])
+}
+
+model ScoringConfig {
+  id        String   @id @default(cuid())
+  version   String   @unique
+  config    String   // JSON: weights, targets, clamp rules, definitions
+  active    Boolean  @default(false)
+  createdBy String
+  createdAt DateTime @default(now())
+  notes     String   @default("")
+}
+
+model EmployeeNote {
+  id         String   @id @default(cuid())
+  employeeId String
+  periodLabel String  // e.g. "2026-W09"
+  content    String
+  noteType   String   // manager, employee, context (PTO, on-call, incident)
+  authorId   String
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+// ─── Comms & Ownership Module ───
+
+model CommsThread {
+  id                String   @id @default(cuid())
+  source            String   // email, slack
+  sourceThreadRef   String   // gmail thread id / slack channel+ts
+  participants      String   @default("[]") // JSON array
+  clientOrPartnerTag String  @default("")
+  subject           String
+  priority          String   @default("P2") // P0, P1, P2, P3
+  status            String   @default("Unassigned") // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, Done, Closed
+  ownerUserId       String?
+  queue             String   @default("Ops") // Ops, Settlements, StakingOps
+  createdAt         DateTime @default(now())
+  lastMessageAt     DateTime @default(now())
+  lastActionAt      DateTime?
+  ttoDeadline       DateTime? // Time-to-Ownership deadline
+  ttfaDeadline      DateTime? // Time-to-First-Action deadline
+  tslaDeadline      DateTime? // Time-since-last-action deadline
+  linkedRecords     String   @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
+
+  owner             Employee?         @relation("ThreadOwner", fields: [ownerUserId], references: [id])
+  messages          CommsMessage[]
+  ownershipChanges  OwnershipChange[]
+  alerts            Alert[]
+  notes             ThreadNote[]
+}
+
+model CommsMessage {
+  id          String   @id @default(cuid())
+  threadId    String
+  timestamp   DateTime @default(now())
+  authorName  String
+  authorEmail String   @default("")
+  authorType  String   // external, internal
+  bodySnippet String
+  bodyLink    String   @default("") // link to full content
+  attachments String   @default("[]") // JSON: [{name, size, type}]
+
+  thread CommsThread @relation(fields: [threadId], references: [id])
+}
+
+model OwnershipChange {
+  id           String   @id @default(cuid())
+  threadId     String
+  oldOwnerId   String?
+  newOwnerId   String?
+  changedById  String
+  changedAt    DateTime @default(now())
+  reason       String   @default("")
+  handoverNote String   @default("")
+
+  thread    CommsThread @relation(fields: [threadId], references: [id])
+  oldOwner  Employee?   @relation("OldOwner", fields: [oldOwnerId], references: [id])
+  newOwner  Employee?   @relation("NewOwner", fields: [newOwnerId], references: [id])
+  changedBy Employee    @relation("ChangedBy", fields: [changedById], references: [id])
+}
+
+model ThreadNote {
+  id         String   @id @default(cuid())
+  threadId   String
+  authorId   String
+  content    String
+  createdAt  DateTime @default(now())
+
+  thread   CommsThread @relation(fields: [threadId], references: [id])
+  author   Employee    @relation(fields: [authorId], references: [id])
+}
+
+// ─── Alerts ───
+
+model Alert {
+  id           String   @id @default(cuid())
+  threadId     String?
+  employeeId   String?
+  type         String   // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping
+  priority     String   @default("P2")
+  message      String
+  status       String   @default("active") // active, acknowledged, resolved
+  destination  String   @default("in_app") // slack, email, in_app
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt    DateTime @default(now())
+
+  thread   CommsThread? @relation(fields: [threadId], references: [id])
+  employee Employee?    @relation(fields: [employeeId], references: [id])
+}
+
+// ─── Audit ───
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // config_change, manual_score, ownership_change, status_change, export, login
+  entityType String   // scoring_config, employee, thread, knowledge_score
+  entityId   String
+  userId     String
+  details    String   @default("{}") // JSON
+  createdAt  DateTime @default(now())
+
+  user Employee @relation(fields: [userId], references: [id])
+}
