@@ -74,14 +74,16 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authPatch = await requireAuth();
-  if (authPatch instanceof NextResponse) return authPatch;
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const body = await request.json();
     const { status, ownerUserId, priority, queue, linkedRecords, handoverNote } = body;
 
-    const actorId = authPatch.id;
+    const actorId = auth.id;
+    const actorEmployeeId = auth.employeeId || auth.id;
+    const isPrivileged = ["admin", "lead"].includes(auth.role);
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
@@ -94,11 +96,46 @@ export async function PATCH(
       );
     }
 
+    const isOwner = thread.ownerUserId === actorEmployeeId;
+
+    // RBAC: employees can only modify threads they own
+    if (!isPrivileged && !isOwner) {
+      return NextResponse.json(
+        { success: false, error: "You can only modify threads you own" },
+        { status: 403 }
+      );
+    }
+
+    // RBAC: only lead/admin can reassign ownership via PATCH
+    // (employees should use /take for self-assignment or /transfer)
+    if (ownerUserId !== undefined && !isPrivileged) {
+      return NextResponse.json(
+        { success: false, error: "Only leads and admins can reassign ownership. Use take or transfer instead." },
+        { status: 403 }
+      );
+    }
+
+    // RBAC: only lead/admin can change priority
+    if (priority && priority !== thread.priority && !isPrivileged) {
+      return NextResponse.json(
+        { success: false, error: "Only leads and admins can change thread priority" },
+        { status: 403 }
+      );
+    }
+
+    // RBAC: only lead/admin can change queue
+    if (queue && queue !== thread.queue && !isPrivileged) {
+      return NextResponse.json(
+        { success: false, error: "Only leads and admins can change thread queue" },
+        { status: 403 }
+      );
+    }
+
     const data: Record<string, unknown> = {};
     const now = new Date();
     const auditDetails: Record<string, unknown> = {};
 
-    // Handle ownership change
+    // Handle ownership change (lead/admin only, enforced above)
     if (ownerUserId !== undefined && ownerUserId !== thread.ownerUserId) {
       data.ownerUserId = ownerUserId || null;
       data.lastActionAt = now;
@@ -109,7 +146,6 @@ export async function PATCH(
         handoverNote: handoverNote || null,
       };
 
-      // Log ownership change with authenticated actor
       await prisma.ownershipChange.create({
         data: {
           threadId: params.id,
@@ -121,7 +157,6 @@ export async function PATCH(
         },
       });
 
-      // Create alert for ownership change
       await prisma.alert.create({
         data: {
           threadId: params.id,

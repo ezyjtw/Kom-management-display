@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
       where.status = { notIn: ["Done", "Closed"] };
     } else {
       if (status) where.status = status;
-      if (ownerUserId) where.ownerUserId = ownerUserId;
+      // Only admin/lead can filter by another user's ownerUserId
+      if (ownerUserId && ["admin", "lead"].includes(auth.role)) {
+        where.ownerUserId = ownerUserId;
+      }
     }
 
     if (queue) where.queue = queue;

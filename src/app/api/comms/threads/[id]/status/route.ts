@@ -14,7 +14,7 @@ const VALID_STATUSES = [
 
 /**
  * POST /api/comms/threads/:id/status
- * Change thread status. Uses authenticated session user.
+ * Change thread status. Only the thread owner or lead/admin can change status.
  */
 export async function POST(
   request: NextRequest,
@@ -52,6 +52,18 @@ export async function POST(
       );
     }
 
+    // RBAC: only thread owner or lead/admin can change status
+    const actorEmployeeId = auth.employeeId || auth.id;
+    const isOwner = thread.ownerUserId === actorEmployeeId;
+    const isPrivileged = ["admin", "lead"].includes(auth.role);
+
+    if (!isOwner && !isPrivileged) {
+      return NextResponse.json(
+        { success: false, error: "Only the thread owner or a lead/admin can change status" },
+        { status: 403 }
+      );
+    }
+
     const now = new Date();
     const previousStatus = thread.status;
 
@@ -73,7 +85,6 @@ export async function POST(
       },
     });
 
-    // Write audit log with authenticated user
     await prisma.auditLog.create({
       data: {
         action: "status_change",

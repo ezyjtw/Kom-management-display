@@ -2,14 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ThreadDetail } from "@/components/comms/ThreadDetail";
 
 export default function ThreadDetailPage() {
   const params = useParams();
-  const { data: session } = useSession();
   const [thread, setThread] = useState<any>(null);
   const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +44,7 @@ export default function ThreadDetailPage() {
   }
 
   async function handleOwnerChange(ownerId: string | null, handoverNote: string) {
-    // actionBy is no longer needed — the API extracts it from the session
+    // Server derives actor from session — no client-side identity needed
     const res = await fetch(`/api/comms/threads/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -64,17 +62,13 @@ export default function ThreadDetailPage() {
   }
 
   async function handleAddNote(content: string) {
-    // Use the dedicated notes endpoint with session-derived author
-    const currentUserId = (session?.user as any)?.employeeId || (session?.user as any)?.id;
-    if (!currentUserId || !content.trim()) return;
+    if (!content.trim()) return;
 
+    // Server derives author from session — no client-side userId needed
     await fetch(`/api/comms/threads/${params.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content,
-        authorId: currentUserId,
-      }),
+      body: JSON.stringify({ content }),
     });
 
     // Refetch thread to show new note
