@@ -17,14 +17,14 @@ const alertTypeLabels: Record<string, string> = {
 };
 
 const alertTypeColors: Record<string, string> = {
-  tto_breach: "bg-red-100 text-red-700",
-  ttfa_breach: "bg-red-100 text-red-700",
-  tsla_breach: "bg-orange-100 text-orange-700",
-  ownership_change: "bg-blue-100 text-blue-700",
-  ownership_bounce: "bg-amber-100 text-amber-700",
-  mistakes_rising: "bg-red-100 text-red-700",
-  throughput_drop: "bg-amber-100 text-amber-700",
-  sla_slipping: "bg-orange-100 text-orange-700",
+  tto_breach: "bg-red-500/10 text-red-400",
+  ttfa_breach: "bg-red-500/10 text-red-400",
+  tsla_breach: "bg-orange-500/10 text-orange-400",
+  ownership_change: "bg-blue-500/10 text-blue-400",
+  ownership_bounce: "bg-amber-500/10 text-amber-400",
+  mistakes_rising: "bg-red-500/10 text-red-400",
+  throughput_drop: "bg-amber-500/10 text-amber-400",
+  sla_slipping: "bg-orange-500/10 text-orange-400",
 };
 
 export default function AlertsPage() {
@@ -62,14 +62,14 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Alerts</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Alerts</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             SLA breaches, ownership changes, and performance warnings
           </p>
         </div>
         <button
           onClick={fetchAlerts}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
         >
           <RefreshCw size={16} />
           Refresh
@@ -84,8 +84,8 @@ export default function AlertsPage() {
             onClick={() => setStatusFilter(status)}
             className={`px-4 py-2 text-sm rounded-lg transition-colors capitalize ${
               statusFilter === status
-                ? "bg-blue-600 text-white"
-                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card border border-border text-muted-foreground hover:bg-accent/50"
             }`}
           >
             {status}
@@ -95,7 +95,7 @@ export default function AlertsPage() {
 
       {/* Alerts List */}
       {loading ? (
-        <div className="text-center py-12 text-slate-500">
+        <div className="text-center py-12 text-muted-foreground">
           <RefreshCw size={24} className="mx-auto mb-3 animate-spin" />
           Loading alerts...
         </div>
@@ -104,29 +104,29 @@ export default function AlertsPage() {
           {alerts.map((alert: any) => (
             <div
               key={alert.id}
-              className={`bg-white rounded-xl border p-4 ${
-                alert.status === "active" ? "border-red-200" : "border-slate-200"
+              className={`bg-card rounded-xl border p-4 ${
+                alert.status === "active" ? "border-red-200" : "border-border"
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Bell
                     size={18}
-                    className={alert.status === "active" ? "text-red-500" : "text-slate-400"}
+                    className={alert.status === "active" ? "text-red-500" : "text-muted-foreground"}
                   />
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
-                          alertTypeColors[alert.type] || "bg-slate-100 text-slate-600"
+                          alertTypeColors[alert.type] || "bg-muted text-muted-foreground"
                         }`}
                       >
                         {alertTypeLabels[alert.type] || alert.type}
                       </span>
                       <PriorityBadge priority={alert.priority} />
                     </div>
-                    <p className="text-sm text-slate-700">{alert.message}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                    <p className="text-sm text-foreground">{alert.message}</p>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                       <span>{new Date(alert.createdAt).toLocaleString()}</span>
                       {alert.thread && <span>Thread: {alert.thread.subject}</span>}
                       {alert.employee && <span>Employee: {alert.employee.name}</span>}
@@ -138,14 +138,14 @@ export default function AlertsPage() {
                     <>
                       <button
                         onClick={() => handleAction(alert.id, "acknowledge")}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200"
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-amber-500/10 text-amber-400 rounded-lg hover:bg-amber-500/20"
                       >
                         <Eye size={12} />
                         Acknowledge
                       </button>
                       <button
                         onClick={() => handleAction(alert.id, "resolve")}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200"
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-500/10 text-emerald-400 rounded-lg hover:bg-emerald-500/20"
                       >
                         <Check size={12} />
                         Resolve
@@ -155,7 +155,7 @@ export default function AlertsPage() {
                   {alert.status === "acknowledged" && (
                     <button
                       onClick={() => handleAction(alert.id, "resolve")}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200"
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-500/10 text-emerald-400 rounded-lg hover:bg-emerald-500/20"
                     >
                       <Check size={12} />
                       Resolve
@@ -164,10 +164,10 @@ export default function AlertsPage() {
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full ${
                       alert.status === "active"
-                        ? "bg-red-100 text-red-600"
+                        ? "bg-red-500/10 text-red-400"
                         : alert.status === "acknowledged"
-                        ? "bg-amber-100 text-amber-600"
-                        : "bg-emerald-100 text-emerald-600"
+                        ? "bg-amber-500/10 text-amber-400"
+                        : "bg-emerald-500/10 text-emerald-400"
                     }`}
                   >
                     {alert.status}
@@ -177,7 +177,7 @@ export default function AlertsPage() {
             </div>
           ))}
           {alerts.length === 0 && (
-            <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200">
+            <div className="text-center py-12 text-muted-foreground bg-card rounded-xl border border-border">
               No {statusFilter !== "all" ? statusFilter : ""} alerts
             </div>
           )}

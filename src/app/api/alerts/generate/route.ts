@@ -1,0 +1,236 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { computeSlaStatus, isExcessiveBouncing } from "@/lib/sla";
+
+/**
+ * POST /api/alerts/generate
+ * Background job: scan all active threads and generate alerts for SLA breaches.
+ * Call this on a schedule (cron every 5 minutes) or on-demand.
+ * De-duplicates: won't create a new alert if an active one already exists for the same thread+type.
+ */
+export async function POST() {
+  try {
+    const now = new Date();
+    let alertsCreated = 0;
+
+    // Get all active threads (not Done/Closed)
+    const threads = await prisma.commsThread.findMany({
+      where: {
+        status: { notIn: ["Done", "Closed"] },
+      },
+      include: {
+        ownershipChanges: {
+          where: {
+            changedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+          },
+        },
+      },
+    });
+
+    for (const thread of threads) {
+      const sla = computeSlaStatus({
+        createdAt: thread.createdAt,
+        ownerUserId: thread.ownerUserId,
+        lastActionAt: thread.lastActionAt,
+        status: thread.status,
+        priority: thread.priority,
+        ttoDeadline: thread.ttoDeadline,
+        ttfaDeadline: thread.ttfaDeadline,
+        tslaDeadline: thread.tslaDeadline,
+      });
+
+      // Check TTO breach (unassigned too long)
+      if (sla.isTtoBreached) {
+        const existing = await prisma.alert.findFirst({
+          where: {
+            threadId: thread.id,
+            type: "tto_breach",
+            status: "active",
+          },
+        });
+
+        if (!existing) {
+          await prisma.alert.create({
+            data: {
+              threadId: thread.id,
+              type: "tto_breach",
+              priority: thread.priority,
+              message: `Thread "${thread.subject}" has been unassigned past SLA (${thread.priority})`,
+              destination: "in_app",
+            },
+          });
+          alertsCreated++;
+        }
+      }
+
+      // Check TTFA breach (assigned but no action)
+      if (sla.isTtfaBreached) {
+        const existing = await prisma.alert.findFirst({
+          where: {
+            threadId: thread.id,
+            type: "ttfa_breach",
+            status: "active",
+          },
+        });
+
+        if (!existing) {
+          await prisma.alert.create({
+            data: {
+              threadId: thread.id,
+              type: "ttfa_breach",
+              priority: thread.priority,
+              message: `Thread "${thread.subject}" assigned but no action taken past SLA`,
+              destination: "in_app",
+            },
+          });
+          alertsCreated++;
+        }
+      }
+
+      // Check TSLA breach (stale — no activity for too long)
+      if (sla.isTslaBreached) {
+        const existing = await prisma.alert.findFirst({
+          where: {
+            threadId: thread.id,
+            type: "tsla_breach",
+            status: "active",
+          },
+        });
+
+        if (!existing) {
+          await prisma.alert.create({
+            data: {
+              threadId: thread.id,
+              type: "tsla_breach",
+              priority: thread.priority,
+              message: `Thread "${thread.subject}" has no activity past SLA threshold (status: ${thread.status})`,
+              destination: "in_app",
+            },
+          });
+          alertsCreated++;
+        }
+      }
+
+      // Check for excessive ownership bouncing
+      if (isExcessiveBouncing(thread.ownershipChanges)) {
+        const existing = await prisma.alert.findFirst({
+          where: {
+            threadId: thread.id,
+            type: "ownership_bounce",
+            status: "active",
+          },
+        });
+
+        if (!existing) {
+          await prisma.alert.create({
+            data: {
+              threadId: thread.id,
+              type: "ownership_bounce",
+              priority: "P1",
+              message: `Thread "${thread.subject}" has excessive ownership changes (>2 in 24h)`,
+              destination: "in_app",
+            },
+          });
+          alertsCreated++;
+        }
+      }
+    }
+
+    // Also check performance trends for employees
+    // (mistakes rising, throughput dropping)
+    const latestPeriod = await prisma.timePeriod.findFirst({
+      where: { type: "month" },
+      orderBy: { startDate: "desc" },
+    });
+
+    if (latestPeriod) {
+      const previousPeriod = await prisma.timePeriod.findFirst({
+        where: {
+          type: "month",
+          startDate: { lt: latestPeriod.startDate },
+        },
+        orderBy: { startDate: "desc" },
+      });
+
+      if (previousPeriod) {
+        const employees = await prisma.employee.findMany({ where: { active: true } });
+
+        for (const emp of employees) {
+          const currentQuality = await prisma.categoryScore.findFirst({
+            where: { employeeId: emp.id, periodId: latestPeriod.id, category: "quality" },
+          });
+          const prevQuality = await prisma.categoryScore.findFirst({
+            where: { employeeId: emp.id, periodId: previousPeriod.id, category: "quality" },
+          });
+
+          if (currentQuality && prevQuality && currentQuality.score < prevQuality.score - 0.5) {
+            const existing = await prisma.alert.findFirst({
+              where: {
+                employeeId: emp.id,
+                type: "mistakes_rising",
+                status: "active",
+              },
+            });
+
+            if (!existing) {
+              await prisma.alert.create({
+                data: {
+                  employeeId: emp.id,
+                  type: "mistakes_rising",
+                  priority: "P2",
+                  message: `${emp.name} — quality score dropped from ${prevQuality.score.toFixed(1)} to ${currentQuality.score.toFixed(1)}`,
+                  destination: "in_app",
+                },
+              });
+              alertsCreated++;
+            }
+          }
+
+          const currentTasks = await prisma.categoryScore.findFirst({
+            where: { employeeId: emp.id, periodId: latestPeriod.id, category: "daily_tasks" },
+          });
+          const prevTasks = await prisma.categoryScore.findFirst({
+            where: { employeeId: emp.id, periodId: previousPeriod.id, category: "daily_tasks" },
+          });
+
+          if (currentTasks && prevTasks && currentTasks.score < prevTasks.score - 0.5) {
+            const existing = await prisma.alert.findFirst({
+              where: {
+                employeeId: emp.id,
+                type: "throughput_drop",
+                status: "active",
+              },
+            });
+
+            if (!existing) {
+              await prisma.alert.create({
+                data: {
+                  employeeId: emp.id,
+                  type: "throughput_drop",
+                  priority: "P2",
+                  message: `${emp.name} — task throughput dropped from ${prevTasks.score.toFixed(1)} to ${currentTasks.score.toFixed(1)}`,
+                  destination: "in_app",
+                },
+              });
+              alertsCreated++;
+            }
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        threadsScanned: threads.length,
+        alertsCreated,
+        timestamp: now.toISOString(),
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 }
+    );
+  }
+}

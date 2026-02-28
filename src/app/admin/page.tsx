@@ -82,7 +82,7 @@ export default function AdminPage() {
   }
 
   if (loading) {
-    return <div className="text-center py-12 text-slate-500">Loading admin panel...</div>;
+    return <div className="text-center py-12 text-muted-foreground">Loading admin panel...</div>;
   }
 
   const tabs = [
@@ -97,19 +97,19 @@ export default function AdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Admin Panel</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Manage scoring configuration, employee data, and manual inputs
           </p>
         </div>
         <div className="flex items-center gap-3">
           {config && (
-            <span className="text-xs text-slate-400">Config v{config.version}</span>
+            <span className="text-xs text-muted-foreground">Config v{config.version}</span>
           )}
           <button
             onClick={saveConfig}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
           >
             <Save size={16} />
             {saving ? "Saving..." : "Save Config"}
@@ -118,7 +118,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-white border border-slate-200 rounded-xl p-1">
+      <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -127,8 +127,8 @@ export default function AdminPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors ${
                 activeTab === tab.key
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-600 hover:bg-slate-50"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent/50"
               }`}
             >
               <Icon size={16} />
@@ -140,15 +140,15 @@ export default function AdminPage() {
 
       {/* Tab Content */}
       {activeTab === "weights" && config && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h3 className="text-lg font-semibold mb-4">Category Weights</h3>
-          <p className="text-sm text-slate-500 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Weights determine how each category contributes to the overall score. Must total 1.0 (100%).
           </p>
           <div className="space-y-4">
             {(Object.keys(config.weights) as Category[]).map((cat) => (
               <div key={cat} className="flex items-center gap-4">
-                <label className="w-40 text-sm font-medium text-slate-700">
+                <label className="w-40 text-sm font-medium text-foreground">
                   {categoryLabels[cat]}
                 </label>
                 <input
@@ -165,9 +165,9 @@ export default function AdminPage() {
                 </span>
               </div>
             ))}
-            <div className="pt-3 border-t border-slate-200">
+            <div className="pt-3 border-t border-border">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-700">Total</span>
+                <span className="text-sm font-medium text-foreground">Total</span>
                 <span
                   className={`text-sm font-mono font-bold ${
                     Math.abs(
@@ -183,25 +183,25 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="mt-6 p-4 bg-slate-50 rounded-lg">
+          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
             <h4 className="text-sm font-semibold mb-2">Score Clamping</h4>
             <div className="flex items-center gap-6">
               <div>
-                <label className="text-xs text-slate-500">Minimum Score</label>
+                <label className="text-xs text-muted-foreground">Minimum Score</label>
                 <p className="text-lg font-bold text-red-600">{config.clampMin}</p>
               </div>
-              <div className="flex-1 h-2 bg-slate-200 rounded-full relative">
+              <div className="flex-1 h-2 bg-muted rounded-full relative">
                 <div
                   className="absolute h-2 bg-gradient-to-r from-red-400 via-amber-400 to-emerald-400 rounded-full"
                   style={{ left: "0%", width: "100%" }}
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500">Maximum Score</label>
+                <label className="text-xs text-muted-foreground">Maximum Score</label>
                 <p className="text-lg font-bold text-emerald-600">{config.clampMax}</p>
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               Scores are displayed on a 1-10 scale but clamped to {config.clampMin}-{config.clampMax} to prevent
               demoralising extremes and inflation.
             </p>
@@ -210,48 +210,48 @@ export default function AdminPage() {
       )}
 
       {activeTab === "targets" && config && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h3 className="text-lg font-semibold mb-4">Role-Based Targets</h3>
-          <p className="text-sm text-slate-500 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Different targets by seniority level to ensure fair comparison.
           </p>
           <div className="space-y-6">
             {Object.entries(config.targets).map(([role, targets]) => (
-              <div key={role} className="p-4 bg-slate-50 rounded-lg">
-                <h4 className="text-sm font-semibold text-slate-800 mb-3">{role}</h4>
+              <div key={role} className="p-4 bg-muted/50 rounded-lg">
+                <h4 className="text-sm font-semibold text-foreground mb-3">{role}</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div>
-                    <p className="text-xs text-slate-500">Tickets/Week</p>
+                    <p className="text-xs text-muted-foreground">Tickets/Week</p>
                     <p className="text-sm font-semibold">{targets.daily_tasks.ticketsPerWeek}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">On-Time Rate</p>
+                    <p className="text-xs text-muted-foreground">On-Time Rate</p>
                     <p className="text-sm font-semibold">{(targets.daily_tasks.onTimeRate * 100).toFixed(0)}%</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Pages Created/Mo</p>
+                    <p className="text-xs text-muted-foreground">Pages Created/Mo</p>
                     <p className="text-sm font-semibold">{targets.projects.pagesCreatedPerMonth}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Actions/Week</p>
+                    <p className="text-xs text-muted-foreground">Actions/Week</p>
                     <p className="text-sm font-semibold">{targets.asset_actions.actionsPerWeek}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Max Mistakes</p>
+                    <p className="text-xs text-muted-foreground">Max Mistakes</p>
                     <p className="text-sm font-semibold">{targets.quality.maxMistakes}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Positive Actions Target</p>
+                    <p className="text-xs text-muted-foreground">Positive Actions Target</p>
                     <p className="text-sm font-semibold">{targets.quality.positiveActionsTarget}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">SLA Compliance</p>
+                    <p className="text-xs text-muted-foreground">SLA Compliance</p>
                     <p className="text-sm font-semibold">
                       {(targets.asset_actions.slaComplianceRate * 100).toFixed(0)}%
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Cycle Time Target</p>
+                    <p className="text-xs text-muted-foreground">Cycle Time Target</p>
                     <p className="text-sm font-semibold">{targets.daily_tasks.cycleTimeDays}d</p>
                   </div>
                 </div>
@@ -262,12 +262,12 @@ export default function AdminPage() {
       )}
 
       {activeTab === "employees" && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h3 className="text-lg font-semibold mb-4">Team Members</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200">
+                <tr className="border-b border-border">
                   <th className="text-left px-3 py-2">Name</th>
                   <th className="text-left px-3 py-2">Email</th>
                   <th className="text-left px-3 py-2">Role</th>
@@ -278,9 +278,9 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {employees.map((emp) => (
-                  <tr key={emp.id} className="border-b border-slate-100">
+                  <tr key={emp.id} className="border-b border-border">
                     <td className="px-3 py-2 font-medium">{emp.name}</td>
-                    <td className="px-3 py-2 text-slate-500">{emp.email}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{emp.email}</td>
                     <td className="px-3 py-2">{emp.role}</td>
                     <td className="px-3 py-2">{emp.team}</td>
                     <td className="px-3 py-2">{emp.region}</td>
@@ -288,8 +288,8 @@ export default function AdminPage() {
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
                           emp.active
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {emp.active ? "Active" : "Inactive"}
@@ -299,7 +299,7 @@ export default function AdminPage() {
                 ))}
                 {employees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                       No employees added yet. Use the seed script or API to add employees.
                     </td>
                   </tr>
@@ -311,9 +311,9 @@ export default function AdminPage() {
       )}
 
       {activeTab === "knowledge" && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h3 className="text-lg font-semibold mb-4">Crypto Knowledge Scoring</h3>
-          <p className="text-sm text-slate-500 mb-6">
+          <p className="text-sm text-muted-foreground mb-6">
             Score each employee on rubric dimensions (1-10). Score is mapped to the 3-8 dashboard range.
           </p>
 
@@ -322,7 +322,7 @@ export default function AdminPage() {
             <select
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
-              className="text-sm border border-slate-200 rounded-lg px-3 py-2 w-full max-w-xs"
+              className="text-sm border border-border rounded-lg px-3 py-2 w-full max-w-xs"
             >
               <option value="">Choose...</option>
               {employees.map((emp) => (
@@ -334,7 +334,7 @@ export default function AdminPage() {
           </div>
 
           {selectedEmployee && (
-            <div className="p-4 bg-slate-50 rounded-lg space-y-4">
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
               {[
                 { key: "operationalUnderstanding", label: "Operational Understanding" },
                 { key: "assetKnowledge", label: "Asset-Specific Knowledge" },
@@ -369,10 +369,10 @@ export default function AdminPage() {
                     setKnowledgeForm((prev) => ({ ...prev, notes: e.target.value }))
                   }
                   placeholder="Training completed, areas for improvement..."
-                  className="w-full text-sm border border-slate-200 rounded-lg p-2 h-20"
+                  className="w-full text-sm border border-border rounded-lg p-2 h-20"
                 />
               </div>
-              <button className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
                 Save Knowledge Score
               </button>
             </div>

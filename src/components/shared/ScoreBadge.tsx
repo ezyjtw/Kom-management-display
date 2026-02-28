@@ -7,9 +7,9 @@ interface ScoreBadgeProps {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 6.5) return "bg-emerald-100 text-emerald-800 border-emerald-200";
-  if (score >= 5) return "bg-amber-100 text-amber-800 border-amber-200";
-  return "bg-red-100 text-red-800 border-red-200";
+  if (score >= 6.5) return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  if (score >= 5) return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  return "bg-red-500/10 text-red-400 border-red-500/20";
 }
 
 function getScoreBarColor(score: number): string {
@@ -35,17 +35,17 @@ export function ScoreBadge({ score, size = "md", showOutOf = true }: ScoreBadgeP
 }
 
 export function ScoreBar({ score, label }: { score: number; label?: string }) {
-  const percentage = ((score - 3) / 5) * 100; // Map 3-8 to 0-100%
+  const percentage = ((score - 3) / 5) * 100;
 
   return (
     <div className="w-full">
       {label && (
         <div className="flex justify-between text-xs mb-1">
-          <span className="text-slate-600">{label}</span>
-          <span className="font-medium">{score.toFixed(1)}</span>
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-medium text-foreground">{score.toFixed(1)}</span>
         </div>
       )}
-      <div className="w-full bg-slate-100 rounded-full h-2">
+      <div className="w-full bg-muted rounded-full h-2">
         <div
           className={`h-2 rounded-full transition-all ${getScoreBarColor(score)}`}
           style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }}

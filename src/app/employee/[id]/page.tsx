@@ -65,7 +65,7 @@ export default function EmployeeDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-500">
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
         Loading employee data...
       </div>
     );
@@ -74,8 +74,8 @@ export default function EmployeeDetailPage() {
   if (!employee) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-500">Employee not found</p>
-        <Link href="/dashboard" className="text-blue-600 hover:underline mt-2 inline-block">
+        <p className="text-muted-foreground">Employee not found</p>
+        <Link href="/dashboard" className="text-primary hover:underline mt-2 inline-block">
           Back to Dashboard
         </Link>
       </div>
@@ -140,22 +140,22 @@ export default function EmployeeDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="text-slate-400 hover:text-slate-600">
+          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft size={20} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{employee.name}</h1>
-            <p className="text-sm text-slate-500">
+            <h1 className="text-2xl font-bold text-foreground">{employee.name}</h1>
+            <p className="text-sm text-muted-foreground">
               {employee.role} — {employee.team} — {employee.region}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+          <button className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50">
             <MessageSquare size={16} />
             Add Note
           </button>
-          <button className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+          <button className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90">
             <Download size={16} />
             Export Summary
           </button>
@@ -171,7 +171,7 @@ export default function EmployeeDetailPage() {
 
       {/* Evidence Panels */}
       <div>
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Evidence & Detail</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">Evidence & Detail</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {categories.map((cat) => {
             const data = evidenceByCategory.get(cat);
@@ -189,8 +189,8 @@ export default function EmployeeDetailPage() {
 
       {/* Knowledge Score Details */}
       {employee.knowledgeScores.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Crypto Knowledge Assessment</h3>
+        <div className="bg-card rounded-xl border border-border p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Crypto Knowledge Assessment</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {(() => {
               const latest = employee.knowledgeScores[0];
@@ -200,16 +200,16 @@ export default function EmployeeDetailPage() {
                 { label: "Compliance Awareness", value: latest.complianceAwareness },
                 { label: "Incident Response", value: latest.incidentResponse },
               ].map((dim) => (
-                <div key={dim.label} className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500">{dim.label}</p>
+                <div key={dim.label} className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">{dim.label}</p>
                   <p className="text-xl font-bold mt-1">{dim.value}/10</p>
                 </div>
               ));
             })()}
           </div>
           {employee.knowledgeScores[0].notes && (
-            <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-500">Notes</p>
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs text-muted-foreground">Notes</p>
               <p className="text-sm mt-1">{employee.knowledgeScores[0].notes}</p>
             </div>
           )}
@@ -217,32 +217,32 @@ export default function EmployeeDetailPage() {
       )}
 
       {/* Employee Notes */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Notes</h3>
+      <div className="bg-card rounded-xl border border-border p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Notes</h3>
         <div className="space-y-3">
           {employee.employeeNotes.map((note) => (
-            <div key={note.id} className="p-3 bg-slate-50 rounded-lg">
+            <div key={note.id} className="p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center justify-between mb-1">
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
                     note.noteType === "manager"
-                      ? "bg-blue-100 text-blue-700"
+                      ? "bg-blue-500/10 text-blue-400"
                       : note.noteType === "context"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-200 text-slate-600"
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   {note.noteType}
                 </span>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   {note.periodLabel} — {new Date(note.createdAt).toLocaleDateString()}
                 </span>
               </div>
-              <p className="text-sm text-slate-700">{note.content}</p>
+              <p className="text-sm text-foreground">{note.content}</p>
             </div>
           ))}
           {employee.employeeNotes.length === 0 && (
-            <p className="text-sm text-slate-400 text-center py-4">No notes yet</p>
+            <p className="text-sm text-muted-foreground text-center py-4">No notes yet</p>
           )}
         </div>
       </div>

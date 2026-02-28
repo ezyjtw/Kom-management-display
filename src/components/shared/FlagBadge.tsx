@@ -14,8 +14,8 @@ export function FlagBadge({ flag }: { flag: Flag }) {
   const Icon = flag.severity === "critical" ? AlertCircle : AlertTriangle;
   const colorClass =
     flag.severity === "critical"
-      ? "bg-red-50 text-red-700 border-red-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
+      ? "bg-red-500/10 text-red-400 border-red-500/20"
+      : "bg-amber-500/10 text-amber-400 border-amber-500/20";
 
   return (
     <span
