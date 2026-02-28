@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #171717;
+  --background: #f8fafc;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --accent: #2563eb;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Score color utilities */
+.score-low { color: #ef4444; }
+.score-mid { color: #f59e0b; }
+.score-high { color: #22c55e; }
+
+/* SLA badge styles */
+.sla-ok { background-color: #dcfce7; color: #166534; }
+.sla-warning { background-color: #fef3c7; color: #92400e; }
+.sla-breach { background-color: #fecaca; color: #991b1b; }

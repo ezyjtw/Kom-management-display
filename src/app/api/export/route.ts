@@ -1,0 +1,92 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import type { Category } from "@/types";
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format") || "csv";
+    const periodId = searchParams.get("periodId");
+    const employeeId = searchParams.get("employeeId");
+
+    if (!periodId) {
+      return NextResponse.json(
+        { success: false, error: "periodId is required" },
+        { status: 400 }
+      );
+    }
+
+    const where: Record<string, unknown> = { periodId };
+    if (employeeId) where.employeeId = employeeId;
+
+    const scores = await prisma.categoryScore.findMany({
+      where,
+      include: {
+        employee: true,
+        period: true,
+      },
+    });
+
+    const config = getDefaultScoringConfig();
+    const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
+
+    // Group by employee
+    const employeeData = new Map<string, {
+      name: string;
+      role: string;
+      team: string;
+      scores: Record<string, number>;
+    }>();
+
+    for (const s of scores) {
+      if (!employeeData.has(s.employeeId)) {
+        employeeData.set(s.employeeId, {
+          name: s.employee.name,
+          role: s.employee.role,
+          team: s.employee.team,
+          scores: {},
+        });
+      }
+      employeeData.get(s.employeeId)!.scores[s.category] = s.score;
+    }
+
+    if (format === "csv") {
+      const headers = ["Name", "Role", "Team", ...categories.map(c => c.replace("_", " ")), "Overall"];
+      const rows = Array.from(employeeData.values()).map(emp => {
+        const catScores = {} as Record<Category, number>;
+        for (const cat of categories) {
+          catScores[cat] = emp.scores[cat] ?? 3;
+        }
+        const overall = computeOverallScore(catScores, config.weights);
+        return [emp.name, emp.role, emp.team, ...categories.map(c => emp.scores[c]?.toString() ?? "3"), overall.toString()];
+      });
+
+      const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+
+      return new NextResponse(csv, {
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": "attachment; filename=performance-summary.csv",
+        },
+      });
+    }
+
+    // JSON format
+    const result = Array.from(employeeData.entries()).map(([id, emp]) => {
+      const catScores = {} as Record<Category, number>;
+      for (const cat of categories) {
+        catScores[cat] = emp.scores[cat] ?? 3;
+      }
+      const overall = computeOverallScore(catScores, config.weights);
+      return { id, ...emp, overall };
+    });
+
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 }
+    );
+  }
+}
