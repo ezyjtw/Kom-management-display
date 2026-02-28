@@ -25,7 +25,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { status } = body;
+    const { status, reason } = body;
 
     if (!status) {
       return NextResponse.json(
@@ -64,6 +64,16 @@ export async function POST(
       );
     }
 
+    // Policy: closing requires a resolution note
+    if (["Done", "Closed"].includes(status) && !["Done", "Closed"].includes(thread.status)) {
+      if (!reason) {
+        return NextResponse.json(
+          { success: false, error: "A resolution note is required when closing a thread" },
+          { status: 400 }
+        );
+      }
+    }
+
     const now = new Date();
     const previousStatus = thread.status;
 
@@ -95,6 +105,7 @@ export async function POST(
           previousStatus,
           newStatus: status,
           threadSubject: thread.subject,
+          ...(reason ? { resolutionNote: reason } : {}),
         }),
       },
     });

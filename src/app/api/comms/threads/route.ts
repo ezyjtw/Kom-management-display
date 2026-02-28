@@ -16,26 +16,71 @@ export async function GET(request: NextRequest) {
     const source = searchParams.get("source");
     const view = searchParams.get("view"); // my_threads, unassigned, overdue, all
 
+    const isPrivileged = ["admin", "lead"].includes(auth.role);
+    const actorEmployeeId = auth.employeeId || auth.id;
+
     const where: Record<string, unknown> = {};
 
     if (view === "unassigned") {
       where.status = "Unassigned";
+      // Employees can only see unassigned threads in their team's queue
+      if (auth.role === "employee" && auth.team) {
+        where.queue = auth.team;
+      }
+      // Leads see unassigned across their team's queue (unless queue filter overrides)
+      if (auth.role === "lead" && auth.team && !queue) {
+        where.queue = auth.team;
+      }
     } else if (view === "my_threads") {
-      // Use session user's employeeId for "my threads" filtering
-      const effectiveOwnerId = auth.employeeId || auth.id;
-      where.ownerUserId = effectiveOwnerId;
+      where.ownerUserId = actorEmployeeId;
       where.status = { notIn: ["Done", "Closed"] };
+    } else if (view === "overdue") {
+      // Employees: only their own overdue threads
+      if (auth.role === "employee") {
+        where.ownerUserId = actorEmployeeId;
+      }
+      // Leads: their team's queue
+      if (auth.role === "lead" && auth.team && !queue) {
+        where.queue = auth.team;
+      }
+      // Admin: unrestricted
     } else {
-      if (status) where.status = status;
-      // Only admin/lead can filter by another user's ownerUserId
-      if (ownerUserId && ["admin", "lead"].includes(auth.role)) {
-        where.ownerUserId = ownerUserId;
+      // Default / "all" view — scoped by role
+      if (auth.role === "employee") {
+        // Employees see only their own threads + unassigned in their queue
+        where.OR = [
+          { ownerUserId: actorEmployeeId },
+          { status: "Unassigned", ...(auth.team ? { queue: auth.team } : {}) },
+        ];
+      } else if (auth.role === "lead") {
+        // Leads see their team's queue (all statuses)
+        if (auth.team && !queue) {
+          where.queue = auth.team;
+        }
+        // Leads can also filter by a specific user's threads
+        if (ownerUserId) {
+          where.ownerUserId = ownerUserId;
+        }
+      } else {
+        // Admin: unrestricted, can filter by ownerUserId
+        if (status) where.status = status;
+        if (ownerUserId) where.ownerUserId = ownerUserId;
       }
     }
 
-    if (queue) where.queue = queue;
+    // Queue/priority/source filters (admin/lead can override, employees constrained above)
+    if (queue) {
+      // If employee tries to filter a queue that isn't their team, ignore
+      if (auth.role === "employee" && auth.team && queue !== auth.team) {
+        // Don't apply — employee can't see other queues
+      } else {
+        where.queue = queue;
+      }
+    }
     if (priority) where.priority = priority;
     if (source) where.source = source;
+    // Admin/lead status filter (employees constrained by the OR above)
+    if (status && isPrivileged) where.status = status;
 
     const threads = await prisma.commsThread.findMany({
       where,

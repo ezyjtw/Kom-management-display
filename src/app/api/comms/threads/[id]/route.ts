@@ -131,6 +131,42 @@ export async function PATCH(
       );
     }
 
+    // Policy: closing/completing a thread requires a handover note or reason
+    if (status && ["Done", "Closed"].includes(status) && !["Done", "Closed"].includes(thread.status)) {
+      if (!handoverNote && !body.reason) {
+        return NextResponse.json(
+          { success: false, error: "A resolution note is required when closing a thread" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Policy: validate priority value
+    const VALID_PRIORITIES = ["P0", "P1", "P2", "P3"];
+    if (priority && !VALID_PRIORITIES.includes(priority)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    // Policy: validate queue value
+    const VALID_QUEUES = ["Ops", "Settlements", "StakingOps"];
+    if (queue && !VALID_QUEUES.includes(queue)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid queue. Must be one of: ${VALID_QUEUES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    // Policy: validate linkedRecords is an array if provided
+    if (linkedRecords !== undefined && !Array.isArray(linkedRecords)) {
+      return NextResponse.json(
+        { success: false, error: "linkedRecords must be an array" },
+        { status: 400 }
+      );
+    }
+
     const data: Record<string, unknown> = {};
     const now = new Date();
     const auditDetails: Record<string, unknown> = {};

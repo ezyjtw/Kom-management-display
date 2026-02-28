@@ -23,12 +23,23 @@ export const authOptions: NextAuthOptions = {
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
 
+        // Look up employee team for role-based queue scoping
+        let team: string | null = null;
+        if (user.employeeId) {
+          const employee = await prisma.employee.findUnique({
+            where: { id: user.employeeId },
+            select: { team: true },
+          });
+          team = employee?.team ?? null;
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
           employeeId: user.employeeId,
+          team,
         };
       },
     }),
@@ -38,6 +49,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = (user as any).role;
         token.employeeId = (user as any).employeeId;
+        token.team = (user as any).team;
       }
       return token;
     },
@@ -46,6 +58,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).id = token.sub;
         (session.user as any).role = token.role;
         (session.user as any).employeeId = token.employeeId;
+        (session.user as any).team = token.team;
       }
       return session;
     },
