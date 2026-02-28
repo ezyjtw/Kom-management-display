@@ -31,12 +31,21 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy Prisma schema + migrations for runtime migration
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-# Create data directory for SQLite
-RUN mkdir -p /app/prisma && chown -R nextjs:nodejs /app
+# Copy seed script dependencies
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
+COPY --from=builder /app/package.json ./package.json
+
+# Copy the startup script
+COPY --from=builder /app/start.sh ./start.sh
+
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
@@ -44,6 +53,5 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="file:/app/prisma/dev.db"
 
-CMD ["node", "server.js"]
+CMD ["sh", "start.sh"]
