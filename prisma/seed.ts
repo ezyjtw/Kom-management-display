@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -28,6 +29,81 @@ async function main() {
   ]);
 
   console.log(`Created ${employees.length} employees`);
+
+  // Create user accounts for login
+  const defaultPassword = await bcrypt.hash("admin123", 10);
+  const userPassword = await bcrypt.hash("user123", 10);
+  const leadPassword = await bcrypt.hash("lead123", 10);
+
+  await Promise.all([
+    // Admin manager account (not tied to a specific employee)
+    prisma.user.create({
+      data: {
+        email: "manager@ops.com",
+        name: "Ops Manager",
+        role: "admin",
+        password: defaultPassword,
+      },
+    }),
+    // Lead account — Carol Davies
+    prisma.user.create({
+      data: {
+        email: "carol@ops.com",
+        name: "Carol Davies",
+        role: "lead",
+        password: leadPassword,
+        employeeId: employees[2].id,
+      },
+    }),
+    // Employee accounts
+    prisma.user.create({
+      data: {
+        email: "alice@ops.com",
+        name: "Alice Chen",
+        role: "employee",
+        password: userPassword,
+        employeeId: employees[0].id,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "bob@ops.com",
+        name: "Bob Martinez",
+        role: "employee",
+        password: userPassword,
+        employeeId: employees[1].id,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "david@ops.com",
+        name: "David Park",
+        role: "employee",
+        password: userPassword,
+        employeeId: employees[3].id,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "eva@ops.com",
+        name: "Eva Kowalski",
+        role: "employee",
+        password: userPassword,
+        employeeId: employees[4].id,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "frank@ops.com",
+        name: "Frank Osei",
+        role: "employee",
+        password: userPassword,
+        employeeId: employees[5].id,
+      },
+    }),
+  ]);
+
+  console.log("Created user accounts");
 
   // Create time periods
   const periods = await Promise.all([

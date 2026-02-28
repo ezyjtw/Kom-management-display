@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/shared/Sidebar";
+import { SessionProvider } from "@/components/shared/SessionProvider";
+import { AppShell } from "@/components/shared/AppShell";
 
 export const metadata: Metadata = {
   title: "KOMmand Centre",
@@ -15,12 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 ml-64">
-            <div className="p-6">{children}</div>
-          </main>
-        </div>
+        <SessionProvider>
+          <AppShell>{children}</AppShell>
+        </SessionProvider>
       </body>
     </html>
   );
