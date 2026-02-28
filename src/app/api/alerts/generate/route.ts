@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, isExcessiveBouncing } from "@/lib/sla";
+import { requireRole } from "@/lib/auth-user";
 
 /**
- * POST /api/alerts/generate
- * Background job: scan all active threads and generate alerts for SLA breaches.
- * Call this on a schedule (cron every 1-5 minutes) or on-demand from the admin panel.
- * De-duplicates: won't create a new alert if an active one already exists for the same thread+type.
+ * GET /api/alerts/generate
+ * For cron services (Vercel Cron, external cron). Protected by CRON_SECRET.
  *
- * Also available via GET for cron services (e.g. Vercel Cron, external cron).
- * Protect with CRON_SECRET in production.
+ * POST /api/alerts/generate
+ * Manual trigger from admin panel. Admin only.
  */
 export async function GET(request: NextRequest) {
   // Verify cron secret in production
@@ -24,6 +23,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST() {
+  const auth = await requireRole("admin");
+  if (auth instanceof NextResponse) return auth;
   return generateAlerts();
 }
 
