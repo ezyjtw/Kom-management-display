@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   role: string;
   employeeId: string | null;
+  team: string | null;
 }
 
 /**
@@ -24,6 +25,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     email: session.user.email || "",
     role: (session.user as any).role as string,
     employeeId: (session.user as any).employeeId as string | null,
+    team: (session.user as any).team as string | null,
   };
 }
 
