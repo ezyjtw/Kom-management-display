@@ -1,7 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/shared/SessionProvider";
 import { AppShell } from "@/components/shared/AppShell";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: "KOMmand Centre",

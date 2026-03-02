@@ -30,7 +30,7 @@ function getAgeLabel(dateStr: string): string {
 export function ThreadList({ threads }: ThreadListProps) {
   if (threads.length === 0) {
     return (
-      <div className="bg-card rounded-xl border border-border p-12 text-center">
+      <div className="bg-card rounded-xl border border-border p-8 sm:p-12 text-center">
         <MessageCircle size={32} className="mx-auto text-muted-foreground mb-3" />
         <p className="text-muted-foreground">No threads matching your filters</p>
       </div>
@@ -59,63 +59,109 @@ export function ThreadList({ threads }: ThreadListProps) {
             <Link
               key={thread.id}
               href={`/comms/thread/${thread.id}`}
-              className={`flex items-center gap-4 px-5 py-4 hover:bg-accent/50 transition-colors ${
+              className={`block px-3 py-3 sm:px-5 sm:py-4 hover:bg-accent/50 transition-colors ${
                 isBreaching ? "bg-red-500/10" : ""
               }`}
             >
-              {/* Source icon */}
-              <div className="flex-shrink-0">
-                <SourceIcon
-                  size={18}
-                  className={thread.source === "email" ? "text-primary" : "text-purple-500"}
-                />
-              </div>
-
-              {/* Main content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <PriorityBadge priority={thread.priority} />
-                  <span className="text-sm font-medium text-foreground truncate">
-                    {thread.subject}
-                  </span>
+              {/* Desktop layout */}
+              <div className="hidden sm:flex items-center gap-4">
+                {/* Source icon */}
+                <div className="flex-shrink-0">
+                  <SourceIcon
+                    size={18}
+                    className={thread.source === "email" ? "text-primary" : "text-purple-500"}
+                  />
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {thread.clientOrPartnerTag && (
-                    <span className="bg-muted px-1.5 py-0.5 rounded">
-                      {thread.clientOrPartnerTag}
+
+                {/* Main content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <PriorityBadge priority={thread.priority} />
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {thread.subject}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {thread.clientOrPartnerTag && (
+                      <span className="bg-muted px-1.5 py-0.5 rounded">
+                        {thread.clientOrPartnerTag}
+                      </span>
+                    )}
+                    <span>{thread.queue}</span>
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} />
+                      {getAgeLabel(thread.lastMessageAt)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Status + Owner */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <StatusBadge status={thread.status} />
+                  {thread.ownerName ? (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <User size={12} />
+                      {thread.ownerName}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">Unassigned</span>
+                  )}
+                </div>
+
+                {/* SLA indicator */}
+                <div className="flex-shrink-0 w-28 text-right">
+                  {mostUrgentSla !== undefined && (
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${getSlaBadgeClass(mostUrgentSla)}`}
+                    >
+                      {isBreaching ? "⚠ " : ""}
+                      {formatSlaRemaining(mostUrgentSla)}
                     </span>
                   )}
-                  <span>{thread.queue}</span>
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} />
-                    {getAgeLabel(thread.lastMessageAt)}
-                  </span>
                 </div>
               </div>
 
-              {/* Status + Owner */}
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <StatusBadge status={thread.status} />
-                {thread.ownerName ? (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <User size={12} />
-                    {thread.ownerName}
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">Unassigned</span>
-                )}
-              </div>
-
-              {/* SLA indicator */}
-              <div className="flex-shrink-0 w-28 text-right">
-                {mostUrgentSla !== undefined && (
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${getSlaBadgeClass(mostUrgentSla)}`}
-                  >
-                    {isBreaching ? "⚠ " : ""}
-                    {formatSlaRemaining(mostUrgentSla)}
-                  </span>
-                )}
+              {/* Mobile layout */}
+              <div className="sm:hidden space-y-2">
+                <div className="flex items-start gap-2">
+                  <SourceIcon
+                    size={16}
+                    className={`mt-0.5 flex-shrink-0 ${thread.source === "email" ? "text-primary" : "text-purple-500"}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <PriorityBadge priority={thread.priority} />
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {thread.subject}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <StatusBadge status={thread.status} />
+                    {thread.ownerName ? (
+                      <span className="flex items-center gap-1">
+                        <User size={11} />
+                        {thread.ownerName}
+                      </span>
+                    ) : (
+                      <span className="italic">Unassigned</span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} />
+                      {getAgeLabel(thread.lastMessageAt)}
+                    </span>
+                  </div>
+                  {mostUrgentSla !== undefined && (
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${getSlaBadgeClass(mostUrgentSla)}`}
+                    >
+                      {isBreaching ? "⚠ " : ""}
+                      {formatSlaRemaining(mostUrgentSla)}
+                    </span>
+                  )}
+                </div>
               </div>
             </Link>
           );

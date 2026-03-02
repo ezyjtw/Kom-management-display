@@ -136,28 +136,28 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 sm:gap-4">
           <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft size={20} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{employee.name}</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">{employee.name}</h1>
+            <p className="text-xs md:text-sm text-muted-foreground">
               {employee.role} — {employee.team} — {employee.region}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 ml-8 sm:ml-0">
           <button className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50">
             <MessageSquare size={16} />
-            Add Note
+            <span className="hidden sm:inline">Add Note</span>
           </button>
           <button className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90">
             <Download size={16} />
-            Export Summary
+            <span className="hidden sm:inline">Export Summary</span>
           </button>
         </div>
       </div>
@@ -189,7 +189,7 @@ export default function EmployeeDetailPage() {
 
       {/* Knowledge Score Details */}
       {employee.knowledgeScores.length > 0 && (
-        <div className="bg-card rounded-xl border border-border p-6">
+        <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Crypto Knowledge Assessment</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {(() => {
@@ -217,7 +217,7 @@ export default function EmployeeDetailPage() {
       )}
 
       {/* Employee Notes */}
-      <div className="bg-card rounded-xl border border-border p-6">
+      <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-foreground mb-4">Notes</h3>
         <div className="space-y-3">
           {employee.employeeNotes.map((note) => (

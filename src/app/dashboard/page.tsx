@@ -42,26 +42,26 @@ export default function DashboardPage() {
   const roles = [...new Set(employees.map((e) => e.role))];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Team Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Team Overview</h1>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">
             Performance scores across all categories with trends and flags
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={fetchData}
             className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
           >
             <RefreshCw size={16} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
           <button className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90">
             <Download size={16} />
-            Export
+            <span className="hidden sm:inline">Export</span>
           </button>
         </div>
       </div>
@@ -70,7 +70,7 @@ export default function DashboardPage() {
       <StatsCards employees={filteredEmployees} />
 
       {/* Filters */}
-      <div className="flex items-center gap-4 bg-card rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-center gap-3 md:gap-4 bg-card rounded-xl border border-border p-3 md:p-4">
         <div>
           <label className="text-xs font-medium text-muted-foreground block mb-1">Period</label>
           <select
