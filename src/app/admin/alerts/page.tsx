@@ -14,6 +14,9 @@ const alertTypeLabels: Record<string, string> = {
   mistakes_rising: "Quality Alert",
   throughput_drop: "Throughput Alert",
   sla_slipping: "SLA Slipping",
+  travel_rule_missing_originator: "Travel Rule: Missing Originator",
+  travel_rule_missing_beneficiary: "Travel Rule: Missing Beneficiary",
+  travel_rule_unmatched: "Travel Rule: No Data",
 };
 
 const alertTypeColors: Record<string, string> = {
@@ -25,6 +28,9 @@ const alertTypeColors: Record<string, string> = {
   mistakes_rising: "bg-red-500/10 text-red-400",
   throughput_drop: "bg-amber-500/10 text-amber-400",
   sla_slipping: "bg-orange-500/10 text-orange-400",
+  travel_rule_missing_originator: "bg-red-500/10 text-red-400",
+  travel_rule_missing_beneficiary: "bg-red-500/10 text-red-400",
+  travel_rule_unmatched: "bg-red-500/10 text-red-400",
 };
 
 export default function AlertsPage() {
