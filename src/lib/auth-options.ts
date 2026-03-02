@@ -17,16 +17,31 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          console.log("[AUTH] Missing email or password");
+          return null;
+        }
+
+        console.log(`[AUTH] Login attempt for: ${credentials.email}`);
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
 
-        if (!user) return null;
+        if (!user) {
+          console.log(`[AUTH] No user found with email: ${credentials.email}`);
+          return null;
+        }
+
+        console.log(`[AUTH] User found: ${user.email}, role: ${user.role}`);
 
         const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) return null;
+        if (!isValid) {
+          console.log(`[AUTH] Invalid password for: ${credentials.email}`);
+          return null;
+        }
+
+        console.log(`[AUTH] Login successful for: ${credentials.email}`);
 
         // Look up employee team for role-based queue scoping
         let team: string | null = null;
