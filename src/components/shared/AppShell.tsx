@@ -18,8 +18,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <Sidebar user={session?.user as any} />
-      <main className="flex-1 ml-64">
-        <div className="p-6">{children}</div>
+      <main className="flex-1 ml-0 md:ml-64">
+        <div className="p-4 pt-16 md:pt-6 md:p-6">{children}</div>
       </main>
     </div>
   );

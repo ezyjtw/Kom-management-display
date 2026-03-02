@@ -16,6 +16,9 @@ RUN mkdir -p public
 # Generate Prisma client
 RUN npx prisma generate
 
+# Compile seed script to JS so it can run without tsx in production
+RUN npx esbuild prisma/seed.ts --bundle --platform=node --outfile=prisma/seed.js --external:@prisma/client --external:bcryptjs
+
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

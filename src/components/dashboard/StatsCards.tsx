@@ -48,7 +48,7 @@ export function StatsCards({ employees }: StatsCardsProps) {
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <div key={stat.label} className="bg-card rounded-xl border border-border p-5">
+          <div key={stat.label} className="bg-card rounded-xl border border-border p-4 sm:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{stat.label}</p>

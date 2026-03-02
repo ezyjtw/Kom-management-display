@@ -69,18 +69,18 @@ export default function CommsPage() {
   const unassignedCount = threads.filter((t) => t.status === "Unassigned").length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Communications</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Communications</h1>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">
             Manage inbound emails and Slack messages — track ownership and SLAs
           </p>
         </div>
         <button
           onClick={fetchThreads}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
+          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50 self-start sm:self-auto"
         >
           <RefreshCw size={16} />
           Refresh
@@ -114,7 +114,7 @@ export default function CommsPage() {
       </div>
 
       {/* View Tabs */}
-      <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
+      <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1 overflow-x-auto">
         {viewTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeView === tab.key;
@@ -122,21 +122,22 @@ export default function CommsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveView(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg transition-colors whitespace-nowrap ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent/50"
               }`}
             >
               <Icon size={16} />
-              {tab.label}
+              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="sm:hidden">{tab.key === "overdue" ? "Overdue" : tab.key === "my_threads" ? "Mine" : tab.label}</span>
               {tab.key === "overdue" && overdueCount > 0 && (
-                <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full ml-1">
+                <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                   {overdueCount}
                 </span>
               )}
               {tab.key === "unassigned" && unassignedCount > 0 && (
-                <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full ml-1">
+                <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                   {unassignedCount}
                 </span>
               )}
@@ -146,8 +147,8 @@ export default function CommsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 bg-card border border-border rounded-xl p-3">
-        <Filter size={16} className="text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-card border border-border rounded-xl p-3">
+        <Filter size={16} className="text-muted-foreground hidden sm:block" />
         <select
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value)}

@@ -163,133 +163,139 @@ async function main() {
 
   console.log("Upserted knowledge scores");
 
-  // Seed comms threads
-  const threadData = [
-    {
-      source: "email", sourceThreadRef: "gmail-thread-001",
-      participants: JSON.stringify(["client-a@example.com", "ops@company.com"]),
-      clientOrPartnerTag: "Client Alpha", subject: "ETH Staking withdrawal request — urgent",
-      priority: "P1", status: "InProgress", ownerUserId: employees[0].id,
-      queue: "StakingOps", lastMessageAt: new Date("2026-02-28T09:30:00Z"), lastActionAt: new Date("2026-02-28T09:45:00Z"),
-    },
-    {
-      source: "slack", sourceThreadRef: "C01234-1709100000.000001",
-      participants: JSON.stringify(["@client-b-ops", "@settlements-team"]),
-      clientOrPartnerTag: "Client Beta", subject: "Settlement reconciliation discrepancy Q1",
-      priority: "P2", status: "WaitingExternal", ownerUserId: employees[4].id,
-      queue: "Settlements", lastMessageAt: new Date("2026-02-27T16:00:00Z"), lastActionAt: new Date("2026-02-27T16:30:00Z"),
-    },
-    {
-      source: "email", sourceThreadRef: "gmail-thread-003",
-      participants: JSON.stringify(["partner-x@exchange.com"]),
-      clientOrPartnerTag: "Partner X", subject: "New custody onboarding — documentation required",
-      priority: "P2", status: "Unassigned", queue: "Ops",
-      lastMessageAt: new Date("2026-02-28T08:00:00Z"), ttoDeadline: new Date("2026-02-28T10:00:00Z"),
-    },
-    {
-      source: "slack", sourceThreadRef: "C05678-1709200000.000002",
-      participants: JSON.stringify(["@client-c-team"]),
-      clientOrPartnerTag: "Client Gamma", subject: "Transaction stuck — Fireblocks approval pending",
-      priority: "P0", status: "Assigned", ownerUserId: employees[3].id,
-      queue: "Ops", lastMessageAt: new Date("2026-02-28T10:15:00Z"), ttfaDeadline: new Date("2026-02-28T10:25:00Z"),
-    },
-    {
-      source: "email", sourceThreadRef: "gmail-thread-005",
-      participants: JSON.stringify(["compliance@regulator.gov"]),
-      clientOrPartnerTag: "Regulator", subject: "Travel Rule data request — March batch",
-      priority: "P1", status: "Assigned", ownerUserId: employees[2].id,
-      queue: "Ops", lastMessageAt: new Date("2026-02-28T07:00:00Z"), lastActionAt: new Date("2026-02-28T08:30:00Z"),
-    },
-    {
-      source: "email", sourceThreadRef: "gmail-thread-006",
-      participants: JSON.stringify(["client-d@example.com"]),
-      clientOrPartnerTag: "Client Delta", subject: "Monthly reporting — asset allocation summary",
-      priority: "P3", status: "Done", ownerUserId: employees[1].id,
-      queue: "Ops", lastMessageAt: new Date("2026-02-26T14:00:00Z"), lastActionAt: new Date("2026-02-27T10:00:00Z"),
-    },
-  ];
+  // Seed comms threads (skip if already seeded)
+  const existingThreadCount = await prisma.commsThread.count();
+  let threads: Awaited<ReturnType<typeof prisma.commsThread.create>>[] = [];
 
-  const threads = [];
-  for (const data of threadData) {
-    const thread = await prisma.commsThread.create({ data });
-    threads.push(thread);
+  if (existingThreadCount === 0) {
+    const threadData = [
+      {
+        source: "email", sourceThreadRef: "gmail-thread-001",
+        participants: JSON.stringify(["client-a@example.com", "ops@company.com"]),
+        clientOrPartnerTag: "Client Alpha", subject: "ETH Staking withdrawal request — urgent",
+        priority: "P1", status: "InProgress", ownerUserId: employees[0].id,
+        queue: "StakingOps", lastMessageAt: new Date("2026-02-28T09:30:00Z"), lastActionAt: new Date("2026-02-28T09:45:00Z"),
+      },
+      {
+        source: "slack", sourceThreadRef: "C01234-1709100000.000001",
+        participants: JSON.stringify(["@client-b-ops", "@settlements-team"]),
+        clientOrPartnerTag: "Client Beta", subject: "Settlement reconciliation discrepancy Q1",
+        priority: "P2", status: "WaitingExternal", ownerUserId: employees[4].id,
+        queue: "Settlements", lastMessageAt: new Date("2026-02-27T16:00:00Z"), lastActionAt: new Date("2026-02-27T16:30:00Z"),
+      },
+      {
+        source: "email", sourceThreadRef: "gmail-thread-003",
+        participants: JSON.stringify(["partner-x@exchange.com"]),
+        clientOrPartnerTag: "Partner X", subject: "New custody onboarding — documentation required",
+        priority: "P2", status: "Unassigned", queue: "Ops",
+        lastMessageAt: new Date("2026-02-28T08:00:00Z"), ttoDeadline: new Date("2026-02-28T10:00:00Z"),
+      },
+      {
+        source: "slack", sourceThreadRef: "C05678-1709200000.000002",
+        participants: JSON.stringify(["@client-c-team"]),
+        clientOrPartnerTag: "Client Gamma", subject: "Transaction stuck — Fireblocks approval pending",
+        priority: "P0", status: "Assigned", ownerUserId: employees[3].id,
+        queue: "Ops", lastMessageAt: new Date("2026-02-28T10:15:00Z"), ttfaDeadline: new Date("2026-02-28T10:25:00Z"),
+      },
+      {
+        source: "email", sourceThreadRef: "gmail-thread-005",
+        participants: JSON.stringify(["compliance@regulator.gov"]),
+        clientOrPartnerTag: "Regulator", subject: "Travel Rule data request — March batch",
+        priority: "P1", status: "Assigned", ownerUserId: employees[2].id,
+        queue: "Ops", lastMessageAt: new Date("2026-02-28T07:00:00Z"), lastActionAt: new Date("2026-02-28T08:30:00Z"),
+      },
+      {
+        source: "email", sourceThreadRef: "gmail-thread-006",
+        participants: JSON.stringify(["client-d@example.com"]),
+        clientOrPartnerTag: "Client Delta", subject: "Monthly reporting — asset allocation summary",
+        priority: "P3", status: "Done", ownerUserId: employees[1].id,
+        queue: "Ops", lastMessageAt: new Date("2026-02-26T14:00:00Z"), lastActionAt: new Date("2026-02-27T10:00:00Z"),
+      },
+    ];
+
+    for (const data of threadData) {
+      const thread = await prisma.commsThread.create({ data });
+      threads.push(thread);
+    }
+
+    console.log(`Created ${threads.length} comms threads`);
+
+    // Seed messages for threads
+    await prisma.commsMessage.createMany({
+      data: [
+        {
+          threadId: threads[0].id, authorName: "John @ Client Alpha", authorEmail: "client-a@example.com",
+          authorType: "external", timestamp: new Date("2026-02-28T09:00:00Z"),
+          bodySnippet: "Hi team, we need to initiate an ETH staking withdrawal for 500 ETH. Can you confirm the timeline and any fees involved? This is urgent as we have a fund redemption deadline.",
+        },
+        {
+          threadId: threads[0].id, authorName: "Alice Chen", authorEmail: "alice@ops.com",
+          authorType: "internal", timestamp: new Date("2026-02-28T09:30:00Z"),
+          bodySnippet: "Hi John, acknowledged. I'm initiating the unstaking process now. ETH unstaking typically takes 1-5 days depending on the queue. I'll provide a Fireblocks reference shortly.",
+        },
+        {
+          threadId: threads[2].id, authorName: "Partner X Onboarding", authorEmail: "partner-x@exchange.com",
+          authorType: "external", timestamp: new Date("2026-02-28T08:00:00Z"),
+          bodySnippet: "Hello, we're ready to begin the custody onboarding process. Please send us the required documentation checklist and KYC requirements for our entity.",
+        },
+        {
+          threadId: threads[3].id, authorName: "Client Gamma Ops", authorEmail: "",
+          authorType: "external", timestamp: new Date("2026-02-28T10:15:00Z"),
+          bodySnippet: "URGENT: We have a USDC transfer that's been stuck in pending for 45 minutes. Fireblocks shows 'awaiting approval'. Can someone approve ASAP? TX ID: FB-29384",
+        },
+      ],
+    });
+
+    console.log("Created comms messages");
+
+    // Seed some employee notes
+    await prisma.employeeNote.createMany({
+      data: [
+        {
+          employeeId: employees[3].id, periodLabel: "2026-02",
+          content: "Quality issues need attention — 3 mistakes in settlements this month. Scheduling coaching session.",
+          noteType: "manager", authorId: employees[2].id,
+        },
+        {
+          employeeId: employees[3].id, periodLabel: "2026-02",
+          content: "Was on-call week of Feb 16. Multiple incident responses impacted normal throughput.",
+          noteType: "context", authorId: employees[3].id,
+        },
+        {
+          employeeId: employees[5].id, periodLabel: "2026-02",
+          content: "Showing good improvement in second month. Asset knowledge growing. Assigned mentor.",
+          noteType: "manager", authorId: employees[2].id,
+        },
+      ],
+    });
+
+    console.log("Created employee notes");
+
+    // Seed alerts
+    await prisma.alert.createMany({
+      data: [
+        {
+          threadId: threads[2].id, type: "tto_breach", priority: "P2",
+          message: "Thread 'New custody onboarding' has been unassigned for over 2 hours",
+          status: "active", destination: "in_app",
+        },
+        {
+          threadId: threads[3].id, type: "ttfa_breach", priority: "P0",
+          message: "P0 thread 'Transaction stuck — Fireblocks approval pending' assigned but no action taken",
+          status: "active", destination: "in_app",
+        },
+        {
+          employeeId: employees[3].id, type: "mistakes_rising", priority: "P2",
+          message: "David Park — quality score dropped from 5.5 to 4.8 this month",
+          status: "active", destination: "in_app",
+        },
+      ],
+    });
+
+    console.log("Created alerts");
+  } else {
+    console.log(`Skipping comms/notes/alerts seed — ${existingThreadCount} threads already exist`);
   }
-
-  console.log(`Created ${threads.length} comms threads`);
-
-  // Seed messages for threads
-  await prisma.commsMessage.createMany({
-    data: [
-      {
-        threadId: threads[0].id, authorName: "John @ Client Alpha", authorEmail: "client-a@example.com",
-        authorType: "external", timestamp: new Date("2026-02-28T09:00:00Z"),
-        bodySnippet: "Hi team, we need to initiate an ETH staking withdrawal for 500 ETH. Can you confirm the timeline and any fees involved? This is urgent as we have a fund redemption deadline.",
-      },
-      {
-        threadId: threads[0].id, authorName: "Alice Chen", authorEmail: "alice@ops.com",
-        authorType: "internal", timestamp: new Date("2026-02-28T09:30:00Z"),
-        bodySnippet: "Hi John, acknowledged. I'm initiating the unstaking process now. ETH unstaking typically takes 1-5 days depending on the queue. I'll provide a Fireblocks reference shortly.",
-      },
-      {
-        threadId: threads[2].id, authorName: "Partner X Onboarding", authorEmail: "partner-x@exchange.com",
-        authorType: "external", timestamp: new Date("2026-02-28T08:00:00Z"),
-        bodySnippet: "Hello, we're ready to begin the custody onboarding process. Please send us the required documentation checklist and KYC requirements for our entity.",
-      },
-      {
-        threadId: threads[3].id, authorName: "Client Gamma Ops", authorEmail: "",
-        authorType: "external", timestamp: new Date("2026-02-28T10:15:00Z"),
-        bodySnippet: "URGENT: We have a USDC transfer that's been stuck in pending for 45 minutes. Fireblocks shows 'awaiting approval'. Can someone approve ASAP? TX ID: FB-29384",
-      },
-    ],
-  });
-
-  console.log("Created comms messages");
-
-  // Seed some employee notes
-  await prisma.employeeNote.createMany({
-    data: [
-      {
-        employeeId: employees[3].id, periodLabel: "2026-02",
-        content: "Quality issues need attention — 3 mistakes in settlements this month. Scheduling coaching session.",
-        noteType: "manager", authorId: employees[2].id,
-      },
-      {
-        employeeId: employees[3].id, periodLabel: "2026-02",
-        content: "Was on-call week of Feb 16. Multiple incident responses impacted normal throughput.",
-        noteType: "context", authorId: employees[3].id,
-      },
-      {
-        employeeId: employees[5].id, periodLabel: "2026-02",
-        content: "Showing good improvement in second month. Asset knowledge growing. Assigned mentor.",
-        noteType: "manager", authorId: employees[2].id,
-      },
-    ],
-  });
-
-  console.log("Created employee notes");
-
-  // Seed alerts
-  await prisma.alert.createMany({
-    data: [
-      {
-        threadId: threads[2].id, type: "tto_breach", priority: "P2",
-        message: "Thread 'New custody onboarding' has been unassigned for over 2 hours",
-        status: "active", destination: "in_app",
-      },
-      {
-        threadId: threads[3].id, type: "ttfa_breach", priority: "P0",
-        message: "P0 thread 'Transaction stuck — Fireblocks approval pending' assigned but no action taken",
-        status: "active", destination: "in_app",
-      },
-      {
-        employeeId: employees[3].id, type: "mistakes_rising", priority: "P2",
-        message: "David Park — quality score dropped from 5.5 to 4.8 this month",
-        status: "active", destination: "in_app",
-      },
-    ],
-  });
-
-  console.log("Created alerts");
 
   // Seed scoring config
   await prisma.scoringConfig.upsert({
