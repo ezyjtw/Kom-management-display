@@ -56,6 +56,20 @@ export async function POST(
       data: { lastActionAt: now },
     });
 
+    // Audit: log note creation
+    await prisma.auditLog.create({
+      data: {
+        action: "note_created",
+        entityType: "thread",
+        entityId: params.id,
+        userId: authorId,
+        details: JSON.stringify({
+          noteId: note.id,
+          threadSubject: thread.subject,
+        }),
+      },
+    });
+
     return NextResponse.json({ success: true, data: note }, { status: 201 });
   } catch (error) {
     return NextResponse.json(

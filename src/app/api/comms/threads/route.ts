@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus } from "@/lib/sla";
 import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -174,14 +175,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalise subject and auto-detect priority if not explicitly set
+    const cleanSubject = normaliseSubject(subject);
+    const effectivePriority =
+      priority ||
+      deriveAutoPriority({
+        subject,
+        body: initialMessage?.bodySnippet,
+        senderEmail: initialMessage?.authorEmail,
+      }) ||
+      "P2";
+
     const thread = await prisma.commsThread.create({
       data: {
         source,
         sourceThreadRef,
         participants: JSON.stringify(participants || []),
         clientOrPartnerTag: clientOrPartnerTag || "",
-        subject,
-        priority: priority || "P2",
+        subject: cleanSubject,
+        priority: effectivePriority,
         queue: queue || "Ops",
         status: "Unassigned",
       },
@@ -201,6 +213,22 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    // Audit: thread creation
+    await prisma.auditLog.create({
+      data: {
+        action: "thread_created",
+        entityType: "thread",
+        entityId: thread.id,
+        userId: authPost.employeeId || authPost.id,
+        details: JSON.stringify({
+          source,
+          subject: cleanSubject,
+          priority: effectivePriority,
+          queue: queue || "Ops",
+        }),
+      },
+    });
 
     return NextResponse.json({ success: true, data: thread }, { status: 201 });
   } catch (error) {

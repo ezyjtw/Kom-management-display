@@ -3,6 +3,29 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+async function logLoginAudit(userId: string, email: string, success: boolean) {
+  try {
+    // Find the employee record linked to this user for the audit userId field
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { employeeId: true },
+    });
+    const actorId = user?.employeeId || userId;
+
+    await prisma.auditLog.create({
+      data: {
+        action: success ? "login_success" : "login_failed",
+        entityType: "session",
+        entityId: userId,
+        userId: actorId,
+        details: JSON.stringify({ email, success }),
+      },
+    });
+  } catch {
+    // Audit logging should never break the login flow
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -33,10 +56,12 @@ export const authOptions: NextAuthOptions = {
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) {
           console.log(`[AUTH] Invalid password for: ${credentials.email}`);
+          await logLoginAudit(user.id, credentials.email, false);
           return null;
         }
 
         console.log(`[AUTH] Login successful for: ${credentials.email}`);
+        await logLoginAudit(user.id, credentials.email, true);
 
         // Look up employee team for role-based queue scoping
         let team: string | null = null;

@@ -59,6 +59,22 @@ export async function GET(request: NextRequest) {
       employeeData.get(s.employeeId)!.scores[s.category] = s.score;
     }
 
+    // Audit: log the export action
+    await prisma.auditLog.create({
+      data: {
+        action: "export",
+        entityType: "performance_data",
+        entityId: periodId,
+        userId: auth.employeeId || auth.id,
+        details: JSON.stringify({
+          format,
+          periodId,
+          employeeId: employeeId || "all",
+          recordCount: employeeData.size,
+        }),
+      },
+    });
+
     if (format === "csv") {
       const headers = ["Name", "Role", "Team", ...categories.map(c => c.replace("_", " ")), "Overall"];
       const rows = Array.from(employeeData.values()).map(emp => {

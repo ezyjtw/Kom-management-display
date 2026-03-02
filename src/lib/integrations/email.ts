@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { computeTtoDeadline } from "@/lib/sla";
+import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
 
 /**
@@ -151,18 +152,26 @@ export async function syncEmailInbox(queue: string = "Ops") {
         synced.push(existing.id);
       } else {
         // Create new thread
+        const cleanSubject = normaliseSubject(email.subject);
+        const autoPriority =
+          deriveAutoPriority({
+            subject: email.subject,
+            body: email.body.substring(0, 500),
+            senderEmail: email.from,
+          }) ?? ("P2" as ThreadPriority);
+
         const thread = await prisma.commsThread.create({
           data: {
             source: "email",
             sourceThreadRef: sourceRef,
             participants: JSON.stringify([email.from, email.to].filter(Boolean)),
             clientOrPartnerTag: extractDomain(email.from),
-            subject: email.subject.substring(0, 200),
-            priority: "P2",
+            subject: cleanSubject,
+            priority: autoPriority,
             status: "Unassigned",
             queue,
             lastMessageAt: email.date,
-            ttoDeadline: computeTtoDeadline(email.date, "P2" as ThreadPriority),
+            ttoDeadline: computeTtoDeadline(email.date, autoPriority as ThreadPriority),
           },
         });
 

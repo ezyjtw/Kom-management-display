@@ -1,6 +1,7 @@
 import { WebClient } from "@slack/web-api";
 import { prisma } from "@/lib/prisma";
 import { computeTtoDeadline } from "@/lib/sla";
+import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
 
 let slackClient: WebClient | null = null;
@@ -81,7 +82,13 @@ export async function syncSlackChannel(channelId: string, queue: string = "Ops")
 
     // Create new thread
     const now = new Date(parseFloat(msg.ts!) * 1000);
-    const subject = (msg.text || "New Slack message").substring(0, 200);
+    const rawText = msg.text || "New Slack message";
+    // Use first line of Slack message as subject (strip formatting)
+    const firstLine = rawText.split("\n")[0];
+    const subject = normaliseSubject(firstLine);
+    const autoPriority =
+      deriveAutoPriority({ subject: rawText, body: rawText }) ??
+      ("P2" as ThreadPriority);
 
     const thread = await prisma.commsThread.create({
       data: {
@@ -90,11 +97,11 @@ export async function syncSlackChannel(channelId: string, queue: string = "Ops")
         participants: JSON.stringify([msg.user]),
         clientOrPartnerTag: `#${channelName}`,
         subject,
-        priority: "P2",
+        priority: autoPriority,
         status: "Unassigned",
         queue,
         lastMessageAt: now,
-        ttoDeadline: computeTtoDeadline(now, "P2" as ThreadPriority),
+        ttoDeadline: computeTtoDeadline(now, autoPriority as ThreadPriority),
       },
     });
 

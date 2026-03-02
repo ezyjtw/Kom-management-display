@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncSlackChannel } from "@/lib/integrations/slack";
 import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/integrations/slack
@@ -22,6 +23,21 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await syncSlackChannel(channelId, queue);
+
+    // Audit: log integration sync
+    await prisma.auditLog.create({
+      data: {
+        action: "integration_sync",
+        entityType: "slack_channel",
+        entityId: channelId,
+        userId: auth.employeeId || auth.id,
+        details: JSON.stringify({
+          channelId,
+          queue: queue || "Ops",
+          threadsSynced: result.threadsSynced,
+        }),
+      },
+    });
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
