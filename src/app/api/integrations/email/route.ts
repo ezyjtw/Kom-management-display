@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncEmailInbox } from "@/lib/integrations/email";
 import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/integrations/email
@@ -15,6 +16,21 @@ export async function POST(request: NextRequest) {
     const { queue } = body;
 
     const result = await syncEmailInbox(queue);
+
+    // Audit: log integration sync
+    await prisma.auditLog.create({
+      data: {
+        action: "integration_sync",
+        entityType: "email_inbox",
+        entityId: result.inbox || "default",
+        userId: auth.employeeId || auth.id,
+        details: JSON.stringify({
+          inbox: result.inbox,
+          queue: queue || "Ops",
+          threadsSynced: result.threadsSynced,
+        }),
+      },
+    });
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
