@@ -128,16 +128,17 @@ model EmployeeNote {
 // ─── Comms & Ownership Module ───
 
 model CommsThread {
-  id                String   @id @default(cuid())
-  source            String   // email, slack
-  sourceThreadRef   String   // gmail thread id / slack channel+ts
-  participants      String   @default("[]") // JSON array
-  clientOrPartnerTag String  @default("")
-  subject           String
-  priority          String   @default("P2") // P0, P1, P2, P3
-  status            String   @default("Unassigned") // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, Done, Closed
-  ownerUserId       String?
-  queue             String   @default("Ops") // Ops, Settlements, StakingOps
+  id                 String   @id @default(cuid())
+  source             String   // email, slack, jira
+  sourceThreadRef    String   // gmail thread id / slack channel+ts / jira issue key
+  participants       String   @default("[]") // JSON array
+  clientOrPartnerTag String   @default("")
+  subject            String
+  priority           String   @default("P2") // P0, P1, P2, P3
+  status             String   @default("Unassigned") // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, Done, Closed
+  ownerUserId        String?
+  secondaryOwnerIds  String   @default("[]") // JSON array of employee IDs (watchers / collaborators)
+  queue              String   @default("Ops") // Ops, Settlements, StakingOps
   createdAt         DateTime @default(now())
   lastMessageAt     DateTime @default(now())
   lastActionAt      DateTime?

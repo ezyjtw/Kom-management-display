@@ -58,9 +58,18 @@ export async function GET(
       tslaDeadline: thread.tslaDeadline,
     });
 
+    // Resolve secondary owner names
+    const secondaryIds: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const secondaryOwners = secondaryIds.length
+      ? await prisma.employee.findMany({
+          where: { id: { in: secondaryIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+
     return NextResponse.json({
       success: true,
-      data: { ...thread, slaStatus },
+      data: { ...thread, slaStatus, secondaryOwners },
     });
   } catch (error) {
     return NextResponse.json(
@@ -97,9 +106,11 @@ export async function PATCH(
     }
 
     const isOwner = thread.ownerUserId === actorEmployeeId;
+    const secondaryIds: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const isSecondary = secondaryIds.includes(actorEmployeeId);
 
-    // RBAC: employees can only modify threads they own
-    if (!isPrivileged && !isOwner) {
+    // RBAC: employees can only modify threads they own or collaborate on
+    if (!isPrivileged && !isOwner && !isSecondary) {
       return NextResponse.json(
         { success: false, error: "You can only modify threads you own" },
         { status: 403 }

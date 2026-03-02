@@ -11,6 +11,7 @@ import {
   Bell,
   BarChart3,
   Shield,
+  ShieldAlert,
   Zap,
   LogOut,
   Menu,
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard },
   { href: "/comms", label: "Communications", icon: MessageSquare },
   { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
+  { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
   { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
 ];
 

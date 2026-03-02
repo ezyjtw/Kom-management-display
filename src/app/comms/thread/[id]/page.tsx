@@ -76,6 +76,33 @@ export default function ThreadDetailPage() {
     if (fresh.success) setThread(fresh.data);
   }
 
+  async function handleSecondaryAdd(employeeId: string) {
+    const res = await fetch(`/api/comms/threads/${params.id}/secondaries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employeeId, action: "add" }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      // Refetch full thread
+      const fresh = await fetch(`/api/comms/threads/${params.id}`).then((r) => r.json());
+      if (fresh.success) setThread(fresh.data);
+    }
+  }
+
+  async function handleSecondaryRemove(employeeId: string) {
+    const res = await fetch(`/api/comms/threads/${params.id}/secondaries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employeeId, action: "remove" }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      const fresh = await fetch(`/api/comms/threads/${params.id}`).then((r) => r.json());
+      if (fresh.success) setThread(fresh.data);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -110,6 +137,8 @@ export default function ThreadDetailPage() {
         onStatusChange={handleStatusChange}
         onOwnerChange={handleOwnerChange}
         onAddNote={handleAddNote}
+        onSecondaryAdd={handleSecondaryAdd}
+        onSecondaryRemove={handleSecondaryRemove}
       />
     </div>
   );
