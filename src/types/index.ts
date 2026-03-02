@@ -96,7 +96,7 @@ export type ThreadStatus =
 
 export type ThreadPriority = "P0" | "P1" | "P2" | "P3";
 
-export type CommsSource = "email" | "slack";
+export type CommsSource = "email" | "slack" | "jira";
 
 export interface ThreadSummary {
   id: string;

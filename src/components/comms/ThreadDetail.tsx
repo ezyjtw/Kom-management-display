@@ -5,11 +5,13 @@ import {
   Mail,
   MessageCircle,
   User,
+  Users,
   Clock,
   Link2,
   FileText,
   ArrowRightLeft,
   AlertTriangle,
+  Ticket,
 } from "lucide-react";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { formatSlaRemaining } from "@/lib/sla";
@@ -51,6 +53,7 @@ interface ThreadDetailData {
   queue: string;
   ownerUserId: string | null;
   owner: { id: string; name: string; email: string } | null;
+  secondaryOwners?: Array<{ id: string; name: string }>;
   createdAt: string;
   lastMessageAt: string;
   lastActionAt: string | null;
@@ -74,6 +77,8 @@ interface ThreadDetailProps {
   onStatusChange: (status: string) => void;
   onOwnerChange: (ownerId: string | null, handoverNote: string) => void;
   onAddNote: (content: string) => void;
+  onSecondaryAdd?: (employeeId: string) => void;
+  onSecondaryRemove?: (employeeId: string) => void;
 }
 
 const STATUS_OPTIONS = [
@@ -92,13 +97,17 @@ export function ThreadDetail({
   onStatusChange,
   onOwnerChange,
   onAddNote,
+  onSecondaryAdd,
+  onSecondaryRemove,
 }: ThreadDetailProps) {
   const [noteContent, setNoteContent] = useState("");
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTo, setTransferTo] = useState("");
   const [handoverNote, setHandoverNote] = useState("");
+  const [showAddSecondary, setShowAddSecondary] = useState(false);
+  const [secondaryToAdd, setSecondaryToAdd] = useState("");
 
-  const SourceIcon = thread.source === "email" ? Mail : MessageCircle;
+  const SourceIcon = thread.source === "email" ? Mail : thread.source === "jira" ? Ticket : MessageCircle;
 
   function handleTransfer() {
     onOwnerChange(transferTo || null, handoverNote);
@@ -128,7 +137,7 @@ export function ThreadDetail({
           <div className="flex items-center gap-3 mb-3">
             <SourceIcon
               size={20}
-              className={thread.source === "email" ? "text-primary" : "text-purple-500"}
+              className={thread.source === "email" ? "text-primary" : thread.source === "jira" ? "text-blue-500" : "text-purple-500"}
             />
             <h2 className="text-lg font-semibold text-foreground">{thread.subject}</h2>
           </div>
@@ -371,6 +380,88 @@ export function ThreadDetail({
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Secondary Owners (Collaborators) */}
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Users size={16} />
+            Collaborators
+          </h3>
+          <div className="space-y-2">
+            {(thread.secondaryOwners ?? []).map((sec) => (
+              <div key={sec.id} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                <span className="flex items-center gap-1.5">
+                  <User size={12} className="text-muted-foreground" />
+                  {sec.name}
+                </span>
+                {onSecondaryRemove && (
+                  <button
+                    onClick={() => onSecondaryRemove(sec.id)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {(thread.secondaryOwners ?? []).length === 0 && !showAddSecondary && (
+              <p className="text-xs text-muted-foreground">No collaborators yet</p>
+            )}
+          </div>
+          {onSecondaryAdd && (
+            <>
+              {showAddSecondary ? (
+                <div className="mt-2 space-y-2">
+                  <select
+                    value={secondaryToAdd}
+                    onChange={(e) => setSecondaryToAdd(e.target.value)}
+                    className="w-full text-sm border border-border rounded px-2 py-1.5"
+                  >
+                    <option value="">Select person...</option>
+                    {employees
+                      .filter(
+                        (emp) =>
+                          emp.id !== thread.ownerUserId &&
+                          !(thread.secondaryOwners ?? []).some((s) => s.id === emp.id),
+                      )
+                      .map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name}
+                        </option>
+                      ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (secondaryToAdd) {
+                          onSecondaryAdd(secondaryToAdd);
+                          setSecondaryToAdd("");
+                          setShowAddSecondary(false);
+                        }
+                      }}
+                      className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setShowAddSecondary(false)}
+                      className="text-xs px-3 py-1.5 border border-border rounded hover:bg-accent/50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddSecondary(true)}
+                  className="mt-2 text-xs px-3 py-1.5 border border-border rounded-lg hover:bg-accent/50 w-full"
+                >
+                  + Add Collaborator
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Linked Records */}

@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
         where.queue = auth.team;
       }
     } else if (view === "my_threads") {
-      where.ownerUserId = actorEmployeeId;
+      // Show threads where user is primary OR secondary owner
+      where.OR = [
+        { ownerUserId: actorEmployeeId },
+        { secondaryOwnerIds: { contains: actorEmployeeId } },
+      ];
       where.status = { notIn: ["Done", "Closed"] };
     } else if (view === "overdue") {
       // Employees: only their own overdue threads

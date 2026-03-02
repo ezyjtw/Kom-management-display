@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Mail, MessageCircle, Clock, User } from "lucide-react";
+import { Mail, MessageCircle, Clock, User, Ticket } from "lucide-react";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { formatSlaRemaining } from "@/lib/sla";
 import type { ThreadSummary } from "@/types";
@@ -41,7 +41,7 @@ export function ThreadList({ threads }: ThreadListProps) {
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="divide-y divide-border">
         {threads.map((thread) => {
-          const SourceIcon = thread.source === "email" ? Mail : MessageCircle;
+          const SourceIcon = thread.source === "email" ? Mail : thread.source === "jira" ? Ticket : MessageCircle;
           const mostUrgentSla = [
             thread.slaStatus.ttoRemaining,
             thread.slaStatus.ttfaRemaining,
@@ -69,7 +69,7 @@ export function ThreadList({ threads }: ThreadListProps) {
                 <div className="flex-shrink-0">
                   <SourceIcon
                     size={18}
-                    className={thread.source === "email" ? "text-primary" : "text-purple-500"}
+                    className={thread.source === "email" ? "text-primary" : thread.source === "jira" ? "text-blue-500" : "text-purple-500"}
                   />
                 </div>
 

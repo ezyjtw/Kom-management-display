@@ -47,6 +47,8 @@ export default function AuditPage() {
     employee_created: "bg-fuchsia-500/10 text-fuchsia-400",
     employee_updated: "bg-fuchsia-500/10 text-fuchsia-400",
     user_created: "bg-rose-500/10 text-rose-400",
+    secondary_owner_add: "bg-violet-500/10 text-violet-400",
+    secondary_owner_remove: "bg-violet-500/10 text-violet-400",
   };
 
   return (

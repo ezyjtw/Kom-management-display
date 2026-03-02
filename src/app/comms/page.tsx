@@ -178,6 +178,7 @@ export default function CommsPage() {
           <option value="">All Sources</option>
           <option value="email">Email</option>
           <option value="slack">Slack</option>
+          <option value="jira">Jira</option>
         </select>
       </div>
 
