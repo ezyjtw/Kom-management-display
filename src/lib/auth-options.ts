@@ -3,11 +3,6 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
-// Auto-detect NEXTAUTH_URL on Railway if not explicitly set
-if (!process.env.NEXTAUTH_URL && process.env.RAILWAY_PUBLIC_DOMAIN) {
-  process.env.NEXTAUTH_URL = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
-}
-
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({

@@ -26,5 +26,11 @@ node node_modules/prisma/build/index.js migrate deploy || echo "Warning: Migrati
 echo "Seeding database (idempotent — safe to re-run)..."
 node prisma/seed.js || echo "Warning: Seed failed, continuing startup..."
 
+# Auto-set NEXTAUTH_URL from Railway domain if not explicitly configured
+if [ -z "$NEXTAUTH_URL" ] && [ -n "$RAILWAY_PUBLIC_DOMAIN" ]; then
+  export NEXTAUTH_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
+  echo "Auto-set NEXTAUTH_URL=${NEXTAUTH_URL}"
+fi
+
 echo "Starting server..."
 exec node server.js
