@@ -1,8 +1,7 @@
 #!/bin/sh
-set -e
 
 echo "Running database migrations..."
-npx prisma migrate deploy
+node node_modules/prisma/build/index.js migrate deploy || echo "Warning: Migration failed, continuing startup..."
 
 echo "Starting server..."
-node server.js
+exec node server.js
