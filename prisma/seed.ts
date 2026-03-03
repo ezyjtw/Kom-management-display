@@ -634,7 +634,7 @@ async function main() {
     const subTeams = await Promise.all([
       prisma.subTeam.create({
         data: {
-          name: "Custody & Onboarding",
+          name: "Team 1",
           parentTeam: "Transaction Operations",
           description: "Client custody onboarding, KYC documentation, wallet provisioning",
           sortOrder: 1,
@@ -642,7 +642,7 @@ async function main() {
       }),
       prisma.subTeam.create({
         data: {
-          name: "Transaction Processing",
+          name: "Team 2",
           parentTeam: "Transaction Operations",
           description: "Staking, withdrawals, Fireblocks approvals, settlement execution",
           sortOrder: 2,
@@ -650,7 +650,7 @@ async function main() {
       }),
       prisma.subTeam.create({
         data: {
-          name: "Compliance & Travel Rule",
+          name: "Team 3",
           parentTeam: "Transaction Operations",
           description: "Travel rule compliance, Notabene matching, regulatory reporting",
           sortOrder: 3,
@@ -667,20 +667,20 @@ async function main() {
     const nextWeekStart = new Date("2026-03-09");
     const nextWeekEnd = new Date("2026-03-13");
 
-    // Week 1 rota: Carol leads Custody, Grace leads Txn Processing, Kenji leads Compliance
+    // Week 1 rota: Carol leads Team 1, Grace leads Team 2, Kenji leads Team 3
     const week1Assignments = [
-      // Sub-team 1: Custody & Onboarding — Lead: Carol, Members: Maria, Nikhil
+      // Team 1 — Lead: Carol, Members: Maria, Nikhil
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
 
-      // Sub-team 2: Transaction Processing — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
+      // Team 2 — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[1].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
-      // Sub-team 3: Compliance & Travel Rule — Lead: Kenji, Members: Sophie, Yuki
+      // Team 3 — Lead: Kenji, Members: Sophie, Yuki
       { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[2].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[2].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
@@ -688,18 +688,18 @@ async function main() {
 
     // Week 2 rota: juniors rotate — same leads, different member assignments
     const week2Assignments = [
-      // Sub-team 1: Custody — Lead: Carol, Members: Sophie, Tom (rotated in)
+      // Team 1 — Lead: Carol, Members: Sophie, Tom (rotated in)
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[0].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
 
-      // Sub-team 2: Txn Processing — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
+      // Team 2 — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[1].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
-      // Sub-team 3: Compliance — Lead: Kenji, Members: Maria, Alice
+      // Team 3 — Lead: Kenji, Members: Maria, Alice
       { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[2].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[2].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
@@ -738,6 +738,49 @@ async function main() {
     }
 
     console.log("Created sub-team rota assignments");
+  }
+
+  // ─── Seed Activity Status ───
+
+  const existingActivity = await prisma.activityStatus.count();
+  if (existingActivity === 0) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+
+    // Some completed activities from earlier today
+    const completedActivities = [
+      { employeeId: emp["carol@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["grace@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["alice@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["carol@ops.com"].id, activity: "bau", detail: "Email triage", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 90 * 60000), durationMin: 60 },
+      { employeeId: emp["grace@ops.com"].id, activity: "queue_monitoring", detail: "Fireblocks queue", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 150 * 60000), durationMin: 120 },
+      { employeeId: emp["maria@ops.com"].id, activity: "bau", detail: "Client onboarding docs", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 180 * 60000), durationMin: 150 },
+      { employeeId: emp["kenji@ops.com"].id, activity: "bau", detail: "Travel rule matching", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 180 * 60000), durationMin: 150 },
+    ];
+
+    for (const a of completedActivities) {
+      await prisma.activityStatus.create({ data: a });
+    }
+
+    // Currently active activities
+    const currentActivities = [
+      { employeeId: emp["carol@ops.com"].id, activity: "project", detail: "Custody Onboarding Automation", startedAt: new Date(now.getTime() - 45 * 60000) },
+      { employeeId: emp["grace@ops.com"].id, activity: "bau", detail: "Staking withdrawals batch", startedAt: new Date(now.getTime() - 30 * 60000) },
+      { employeeId: emp["alice@ops.com"].id, activity: "queue_monitoring", detail: "Transaction queue", startedAt: new Date(now.getTime() - 60 * 60000) },
+      { employeeId: emp["kenji@ops.com"].id, activity: "bau", detail: "Notabene travel rule review", startedAt: new Date(now.getTime() - 25 * 60000) },
+      { employeeId: emp["maria@ops.com"].id, activity: "lunch", detail: "", startedAt: new Date(now.getTime() - 15 * 60000) },
+      { employeeId: emp["liam@ops.com"].id, activity: "bau", detail: "Late shift handover review", startedAt: new Date(now.getTime() - 10 * 60000) },
+      { employeeId: emp["sophie@ops.com"].id, activity: "project", detail: "Client reporting dashboard", startedAt: new Date(now.getTime() - 40 * 60000) },
+      { employeeId: emp["nikhil@ops.com"].id, activity: "queue_monitoring", detail: "Settlement queue", startedAt: new Date(now.getTime() - 55 * 60000) },
+      { employeeId: emp["tom@ops.com"].id, activity: "training", detail: "Fireblocks certification", startedAt: new Date(now.getTime() - 35 * 60000) },
+      { employeeId: emp["yuki@ops.com"].id, activity: "bau", detail: "VASP directory updates", startedAt: new Date(now.getTime() - 20 * 60000) },
+    ];
+
+    for (const a of currentActivities) {
+      await prisma.activityStatus.create({ data: a });
+    }
+
+    console.log("Created activity status entries");
   }
 
   console.log("Seed complete!");

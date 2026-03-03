@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   CalendarClock,
   FolderKanban,
+  Eye,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -76,6 +77,12 @@ interface CommandCenterData {
     pending: number;
     inProgress: number;
     urgent: number;
+  };
+  coverage: {
+    total: number;
+    active: number;
+    onQueues: number;
+    onBreak: number;
   };
   projects: {
     activeCount: number;
@@ -278,13 +285,17 @@ export default function CommandCenterPage() {
           )}
         </Link>
 
-        <Link href="/comms?view=unassigned" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+        <Link href="/activity" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-            <MessageSquare size={14} />
-            Unassigned Threads
+            <Eye size={14} />
+            Team Coverage
           </div>
-          <p className="text-2xl font-bold text-foreground">{data.comms.unassignedCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">awaiting ownership</p>
+          <p className="text-2xl font-bold text-foreground">{data.coverage.active}/{data.coverage.total}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.coverage.onQueues > 0 && <span className="text-purple-400">{data.coverage.onQueues} on queues</span>}
+            {data.coverage.onBreak > 0 && <span className="text-amber-400 ml-2">{data.coverage.onBreak} on break</span>}
+            {data.coverage.total === 0 && "no data"}
+          </p>
         </Link>
       </div>
 

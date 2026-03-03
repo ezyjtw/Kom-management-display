@@ -42,6 +42,7 @@ model Employee {
   projectMemberships   ProjectMember[]
   projectUpdates       ProjectUpdate[]
   rotaAssignments      RotaAssignment[]
+  activityStatuses     ActivityStatus[]
 }
 
 // ─── User / Auth ───
@@ -322,7 +323,7 @@ model DailyTask {
 
 model SubTeam {
   id          String   @id @default(cuid())
-  name        String   // e.g. "Team Alpha", "Team Bravo", "Team Charlie"
+  name        String   // e.g. "Team 1", "Team 2", "Team 3"
   parentTeam  String   @default("Transaction Operations") // which top-level team this belongs to
   description String   @default("") // what this sub-team handles
   sortOrder   Int      @default(0)
@@ -399,6 +400,24 @@ model ProjectUpdate {
 
   project Project  @relation(fields: [projectId], references: [id])
   author  Employee @relation(fields: [authorId], references: [id])
+}
+
+// ─── Activity Status / Time Tracking ───
+
+model ActivityStatus {
+  id          String    @id @default(cuid())
+  employeeId  String
+  activity    String    // project, bau, queue_monitoring, lunch, break, meeting, admin, training
+  detail      String    @default("") // free text e.g. project name, queue name
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime? // null = currently active
+  durationMin Int?      // computed on end, in minutes
+  createdAt   DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId, startedAt])
+  @@index([endedAt])
 }
 
 // ─── Alerts ───
