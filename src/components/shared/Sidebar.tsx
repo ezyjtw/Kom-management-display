@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
 const navItems = [
+  { href: "/", label: "Command Centre", icon: Zap },
   { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard },
   { href: "/comms", label: "Communications", icon: MessageSquare },
   { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
@@ -110,7 +111,9 @@ export function Sidebar({ user }: SidebarProps) {
             .filter((item) => !item.adminOnly || isAdmin)
             .map((item) => {
               const Icon = item.icon;
-              const isActive = pathname?.startsWith(item.href);
+              const isActive = item.href === "/"
+                ? pathname === "/"
+                : pathname?.startsWith(item.href);
               return (
                 <Link
                   key={item.href}

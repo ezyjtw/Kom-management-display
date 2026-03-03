@@ -19,6 +19,8 @@ interface ReconciliationTableProps {
   rows: TravelRuleReconciliationRow[];
   onOpenCase?: (row: TravelRuleReconciliationRow) => void;
   caseIds?: Record<string, string>; // transactionId → caseId
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
 function DirectionIcon({ direction }: { direction: string }) {
@@ -66,7 +68,18 @@ function MatchStatusBadge({ status }: { status: TravelRuleMatchStatus }) {
   }
 }
 
-export function ReconciliationTable({ rows, onOpenCase, caseIds }: ReconciliationTableProps) {
+function AgingBadge({ createdAt }: { createdAt: string }) {
+  const hours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+  const label = hours < 1 ? `${Math.round(hours * 60)}m` : hours < 24 ? `${Math.round(hours)}h` : `${Math.round(hours / 24)}d`;
+  const color = hours < 24
+    ? "bg-emerald-500/10 text-emerald-400"
+    : hours < 48
+      ? "bg-amber-500/10 text-amber-400"
+      : "bg-red-500/10 text-red-400 font-semibold";
+  return <span className={`text-xs px-2 py-0.5 rounded-full ${color}`}>{label}</span>;
+}
+
+export function ReconciliationTable({ rows, onOpenCase, caseIds, selectedIds, onSelectionChange }: ReconciliationTableProps) {
   if (rows.length === 0) {
     return (
       <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
@@ -92,6 +105,22 @@ export function ReconciliationTable({ rows, onOpenCase, caseIds }: Reconciliatio
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30">
+              {onSelectionChange && (
+                <th className="px-2 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds ? selectedIds.size > 0 && selectedIds.size === sorted.filter(r => r.matchStatus !== "matched").length : false}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onSelectionChange(new Set(sorted.filter(r => r.matchStatus !== "matched").map(r => r.transactionId)));
+                      } else {
+                        onSelectionChange(new Set());
+                      }
+                    }}
+                    className="rounded border-border"
+                  />
+                </th>
+              )}
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 Compliance
               </th>
@@ -114,7 +143,7 @@ export function ReconciliationTable({ rows, onOpenCase, caseIds }: Reconciliatio
                 Notabene
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                Created
+                Age
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 Tx Hash
@@ -136,6 +165,23 @@ export function ReconciliationTable({ rows, onOpenCase, caseIds }: Reconciliatio
                       : "hover:bg-muted/20"
                   }`}
                 >
+                  {onSelectionChange && (
+                    <td className="px-2 py-3">
+                      {isUrgent && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds?.has(row.transactionId) || false}
+                          onChange={(e) => {
+                            const next = new Set(selectedIds);
+                            if (e.target.checked) next.add(row.transactionId);
+                            else next.delete(row.transactionId);
+                            onSelectionChange(next);
+                          }}
+                          className="rounded border-border"
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <MatchStatusBadge status={row.matchStatus} />
                   </td>
@@ -246,15 +292,8 @@ export function ReconciliationTable({ rows, onOpenCase, caseIds }: Reconciliatio
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Clock size={12} />
-                      <span className="text-xs">
-                        {formatDistanceToNow(new Date(row.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </span>
-                    </div>
+                  <td className="px-4 py-3">
+                    <AgingBadge createdAt={row.createdAt} />
                   </td>
                   <td className="px-4 py-3">
                     {row.txHash ? (

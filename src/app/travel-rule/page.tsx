@@ -7,6 +7,9 @@ import {
   AlertCircle,
   ShieldAlert,
   Bell,
+  CheckSquare,
+  UserPlus,
+  XCircle,
 } from "lucide-react";
 import { TravelRuleStats } from "@/components/travel-rule/TravelRuleStats";
 import { ReconciliationTable } from "@/components/travel-rule/ReconciliationTable";
@@ -24,10 +27,16 @@ export default function TravelRulePage() {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState("");
   const [caseIds, setCaseIds] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
     fetchData();
     fetchCases();
+    fetch("/api/employees").then(r => r.json()).then(j => {
+      if (j.success) setEmployees(j.data.map((e: any) => ({ id: e.id, name: e.name })));
+    }).catch(() => {});
   }, []);
 
   async function fetchData() {
@@ -80,6 +89,59 @@ export default function TravelRulePage() {
     const json = await res.json();
     if (json.success && json.data?.id) {
       router.push(`/travel-rule/case/${json.data.id}`);
+    }
+  }
+
+  async function handleBulkCreateCases() {
+    const rowsToCreate = filteredRows.filter(r => selectedIds.has(r.transactionId));
+    setBulkProcessing(true);
+    const res = await fetch("/api/travel-rule/cases/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "create_cases", rows: rowsToCreate }),
+    });
+    const json = await res.json();
+    setBulkProcessing(false);
+    if (json.success) {
+      setSelectedIds(new Set());
+      fetchCases();
+    }
+  }
+
+  async function handleBulkAssign(ownerUserId: string) {
+    if (!ownerUserId) return;
+    // Get case IDs for selected transactions
+    const ids = Array.from(selectedIds).map(tid => caseIds[tid]).filter(Boolean);
+    if (ids.length === 0) return;
+    setBulkProcessing(true);
+    const res = await fetch("/api/travel-rule/cases/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "assign", caseIds: ids, ownerUserId }),
+    });
+    const json = await res.json();
+    setBulkProcessing(false);
+    if (json.success) {
+      setSelectedIds(new Set());
+      fetchCases();
+    }
+  }
+
+  async function handleBulkMarkNotRequired() {
+    const ids = Array.from(selectedIds).map(tid => caseIds[tid]).filter(Boolean);
+    if (ids.length === 0) return;
+    setBulkProcessing(true);
+    const res = await fetch("/api/travel-rule/cases/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark_not_required", caseIds: ids }),
+    });
+    const json = await res.json();
+    setBulkProcessing(false);
+    if (json.success) {
+      setSelectedIds(new Set());
+      fetchCases();
+      fetchData();
     }
   }
 
@@ -242,6 +304,51 @@ export default function TravelRulePage() {
         )}
       </div>
 
+      {/* Bulk actions toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl p-3">
+          <span className="text-sm font-medium text-foreground">
+            <CheckSquare size={14} className="inline mr-1" />
+            {selectedIds.size} selected
+          </span>
+          <button
+            onClick={handleBulkCreateCases}
+            disabled={bulkProcessing}
+            className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            Create {selectedIds.size} Cases
+          </button>
+          <select
+            onChange={(e) => handleBulkAssign(e.target.value)}
+            disabled={bulkProcessing}
+            className="text-xs border border-border rounded-lg px-2 py-1.5"
+            value=""
+          >
+            <option value="">
+              <UserPlus size={12} className="inline" /> Assign to...
+            </option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleBulkMarkNotRequired}
+            disabled={bulkProcessing}
+            className="text-xs px-3 py-1.5 border border-border rounded-lg hover:bg-accent/50 disabled:opacity-50"
+          >
+            Mark Not Required
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <XCircle size={12} />
+            Clear
+          </button>
+          {bulkProcessing && <RefreshCw size={14} className="animate-spin text-muted-foreground" />}
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
@@ -253,6 +360,8 @@ export default function TravelRulePage() {
           rows={filteredRows}
           onOpenCase={handleOpenCase}
           caseIds={caseIds}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       )}
     </div>

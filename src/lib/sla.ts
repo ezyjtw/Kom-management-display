@@ -126,3 +126,24 @@ export function isExcessiveBouncing(
   );
   return recentChanges.length > 2;
 }
+
+// ─── Travel Rule SLA ───
+
+/** Travel rule SLA thresholds (hours). */
+export const TRAVEL_RULE_SLA = {
+  resolution: 48, // hours to resolve a case
+};
+
+/**
+ * Compute aging status for a travel rule case.
+ */
+export function computeTravelRuleAging(createdAt: Date | string): {
+  ageHours: number;
+  agingStatus: "green" | "amber" | "red";
+} {
+  const hours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+  return {
+    ageHours: Math.round(hours * 10) / 10,
+    agingStatus: hours < 24 ? "green" : hours < 48 ? "amber" : "red",
+  };
+}

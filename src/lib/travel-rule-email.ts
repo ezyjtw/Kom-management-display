@@ -5,7 +5,7 @@
  * and sends it via the existing SMTP integration.
  */
 
-interface TravelRuleCaseData {
+export interface TravelRuleCaseData {
   transactionId: string;
   txHash: string;
   direction: string;
@@ -17,14 +17,14 @@ interface TravelRuleCaseData {
   notabeneTransferId: string | null;
 }
 
-interface SendTravelRuleEmailParams {
+export interface SendTravelRuleEmailParams {
   recipientEmail: string;
   recipientName: string;
   travelCase: TravelRuleCaseData;
   senderName: string;
 }
 
-function buildHtmlEmail(params: SendTravelRuleEmailParams): string {
+export function buildHtmlEmail(params: SendTravelRuleEmailParams): string {
   const { travelCase, senderName, recipientName } = params;
   const isInbound = travelCase.direction === "IN";
   const greeting = recipientName

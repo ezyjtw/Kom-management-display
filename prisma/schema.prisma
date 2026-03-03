@@ -32,6 +32,7 @@ model Employee {
   alerts               Alert[]
   auditLogs            AuditLog[]
   threadNotes          ThreadNote[]
+  caseNotes            CaseNote[]
 }
 
 // ─── User / Auth ───
@@ -214,9 +215,13 @@ model TravelRuleCase {
   resolutionNote   String   @default("")
   emailSentTo      String?  // counterparty email if resolution was email
   emailSentAt      DateTime?
+  slaDeadline      DateTime? // resolution deadline (createdAt + 48h by default)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   resolvedAt       DateTime?
+
+  notes            CaseNote[]
+  alerts           Alert[]
 
   @@unique([transactionId, matchStatus])
 }
@@ -231,13 +236,25 @@ model VaspContact {
   updatedAt DateTime @updatedAt
 }
 
+model CaseNote {
+  id        String   @id @default(cuid())
+  caseId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  case   TravelRuleCase @relation(fields: [caseId], references: [id])
+  author Employee       @relation(fields: [authorId], references: [id])
+}
+
 // ─── Alerts ───
 
 model Alert {
   id           String   @id @default(cuid())
   threadId     String?
   employeeId   String?
-  type         String   // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping
+  travelRuleCaseId String?
+  type         String   // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping, travel_rule_sla_breach
   priority     String   @default("P2")
   message      String
   status       String   @default("active") // active, acknowledged, resolved
@@ -246,8 +263,9 @@ model Alert {
   resolvedAt     DateTime?
   createdAt    DateTime @default(now())
 
-  thread   CommsThread? @relation(fields: [threadId], references: [id])
-  employee Employee?    @relation(fields: [employeeId], references: [id])
+  thread          CommsThread?    @relation(fields: [threadId], references: [id])
+  employee        Employee?       @relation(fields: [employeeId], references: [id])
+  travelRuleCase  TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id])
 }
 
 // ─── Audit ───

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { TRAVEL_RULE_SLA } from "@/lib/sla";
 
 /**
  * GET /api/travel-rule/cases
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
     const owner = searchParams.get("owner");
     const matchStatus = searchParams.get("matchStatus");
 
+    const overdue = searchParams.get("overdue");
+
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (matchStatus) where.matchStatus = matchStatus;
@@ -23,6 +26,12 @@ export async function GET(request: NextRequest) {
       where.ownerUserId = auth.employeeId || auth.id;
     } else if (owner) {
       where.ownerUserId = owner;
+    }
+    if (overdue === "true") {
+      where.status = { not: "Resolved" };
+      where.createdAt = {
+        lt: new Date(Date.now() - TRAVEL_RULE_SLA.resolution * 3_600_000),
+      };
     }
 
     const cases = await prisma.travelRuleCase.findMany({
@@ -81,6 +90,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: existing });
     }
 
+    const now = new Date();
+    const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
+
     const travelCase = await prisma.travelRuleCase.create({
       data: {
         transactionId,
@@ -94,6 +106,7 @@ export async function POST(request: NextRequest) {
         notabeneTransferId: notabeneTransferId || null,
         ownerUserId: ownerUserId || null,
         status: ownerUserId ? "Investigating" : "Open",
+        slaDeadline,
       },
     });
 

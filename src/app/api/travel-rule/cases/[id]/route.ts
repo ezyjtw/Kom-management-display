@@ -128,6 +128,7 @@ export async function PATCH(
           entityId: params.id,
           userId: actorId,
           details: JSON.stringify({
+            description: `Email sent to ${body.recipientEmail}`,
             recipientEmail: body.recipientEmail,
             matchStatus: travelCase.matchStatus,
             transactionId: travelCase.transactionId,
@@ -144,10 +145,24 @@ export async function PATCH(
 
     if (body.ownerUserId !== undefined) {
       data.ownerUserId = body.ownerUserId || null;
+
+      // Resolve owner name for the audit trail
+      let newOwnerName = "Unassigned";
+      if (body.ownerUserId) {
+        const emp = await prisma.employee.findUnique({
+          where: { id: body.ownerUserId },
+          select: { name: true },
+        });
+        newOwnerName = emp?.name || body.ownerUserId;
+      }
+
       auditDetails.ownerChange = {
         previous: travelCase.ownerUserId,
         new: body.ownerUserId,
+        newName: newOwnerName,
       };
+      auditDetails.description = `Assigned to ${newOwnerName}`;
+
       // Auto-move from Open to Investigating when assigned
       if (body.ownerUserId && travelCase.status === "Open") {
         data.status = "Investigating";
@@ -160,10 +175,17 @@ export async function PATCH(
         previous: travelCase.status,
         new: body.status,
       };
+      auditDetails.description = `Status: ${travelCase.status} → ${body.status}`;
       if (body.status === "Resolved") {
         data.resolvedAt = new Date();
         data.resolutionType = body.resolutionType || null;
         data.resolutionNote = body.resolutionNote || "";
+        const typeLabel = body.resolutionType === "info_obtained" ? "Information Obtained"
+          : body.resolutionType === "email_sent" ? "Resolved via Email"
+          : body.resolutionType === "not_required" ? "Travel Rule Not Required"
+          : body.resolutionType === "escalated" ? "Escalated"
+          : body.resolutionType || "Resolved";
+        auditDetails.description = `Resolved — ${typeLabel}`;
       }
     }
 
