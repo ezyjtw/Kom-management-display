@@ -95,6 +95,41 @@ async function komainuGet<T>(path: string, params?: Record<string, string>): Pro
   return res.json() as Promise<T>;
 }
 
+/**
+ * Make an authenticated POST/PUT request to the Komainu API.
+ */
+async function komainuPost<T>(
+  path: string,
+  method: "POST" | "PUT" = "POST",
+  body?: Record<string, unknown>,
+): Promise<T> {
+  const config = getConfig();
+  if (!config) {
+    throw new Error(
+      "Komainu API not configured: KOMAINU_API_BASE_URL, KOMAINU_API_USER, and KOMAINU_API_SECRET are required"
+    );
+  }
+
+  const token = await getAccessToken(config);
+
+  const res = await fetch(`${config.baseUrl}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Komainu API ${res.status}: ${text}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
 // ─── Public API ───
 
 export interface KomainuPagedResponse<T> {
@@ -176,6 +211,21 @@ export async function fetchPendingRequests(
  */
 export async function fetchTransaction(transactionId: string): Promise<KomainuTransaction> {
   return komainuGet<KomainuTransaction>(`/v1/custody/transactions/${transactionId}`);
+}
+
+/**
+ * Fetch a single request by ID to check its current status.
+ */
+export async function fetchRequest(requestId: string): Promise<KomainuRequest> {
+  return komainuGet<KomainuRequest>(`/v1/requests/${requestId}`);
+}
+
+/**
+ * Approve a pending request via the Komainu API.
+ * Returns the updated request object.
+ */
+export async function approveRequest(requestId: string): Promise<KomainuRequest> {
+  return komainuPost<KomainuRequest>(`/v1/requests/${requestId}/approve`, "POST");
 }
 
 /**
