@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activeProjects] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -62,6 +62,22 @@ export async function GET() {
       }, []),
 
       // Active projects
+      safeQuery(async () => {
+        const txOpsEmployees = await prisma.employee.findMany({
+          where: { team: "Transaction Operations", active: true },
+          select: {
+            id: true,
+            name: true,
+            activityStatuses: { where: { endedAt: null }, orderBy: { startedAt: "desc" }, take: 1 },
+          },
+        });
+        const total = txOpsEmployees.length;
+        const active = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && !["lunch", "break"].includes(e.activityStatuses[0].activity)).length;
+        const onQueues = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && e.activityStatuses[0].activity === "queue_monitoring").length;
+        const onBreak = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && ["lunch", "break"].includes(e.activityStatuses[0].activity)).length;
+        return { total, active, onQueues, onBreak };
+      }, { total: 0, active: 0, onQueues: 0, onBreak: 0 }),
+
       safeQuery(() => prisma.project.findMany({
         where: { status: { in: ["active", "on_hold"] } },
         select: { id: true, name: true, status: true, priority: true, progress: true, targetDate: true, team: true },
@@ -147,6 +163,7 @@ export async function GET() {
           inProgress: todaysTasks.filter((t) => t.status === "in_progress").length,
           urgent: todaysTasks.filter((t) => t.priority === "urgent" || t.priority === "high").length,
         },
+        coverage: activityCoverage,
         projects: {
           activeCount: activeProjects.filter((p) => p.status === "active").length,
           onHoldCount: activeProjects.filter((p) => p.status === "on_hold").length,

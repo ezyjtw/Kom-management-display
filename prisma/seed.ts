@@ -740,6 +740,49 @@ async function main() {
     console.log("Created sub-team rota assignments");
   }
 
+  // ─── Seed Activity Status ───
+
+  const existingActivity = await prisma.activityStatus.count();
+  if (existingActivity === 0) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+
+    // Some completed activities from earlier today
+    const completedActivities = [
+      { employeeId: emp["carol@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["grace@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["alice@ops.com"].id, activity: "meeting", detail: "Morning standup", startedAt: new Date(todayStart.getTime()), endedAt: new Date(todayStart.getTime() + 30 * 60000), durationMin: 30 },
+      { employeeId: emp["carol@ops.com"].id, activity: "bau", detail: "Email triage", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 90 * 60000), durationMin: 60 },
+      { employeeId: emp["grace@ops.com"].id, activity: "queue_monitoring", detail: "Fireblocks queue", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 150 * 60000), durationMin: 120 },
+      { employeeId: emp["maria@ops.com"].id, activity: "bau", detail: "Client onboarding docs", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 180 * 60000), durationMin: 150 },
+      { employeeId: emp["kenji@ops.com"].id, activity: "bau", detail: "Travel rule matching", startedAt: new Date(todayStart.getTime() + 30 * 60000), endedAt: new Date(todayStart.getTime() + 180 * 60000), durationMin: 150 },
+    ];
+
+    for (const a of completedActivities) {
+      await prisma.activityStatus.create({ data: a });
+    }
+
+    // Currently active activities
+    const currentActivities = [
+      { employeeId: emp["carol@ops.com"].id, activity: "project", detail: "Custody Onboarding Automation", startedAt: new Date(now.getTime() - 45 * 60000) },
+      { employeeId: emp["grace@ops.com"].id, activity: "bau", detail: "Staking withdrawals batch", startedAt: new Date(now.getTime() - 30 * 60000) },
+      { employeeId: emp["alice@ops.com"].id, activity: "queue_monitoring", detail: "Transaction queue", startedAt: new Date(now.getTime() - 60 * 60000) },
+      { employeeId: emp["kenji@ops.com"].id, activity: "bau", detail: "Notabene travel rule review", startedAt: new Date(now.getTime() - 25 * 60000) },
+      { employeeId: emp["maria@ops.com"].id, activity: "lunch", detail: "", startedAt: new Date(now.getTime() - 15 * 60000) },
+      { employeeId: emp["liam@ops.com"].id, activity: "bau", detail: "Late shift handover review", startedAt: new Date(now.getTime() - 10 * 60000) },
+      { employeeId: emp["sophie@ops.com"].id, activity: "project", detail: "Client reporting dashboard", startedAt: new Date(now.getTime() - 40 * 60000) },
+      { employeeId: emp["nikhil@ops.com"].id, activity: "queue_monitoring", detail: "Settlement queue", startedAt: new Date(now.getTime() - 55 * 60000) },
+      { employeeId: emp["tom@ops.com"].id, activity: "training", detail: "Fireblocks certification", startedAt: new Date(now.getTime() - 35 * 60000) },
+      { employeeId: emp["yuki@ops.com"].id, activity: "bau", detail: "VASP directory updates", startedAt: new Date(now.getTime() - 20 * 60000) },
+    ];
+
+    for (const a of currentActivities) {
+      await prisma.activityStatus.create({ data: a });
+    }
+
+    console.log("Created activity status entries");
+  }
+
   console.log("Seed complete!");
 }
 
