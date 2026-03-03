@@ -195,6 +195,42 @@ model ThreadNote {
   author   Employee    @relation(fields: [authorId], references: [id])
 }
 
+// ─── Travel Rule Cases ───
+
+model TravelRuleCase {
+  id               String   @id @default(cuid())
+  transactionId    String   // Komainu transaction ID
+  txHash           String   @default("")
+  direction        String   // IN, OUT
+  asset            String
+  amount           Float
+  senderAddress    String   @default("")
+  receiverAddress  String   @default("")
+  matchStatus      String   // unmatched, missing_originator, missing_beneficiary
+  notabeneTransferId String?
+  ownerUserId      String?  // primary person responsible for resolving
+  status           String   @default("Open") // Open, Investigating, PendingResponse, Resolved
+  resolutionType   String?  // info_obtained, email_sent, not_required, escalated
+  resolutionNote   String   @default("")
+  emailSentTo      String?  // counterparty email if resolution was email
+  emailSentAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  resolvedAt       DateTime?
+
+  @@unique([transactionId, matchStatus])
+}
+
+model VaspContact {
+  id        String   @id @default(cuid())
+  vaspDid   String   @unique // Notabene VASP DID (did:ethr:0x...)
+  vaspName  String
+  email     String
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ─── Alerts ───
 
 model Alert {

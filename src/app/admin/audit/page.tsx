@@ -52,6 +52,10 @@ export default function AuditPage() {
     travel_rule_missing_originator: "bg-red-500/10 text-red-400",
     travel_rule_missing_beneficiary: "bg-red-500/10 text-red-400",
     travel_rule_unmatched: "bg-red-500/10 text-red-400",
+    travel_rule_case_created: "bg-orange-500/10 text-orange-400",
+    travel_rule_case_updated: "bg-orange-500/10 text-orange-400",
+    travel_rule_email_sent: "bg-cyan-500/10 text-cyan-400",
+    vasp_contact_upsert: "bg-teal-500/10 text-teal-400",
   };
 
   return (
