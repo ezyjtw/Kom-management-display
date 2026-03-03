@@ -17,7 +17,7 @@ function getSlackClient(): WebClient | null {
 /**
  * Fetch messages from a Slack channel and upsert them as CommsThreads.
  */
-export async function syncSlackChannel(channelId: string, queue: string = "Ops") {
+export async function syncSlackChannel(channelId: string, queue: string = "Transaction Operations") {
   const client = getSlackClient();
   if (!client) throw new Error("Slack not configured: SLACK_BOT_TOKEN is missing");
 

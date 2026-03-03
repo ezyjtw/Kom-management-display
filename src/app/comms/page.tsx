@@ -166,9 +166,9 @@ export default function CommsPage() {
           className="text-sm border border-border rounded-lg px-3 py-1.5"
         >
           <option value="">All Queues</option>
-          <option value="Ops">Ops</option>
-          <option value="Settlements">Settlements</option>
-          <option value="StakingOps">Staking Ops</option>
+          <option value="Admin Operations">Admin Operations</option>
+          <option value="Transaction Operations">Transaction Operations</option>
+          <option value="Data Operations">Data Operations</option>
         </select>
         <select
           value={sourceFilter}

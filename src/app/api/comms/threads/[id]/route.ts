@@ -162,7 +162,7 @@ export async function PATCH(
     }
 
     // Policy: validate queue value
-    const VALID_QUEUES = ["Ops", "Settlements", "StakingOps"];
+    const VALID_QUEUES = ["Admin Operations", "Transaction Operations", "Data Operations"];
     if (queue && !VALID_QUEUES.includes(queue)) {
       return NextResponse.json(
         { success: false, error: `Invalid queue. Must be one of: ${VALID_QUEUES.join(", ")}` },

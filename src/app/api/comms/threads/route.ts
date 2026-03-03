@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
         clientOrPartnerTag: clientOrPartnerTag || "",
         subject: cleanSubject,
         priority: effectivePriority,
-        queue: queue || "Ops",
+        queue: queue || "Transaction Operations",
         status: "Unassigned",
       },
     });
@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
           source,
           subject: cleanSubject,
           priority: effectivePriority,
-          queue: queue || "Ops",
+          queue: queue || "Transaction Operations",
         }),
       },
     });

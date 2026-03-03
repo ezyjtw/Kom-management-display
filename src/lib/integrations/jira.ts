@@ -102,7 +102,7 @@ function mapJiraPriority(issue: JiraIssue): ThreadPriority {
  */
 export async function syncJiraProject(
   projectKey: string,
-  queue: string = "Ops",
+  queue: string = "Transaction Operations",
   jql?: string,
 ) {
   const config = getJiraConfig();
