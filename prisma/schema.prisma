@@ -139,7 +139,7 @@ model CommsThread {
   status             String   @default("Unassigned") // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, Done, Closed
   ownerUserId        String?
   secondaryOwnerIds  String   @default("[]") // JSON array of employee IDs (watchers / collaborators)
-  queue              String   @default("Ops") // Ops, Settlements, StakingOps
+  queue              String   @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
   createdAt         DateTime @default(now())
   lastMessageAt     DateTime @default(now())
   lastActionAt      DateTime?

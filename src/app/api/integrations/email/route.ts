@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         userId: auth.employeeId || auth.id,
         details: JSON.stringify({
           inbox: result.inbox,
-          queue: queue || "Ops",
+          queue: queue || "Transaction Operations",
           threadsSynced: result.threadsSynced,
         }),
       },

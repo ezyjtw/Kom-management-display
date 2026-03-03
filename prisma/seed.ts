@@ -8,19 +8,19 @@ async function main() {
 
   // Create employees (upsert to be idempotent)
   const employeeData = [
-    { name: "Alice Chen", email: "alice@ops.com", role: "Senior", team: "Ops", region: "APAC" },
-    { name: "Bob Martinez", email: "bob@ops.com", role: "Analyst", team: "Settlements", region: "Americas" },
-    { name: "Carol Davies", email: "carol@ops.com", role: "Lead", team: "Ops", region: "EMEA" },
-    { name: "David Park", email: "david@ops.com", role: "Analyst", team: "StakingOps", region: "APAC" },
-    { name: "Eva Kowalski", email: "eva@ops.com", role: "Senior", team: "Settlements", region: "EMEA" },
-    { name: "Frank Osei", email: "frank@ops.com", role: "Analyst", team: "Ops", region: "EMEA" },
+    { name: "Alice Chen", email: "alice@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },
+    { name: "Bob Martinez", email: "bob@ops.com", role: "Analyst", team: "Admin Operations", region: "Americas" },
+    { name: "Carol Davies", email: "carol@ops.com", role: "Lead", team: "Transaction Operations", region: "EMEA" },
+    { name: "David Park", email: "david@ops.com", role: "Analyst", team: "Data Operations", region: "APAC" },
+    { name: "Eva Kowalski", email: "eva@ops.com", role: "Senior", team: "Admin Operations", region: "EMEA" },
+    { name: "Frank Osei", email: "frank@ops.com", role: "Analyst", team: "Data Operations", region: "EMEA" },
   ];
 
   const employees = await Promise.all(
     employeeData.map((data) =>
       prisma.employee.upsert({
         where: { email: data.email },
-        update: {},
+        update: { team: data.team },
         create: data,
       })
     )
@@ -61,6 +61,8 @@ async function main() {
     { type: "month", startDate: new Date("2026-02-01"), endDate: new Date("2026-02-28"), label: "2026-02" },
     { type: "week", startDate: new Date("2026-02-16"), endDate: new Date("2026-02-22"), label: "2026-W08" },
     { type: "week", startDate: new Date("2026-02-23"), endDate: new Date("2026-03-01"), label: "2026-W09" },
+    { type: "quarter", startDate: new Date("2025-10-01"), endDate: new Date("2025-12-31"), label: "2025-Q4" },
+    { type: "quarter", startDate: new Date("2026-01-01"), endDate: new Date("2026-03-31"), label: "2026-Q1" },
   ];
 
   const periods = await Promise.all(
@@ -128,7 +130,69 @@ async function main() {
     }
   }
 
-  console.log("Upserted category scores");
+  // Weekly scores (W08 = periods[2], W09 = periods[3]) — slight variation from monthly
+  for (const emp of employees) {
+    for (const cat of categories) {
+      const [janRaw, febRaw] = scoreData[emp.id]?.[cat] ?? [0.5, 0.5];
+      const w08Raw = Math.max(0, Math.min(1, janRaw + (Math.random() * 0.1 - 0.05)));
+      const w09Raw = Math.max(0, Math.min(1, febRaw + (Math.random() * 0.1 - 0.05)));
+      const evidenceType = cat === "daily_tasks" ? "jira" : cat === "projects" ? "confluence" : cat === "asset_actions" ? "asset_action" : cat === "quality" ? "positive" : "knowledge";
+
+      await prisma.categoryScore.upsert({
+        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[2].id, category: cat } },
+        update: {},
+        create: {
+          employeeId: emp.id, periodId: periods[2].id, category: cat,
+          rawIndex: Math.round(w08Raw * 100) / 100, score: Math.round((3 + w08Raw * 5) * 10) / 10,
+          configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} W08`, details: "Seed" }]),
+          metadata: JSON.stringify({ period: "2026-W08", auto_generated: true }),
+        },
+      });
+      await prisma.categoryScore.upsert({
+        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[3].id, category: cat } },
+        update: {},
+        create: {
+          employeeId: emp.id, periodId: periods[3].id, category: cat,
+          rawIndex: Math.round(w09Raw * 100) / 100, score: Math.round((3 + w09Raw * 5) * 10) / 10,
+          configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} W09`, details: "Seed" }]),
+          metadata: JSON.stringify({ period: "2026-W09", auto_generated: true }),
+        },
+      });
+    }
+  }
+
+  // Quarterly scores (Q4-2025 = periods[4], Q1-2026 = periods[5])
+  for (const emp of employees) {
+    for (const cat of categories) {
+      const [janRaw, febRaw] = scoreData[emp.id]?.[cat] ?? [0.5, 0.5];
+      const q4Raw = Math.max(0, Math.min(1, janRaw - 0.05));
+      const q1Raw = Math.max(0, Math.min(1, (janRaw + febRaw) / 2));
+      const evidenceType = cat === "daily_tasks" ? "jira" : cat === "projects" ? "confluence" : cat === "asset_actions" ? "asset_action" : cat === "quality" ? "positive" : "knowledge";
+
+      await prisma.categoryScore.upsert({
+        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[4].id, category: cat } },
+        update: {},
+        create: {
+          employeeId: emp.id, periodId: periods[4].id, category: cat,
+          rawIndex: Math.round(q4Raw * 100) / 100, score: Math.round((3 + q4Raw * 5) * 10) / 10,
+          configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} Q4-2025`, details: "Seed" }]),
+          metadata: JSON.stringify({ period: "2025-Q4", auto_generated: true }),
+        },
+      });
+      await prisma.categoryScore.upsert({
+        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[5].id, category: cat } },
+        update: {},
+        create: {
+          employeeId: emp.id, periodId: periods[5].id, category: cat,
+          rawIndex: Math.round(q1Raw * 100) / 100, score: Math.round((3 + q1Raw * 5) * 10) / 10,
+          configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} Q1-2026`, details: "Seed" }]),
+          metadata: JSON.stringify({ period: "2026-Q1", auto_generated: true }),
+        },
+      });
+    }
+  }
+
+  console.log("Upserted category scores (month, week, quarter)");
 
   // Knowledge scores
   const knowledgeData = [
@@ -174,20 +238,20 @@ async function main() {
         participants: JSON.stringify(["client-a@example.com", "ops@company.com"]),
         clientOrPartnerTag: "Client Alpha", subject: "ETH Staking withdrawal request — urgent",
         priority: "P1", status: "InProgress", ownerUserId: employees[0].id,
-        queue: "StakingOps", lastMessageAt: new Date("2026-02-28T09:30:00Z"), lastActionAt: new Date("2026-02-28T09:45:00Z"),
+        queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T09:30:00Z"), lastActionAt: new Date("2026-02-28T09:45:00Z"),
       },
       {
         source: "slack", sourceThreadRef: "C01234-1709100000.000001",
         participants: JSON.stringify(["@client-b-ops", "@settlements-team"]),
         clientOrPartnerTag: "Client Beta", subject: "Settlement reconciliation discrepancy Q1",
         priority: "P2", status: "WaitingExternal", ownerUserId: employees[4].id,
-        queue: "Settlements", lastMessageAt: new Date("2026-02-27T16:00:00Z"), lastActionAt: new Date("2026-02-27T16:30:00Z"),
+        queue: "Admin Operations", lastMessageAt: new Date("2026-02-27T16:00:00Z"), lastActionAt: new Date("2026-02-27T16:30:00Z"),
       },
       {
         source: "email", sourceThreadRef: "gmail-thread-003",
         participants: JSON.stringify(["partner-x@exchange.com"]),
         clientOrPartnerTag: "Partner X", subject: "New custody onboarding — documentation required",
-        priority: "P2", status: "Unassigned", queue: "Ops",
+        priority: "P2", status: "Unassigned", queue: "Transaction Operations",
         lastMessageAt: new Date("2026-02-28T08:00:00Z"), ttoDeadline: new Date("2026-02-28T10:00:00Z"),
       },
       {
@@ -195,21 +259,21 @@ async function main() {
         participants: JSON.stringify(["@client-c-team"]),
         clientOrPartnerTag: "Client Gamma", subject: "Transaction stuck — Fireblocks approval pending",
         priority: "P0", status: "Assigned", ownerUserId: employees[3].id,
-        queue: "Ops", lastMessageAt: new Date("2026-02-28T10:15:00Z"), ttfaDeadline: new Date("2026-02-28T10:25:00Z"),
+        queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T10:15:00Z"), ttfaDeadline: new Date("2026-02-28T10:25:00Z"),
       },
       {
         source: "email", sourceThreadRef: "gmail-thread-005",
         participants: JSON.stringify(["compliance@regulator.gov"]),
         clientOrPartnerTag: "Regulator", subject: "Travel Rule data request — March batch",
         priority: "P1", status: "Assigned", ownerUserId: employees[2].id,
-        queue: "Ops", lastMessageAt: new Date("2026-02-28T07:00:00Z"), lastActionAt: new Date("2026-02-28T08:30:00Z"),
+        queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T07:00:00Z"), lastActionAt: new Date("2026-02-28T08:30:00Z"),
       },
       {
         source: "email", sourceThreadRef: "gmail-thread-006",
         participants: JSON.stringify(["client-d@example.com"]),
         clientOrPartnerTag: "Client Delta", subject: "Monthly reporting — asset allocation summary",
         priority: "P3", status: "Done", ownerUserId: employees[1].id,
-        queue: "Ops", lastMessageAt: new Date("2026-02-26T14:00:00Z"), lastActionAt: new Date("2026-02-27T10:00:00Z"),
+        queue: "Transaction Operations", lastMessageAt: new Date("2026-02-26T14:00:00Z"), lastActionAt: new Date("2026-02-27T10:00:00Z"),
       },
     ];
 

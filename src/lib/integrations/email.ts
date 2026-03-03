@@ -53,7 +53,7 @@ function getEmailConfig(): EmailConfig | null {
  * This function uses the imap-simple library to connect to an IMAP mailbox,
  * fetch unseen messages, and create/update CommsThreads accordingly.
  */
-export async function syncEmailInbox(queue: string = "Ops") {
+export async function syncEmailInbox(queue: string = "Transaction Operations") {
   const config = getEmailConfig();
   if (!config) {
     throw new Error(
