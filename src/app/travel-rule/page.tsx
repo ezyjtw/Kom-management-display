@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   RefreshCw,
   AlertCircle,
@@ -11,20 +12,22 @@ import { TravelRuleStats } from "@/components/travel-rule/TravelRuleStats";
 import { ReconciliationTable } from "@/components/travel-rule/ReconciliationTable";
 import type {
   TravelRuleReconciliationRow,
-  TravelRuleMatchStatus,
   TravelRuleOverview,
 } from "@/types";
 
 type FilterTab = "all" | "unmatched" | "missing_originator" | "missing_beneficiary" | "matched";
 
 export default function TravelRulePage() {
+  const router = useRouter();
   const [data, setData] = useState<TravelRuleOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState("");
+  const [caseIds, setCaseIds] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchData();
+    fetchCases();
   }, []);
 
   async function fetchData() {
@@ -39,6 +42,44 @@ export default function TravelRulePage() {
       console.error("Failed to fetch travel rule data:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchCases() {
+    try {
+      const res = await fetch("/api/travel-rule/cases");
+      const json = await res.json();
+      if (json.success) {
+        const map: Record<string, string> = {};
+        for (const c of json.data) {
+          map[c.transactionId] = c.id;
+        }
+        setCaseIds(map);
+      }
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function handleOpenCase(row: TravelRuleReconciliationRow) {
+    const res = await fetch("/api/travel-rule/cases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transactionId: row.transactionId,
+        txHash: row.txHash,
+        direction: row.direction,
+        asset: row.asset,
+        amount: row.amount,
+        senderAddress: row.senderAddress,
+        receiverAddress: row.receiverAddress,
+        matchStatus: row.matchStatus,
+        notabeneTransferId: row.notabeneTransferId,
+      }),
+    });
+    const json = await res.json();
+    if (json.success && json.data?.id) {
+      router.push(`/travel-rule/case/${json.data.id}`);
     }
   }
 
@@ -208,7 +249,11 @@ export default function TravelRulePage() {
           Reconciling travel rule data...
         </div>
       ) : (
-        <ReconciliationTable rows={filteredRows} />
+        <ReconciliationTable
+          rows={filteredRows}
+          onOpenCase={handleOpenCase}
+          caseIds={caseIds}
+        />
       )}
     </div>
   );

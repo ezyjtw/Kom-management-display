@@ -10,12 +10,15 @@ import {
   AlertTriangle,
   UserX,
   ExternalLink,
+  FileSearch,
 } from "lucide-react";
 import type { TravelRuleReconciliationRow, TravelRuleMatchStatus } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 
 interface ReconciliationTableProps {
   rows: TravelRuleReconciliationRow[];
+  onOpenCase?: (row: TravelRuleReconciliationRow) => void;
+  caseIds?: Record<string, string>; // transactionId → caseId
 }
 
 function DirectionIcon({ direction }: { direction: string }) {
@@ -63,7 +66,7 @@ function MatchStatusBadge({ status }: { status: TravelRuleMatchStatus }) {
   }
 }
 
-export function ReconciliationTable({ rows }: ReconciliationTableProps) {
+export function ReconciliationTable({ rows, onOpenCase, caseIds }: ReconciliationTableProps) {
   if (rows.length === 0) {
     return (
       <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
@@ -115,6 +118,9 @@ export function ReconciliationTable({ rows }: ReconciliationTableProps) {
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 Tx Hash
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                Action
               </th>
             </tr>
           </thead>
@@ -263,6 +269,27 @@ export function ReconciliationTable({ rows }: ReconciliationTableProps) {
                       <span className="text-xs text-muted-foreground">
                         \u2014
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isUrgent && onOpenCase && (
+                      caseIds?.[row.transactionId] ? (
+                        <a
+                          href={`/travel-rule/case/${caseIds[row.transactionId]}`}
+                          className="text-xs px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded hover:bg-blue-500/20 inline-flex items-center gap-1"
+                        >
+                          <FileSearch size={12} />
+                          View Case
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => onOpenCase(row)}
+                          className="text-xs px-2.5 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 inline-flex items-center gap-1"
+                        >
+                          <FileSearch size={12} />
+                          Open Case
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
