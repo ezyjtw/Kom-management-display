@@ -33,6 +33,14 @@ model Employee {
   auditLogs            AuditLog[]
   threadNotes          ThreadNote[]
   caseNotes            CaseNote[]
+  onCallSchedules      OnCallSchedule[]
+  ptoRecords           PtoRecord[]
+  assignedTasks        DailyTask[]     @relation("TaskAssignee")
+  completedTasks       DailyTask[]     @relation("TaskCompleter")
+  createdTasks         DailyTask[]     @relation("TaskCreator")
+  ledProjects          Project[]       @relation("ProjectLead")
+  projectMemberships   ProjectMember[]
+  projectUpdates       ProjectUpdate[]
 }
 
 // ─── User / Auth ───
@@ -245,6 +253,117 @@ model CaseNote {
 
   case   TravelRuleCase @relation(fields: [caseId], references: [id])
   author Employee       @relation(fields: [authorId], references: [id])
+}
+
+// ─── Schedule & On-Call ───
+
+model OnCallSchedule {
+  id         String   @id @default(cuid())
+  employeeId String
+  date       DateTime // the calendar day
+  team       String   // Transaction Operations, Admin Operations, Data Operations
+  shiftType  String   @default("primary") // primary, backup
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([date, team, shiftType])
+}
+
+model PublicHoliday {
+  id     String   @id @default(cuid())
+  date   DateTime
+  name   String
+  region String   @default("Global") // Global, EMEA, APAC, Americas
+  createdAt DateTime @default(now())
+
+  @@unique([date, region])
+}
+
+model PtoRecord {
+  id         String   @id @default(cuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  type       String   @default("annual_leave") // annual_leave, sick, wfh, other
+  status     String   @default("approved") // pending, approved, rejected
+  notes      String   @default("")
+  hibobId    String?  // external HiBob time-off ID for sync
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model DailyTask {
+  id          String   @id @default(cuid())
+  date        DateTime
+  team        String   // Transaction Operations, Admin Operations, Data Operations
+  assigneeId  String?
+  title       String
+  description String   @default("")
+  priority    String   @default("normal") // low, normal, high, urgent
+  status      String   @default("pending") // pending, in_progress, completed, skipped
+  category    String   @default("operational") // operational, compliance, client, administrative
+  completedAt DateTime?
+  completedById String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignee    Employee? @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  completedBy Employee? @relation("TaskCompleter", fields: [completedById], references: [id])
+  createdBy   Employee  @relation("TaskCreator", fields: [createdById], references: [id])
+}
+
+// ─── Projects ───
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  team        String   // Transaction Operations, Admin Operations, Data Operations
+  leadId      String   // team lead responsible
+  status      String   @default("active") // planned, active, on_hold, completed, cancelled
+  priority    String   @default("medium") // low, medium, high, critical
+  startDate   DateTime?
+  targetDate  DateTime?
+  completedAt DateTime?
+  progress    Int      @default(0) // 0-100 percentage
+  tags        String   @default("[]") // JSON array of tags
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead        Employee        @relation("ProjectLead", fields: [leadId], references: [id])
+  updates     ProjectUpdate[]
+  members     ProjectMember[]
+}
+
+model ProjectMember {
+  id         String   @id @default(cuid())
+  projectId  String
+  employeeId String
+  role       String   @default("contributor") // lead, contributor, reviewer
+  createdAt  DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([projectId, employeeId])
+}
+
+model ProjectUpdate {
+  id        String   @id @default(cuid())
+  projectId String
+  authorId  String
+  content   String
+  type      String   @default("progress") // progress, blocker, milestone, note
+  progress  Int?     // optional progress snapshot at time of update
+  createdAt DateTime @default(now())
+
+  project Project  @relation(fields: [projectId], references: [id])
+  author  Employee @relation(fields: [authorId], references: [id])
 }
 
 // ─── Alerts ───
