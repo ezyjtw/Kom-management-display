@@ -100,6 +100,7 @@ const ACTION_LABELS: Record<string, string> = {
 export default function CommandCenterPage() {
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -107,12 +108,18 @@ export default function CommandCenterPage() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/command-center");
       const json = await res.json();
-      if (json.success) setData(json.data);
+      if (json.success) {
+        setData(json.data);
+      } else {
+        setError(json.error || "Unknown error");
+      }
     } catch (err) {
       console.error("Failed to fetch command center data:", err);
+      setError("Network error — could not reach server");
     } finally {
       setLoading(false);
     }
@@ -129,8 +136,17 @@ export default function CommandCenterPage() {
 
   if (!data) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        Failed to load data. Try refreshing.
+      <div className="text-center py-12">
+        <p className="text-muted-foreground mb-2">
+          {error || "Failed to load data."}
+        </p>
+        <button
+          onClick={fetchData}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-accent/50 text-foreground"
+        >
+          <RefreshCw size={14} />
+          Retry
+        </button>
       </div>
     );
   }

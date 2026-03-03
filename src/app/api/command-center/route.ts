@@ -12,24 +12,26 @@ export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  // Run queries independently so one failure doesn't break the whole page
+  async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+    try { return await fn(); } catch { return fallback; }
+  }
+
   try {
     const [openCases, activeThreads, activeAlerts, recentAudit] = await Promise.all([
-      // 1. Open travel rule cases (oldest first)
-      prisma.travelRuleCase.findMany({
+      safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
         take: 10,
-      }),
+      }), []),
 
-      // 2. Active comms threads
-      prisma.commsThread.findMany({
+      safeQuery(() => prisma.commsThread.findMany({
         where: { status: { notIn: ["Done", "Closed"] } },
         include: { owner: { select: { name: true } } },
         orderBy: { createdAt: "asc" },
-      }),
+      }), []),
 
-      // 3. Active unacknowledged alerts
-      prisma.alert.findMany({
+      safeQuery(() => prisma.alert.findMany({
         where: { status: "active" },
         include: {
           thread: { select: { id: true, subject: true } },
@@ -37,17 +39,16 @@ export async function GET() {
         },
         orderBy: { createdAt: "desc" },
         take: 10,
-      }),
+      }), []),
 
-      // 4. Recent audit activity (last 24h)
-      prisma.auditLog.findMany({
+      safeQuery(() => prisma.auditLog.findMany({
         where: {
           createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
         },
         include: { user: { select: { name: true } } },
         orderBy: { createdAt: "desc" },
         take: 15,
-      }),
+      }), []),
     ]);
 
     // Compute aging for cases
@@ -70,7 +71,9 @@ export async function GET() {
       subject: t.subject,
       priority: t.priority,
       status: t.status,
-      ownerName: t.owner?.name ?? null,
+      ownerName: (t as Record<string, unknown>).owner
+        ? ((t as Record<string, unknown>).owner as { name?: string })?.name ?? null
+        : null,
       createdAt: t.createdAt,
       slaStatus: computeSlaStatus({
         createdAt: t.createdAt,
@@ -112,7 +115,9 @@ export async function GET() {
           action: a.action,
           entityType: a.entityType,
           entityId: a.entityId,
-          userName: a.user?.name ?? "System",
+          userName: (a as Record<string, unknown>).user
+            ? ((a as Record<string, unknown>).user as { name?: string })?.name ?? "System"
+            : "System",
           details: a.details,
           createdAt: a.createdAt,
         })),
