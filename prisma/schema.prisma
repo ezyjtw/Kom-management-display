@@ -322,7 +322,7 @@ model DailyTask {
 
 model SubTeam {
   id          String   @id @default(cuid())
-  name        String   // e.g. "Team Alpha", "Team Bravo", "Team Charlie"
+  name        String   // e.g. "Team 1", "Team 2", "Team 3"
   parentTeam  String   @default("Transaction Operations") // which top-level team this belongs to
   description String   @default("") // what this sub-team handles
   sortOrder   Int      @default(0)

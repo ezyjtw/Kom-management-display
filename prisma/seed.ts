@@ -634,7 +634,7 @@ async function main() {
     const subTeams = await Promise.all([
       prisma.subTeam.create({
         data: {
-          name: "Custody & Onboarding",
+          name: "Team 1",
           parentTeam: "Transaction Operations",
           description: "Client custody onboarding, KYC documentation, wallet provisioning",
           sortOrder: 1,
@@ -642,7 +642,7 @@ async function main() {
       }),
       prisma.subTeam.create({
         data: {
-          name: "Transaction Processing",
+          name: "Team 2",
           parentTeam: "Transaction Operations",
           description: "Staking, withdrawals, Fireblocks approvals, settlement execution",
           sortOrder: 2,
@@ -650,7 +650,7 @@ async function main() {
       }),
       prisma.subTeam.create({
         data: {
-          name: "Compliance & Travel Rule",
+          name: "Team 3",
           parentTeam: "Transaction Operations",
           description: "Travel rule compliance, Notabene matching, regulatory reporting",
           sortOrder: 3,
@@ -667,20 +667,20 @@ async function main() {
     const nextWeekStart = new Date("2026-03-09");
     const nextWeekEnd = new Date("2026-03-13");
 
-    // Week 1 rota: Carol leads Custody, Grace leads Txn Processing, Kenji leads Compliance
+    // Week 1 rota: Carol leads Team 1, Grace leads Team 2, Kenji leads Team 3
     const week1Assignments = [
-      // Sub-team 1: Custody & Onboarding — Lead: Carol, Members: Maria, Nikhil
+      // Team 1 — Lead: Carol, Members: Maria, Nikhil
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
 
-      // Sub-team 2: Transaction Processing — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
+      // Team 2 — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[1].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
-      // Sub-team 3: Compliance & Travel Rule — Lead: Kenji, Members: Sophie, Yuki
+      // Team 3 — Lead: Kenji, Members: Sophie, Yuki
       { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[2].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[2].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
@@ -688,18 +688,18 @@ async function main() {
 
     // Week 2 rota: juniors rotate — same leads, different member assignments
     const week2Assignments = [
-      // Sub-team 1: Custody — Lead: Carol, Members: Sophie, Tom (rotated in)
+      // Team 1 — Lead: Carol, Members: Sophie, Tom (rotated in)
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[0].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
 
-      // Sub-team 2: Txn Processing — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
+      // Team 2 — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[1].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
-      // Sub-team 3: Compliance — Lead: Kenji, Members: Maria, Alice
+      // Team 3 — Lead: Kenji, Members: Maria, Alice
       { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
       { subTeamId: subTeams[2].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[2].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
