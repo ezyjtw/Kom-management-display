@@ -146,7 +146,8 @@ export type AlertType =
   | "sla_slipping"
   | "travel_rule_missing_originator"
   | "travel_rule_missing_beneficiary"
-  | "travel_rule_unmatched";
+  | "travel_rule_unmatched"
+  | "travel_rule_sla_breach";
 
 export interface AlertData {
   id: string;

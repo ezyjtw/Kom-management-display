@@ -14,7 +14,11 @@ import {
   Send,
   UserPlus,
   Eye,
+  MessageSquare,
+  FileText,
+  Activity,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 interface CaseData {
   id: string;
@@ -34,6 +38,7 @@ interface CaseData {
   resolutionNote: string;
   emailSentTo: string | null;
   emailSentAt: string | null;
+  slaDeadline: string | null;
   createdAt: string;
   resolvedAt: string | null;
 }
@@ -93,19 +98,33 @@ export default function CaseDetailPage() {
   const [previewSubject, setPreviewSubject] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
 
+  // Activity feed state
+  const [activities, setActivities] = useState<any[]>([]);
+  const [noteContent, setNoteContent] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+
+  function fetchActivity() {
+    fetch(`/api/travel-rule/cases/${params.id}/activity`)
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setActivities(json.data); })
+      .catch(console.error);
+  }
+
   useEffect(() => {
     if (params.id) {
       Promise.all([
         fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json()),
         fetch("/api/employees").then((r) => r.json()),
         fetch("/api/travel-rule/vasp-directory").then((r) => r.json()),
+        fetch(`/api/travel-rule/cases/${params.id}/activity`).then((r) => r.json()),
       ])
-        .then(([caseJson, empJson, vaspJson]) => {
+        .then(([caseJson, empJson, vaspJson, actJson]) => {
           if (caseJson.success) setCaseData(caseJson.data);
           if (empJson.success) {
             setEmployees(empJson.data.map((e: any) => ({ id: e.id, name: e.name })));
           }
           if (vaspJson.success) setVaspContacts(vaspJson.data);
+          if (actJson.success) setActivities(actJson.data);
         })
         .catch(console.error)
         .finally(() => setLoading(false));
@@ -187,6 +206,22 @@ export default function CaseDetailPage() {
     setShowResolve(false);
   }
 
+  async function handleAddNote() {
+    if (!noteContent.trim()) return;
+    setAddingNote(true);
+    const res = await fetch(`/api/travel-rule/cases/${params.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: noteContent }),
+    });
+    const json = await res.json();
+    setAddingNote(false);
+    if (json.success) {
+      setNoteContent("");
+      fetchActivity();
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -227,6 +262,12 @@ export default function CaseDetailPage() {
         <span className={`text-xs px-3 py-1 rounded-full font-medium ${STATUS_COLORS[caseData.status] || "bg-muted text-muted-foreground"}`}>
           {STATUS_LABELS[caseData.status] || caseData.status}
         </span>
+        {!isResolved && (() => {
+          const hours = (Date.now() - new Date(caseData.createdAt).getTime()) / 3_600_000;
+          const label = hours < 1 ? `${Math.round(hours * 60)}m` : hours < 24 ? `${Math.round(hours)}h` : `${Math.round(hours / 24)}d`;
+          const color = hours < 24 ? "bg-emerald-500/10 text-emerald-400" : hours < 48 ? "bg-amber-500/10 text-amber-400" : "bg-red-500/10 text-red-400 font-semibold";
+          return <span className={`text-xs px-2.5 py-1 rounded-full ${color}`}>{label} old</span>;
+        })()}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -581,28 +622,90 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* Timeline */}
+          {/* SLA Status */}
+          {!isResolved && (
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                <Clock size={16} />
+                Case Aging
+              </h3>
+              {(() => {
+                const hours = (Date.now() - new Date(caseData.createdAt).getTime()) / 3_600_000;
+                const color = hours < 24 ? "text-emerald-400" : hours < 48 ? "text-amber-400" : "text-red-400";
+                return (
+                  <div>
+                    <p className={`text-lg font-bold ${color}`}>
+                      {hours < 1 ? `${Math.round(hours * 60)}m` : hours < 24 ? `${Math.round(hours)}h` : `${(hours / 24).toFixed(1)}d`}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Created {new Date(caseData.createdAt).toLocaleString()}
+                    </p>
+                    {caseData.slaDeadline && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        SLA Deadline: {new Date(caseData.slaDeadline).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Activity Feed */}
           <div className="bg-card rounded-xl border border-border p-5">
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Clock size={16} />
-              Timeline
+              <Activity size={16} />
+              Activity
             </h3>
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Created</span>
-                <span>{new Date(caseData.createdAt).toLocaleString()}</span>
+
+            {/* Add Note */}
+            {!isResolved && (
+              <div className="mb-4">
+                <textarea
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="Add a note..."
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 h-16 resize-none"
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={!noteContent.trim() || addingNote}
+                  className="mt-1 text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+                >
+                  <MessageSquare size={12} />
+                  {addingNote ? "Adding..." : "Add Note"}
+                </button>
               </div>
-              {caseData.emailSentAt && (
-                <div className="flex justify-between">
-                  <span>Email sent</span>
-                  <span>{new Date(caseData.emailSentAt).toLocaleString()}</span>
-                </div>
-              )}
-              {caseData.resolvedAt && (
-                <div className="flex justify-between">
-                  <span>Resolved</span>
-                  <span>{new Date(caseData.resolvedAt).toLocaleString()}</span>
-                </div>
+            )}
+
+            {/* Feed */}
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {activities.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No activity yet.</p>
+              ) : (
+                activities.map((item: any) => {
+                  const isNote = item.type === "note";
+                  const icon = isNote ? <MessageSquare size={12} className="text-blue-400" />
+                    : item.action === "travel_rule_email_sent" ? <Mail size={12} className="text-purple-400" />
+                    : item.action === "travel_rule_case_created" ? <FileText size={12} className="text-emerald-400" />
+                    : <Activity size={12} className="text-muted-foreground" />;
+
+                  return (
+                    <div key={item.id} className="flex gap-2 text-xs">
+                      <div className="mt-0.5 shrink-0">{icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-foreground">
+                          <span className="font-medium">{item.actorName}</span>
+                          {" — "}
+                          {isNote ? item.content : item.description}
+                        </p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

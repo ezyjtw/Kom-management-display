@@ -1,0 +1,127 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { computeSlaStatus, computeTravelRuleAging } from "@/lib/sla";
+
+/**
+ * GET /api/command-center
+ *
+ * Aggregated data across all modules for the ops command center landing page.
+ */
+export async function GET() {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const [openCases, activeThreads, activeAlerts, recentAudit] = await Promise.all([
+      // 1. Open travel rule cases (oldest first)
+      prisma.travelRuleCase.findMany({
+        where: { status: { not: "Resolved" } },
+        orderBy: { createdAt: "asc" },
+        take: 10,
+      }),
+
+      // 2. Active comms threads
+      prisma.commsThread.findMany({
+        where: { status: { notIn: ["Done", "Closed"] } },
+        include: { owner: { select: { name: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+
+      // 3. Active unacknowledged alerts
+      prisma.alert.findMany({
+        where: { status: "active" },
+        include: {
+          thread: { select: { id: true, subject: true } },
+          employee: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+
+      // 4. Recent audit activity (last 24h)
+      prisma.auditLog.findMany({
+        where: {
+          createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+        include: { user: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 15,
+      }),
+    ]);
+
+    // Compute aging for cases
+    const casesWithAging = openCases.map((c) => ({
+      id: c.id,
+      transactionId: c.transactionId,
+      asset: c.asset,
+      direction: c.direction,
+      amount: c.amount,
+      matchStatus: c.matchStatus,
+      status: c.status,
+      ownerUserId: c.ownerUserId,
+      createdAt: c.createdAt,
+      ...computeTravelRuleAging(c.createdAt),
+    }));
+
+    // Compute SLA for threads
+    const threadsWithSla = activeThreads.map((t) => ({
+      id: t.id,
+      subject: t.subject,
+      priority: t.priority,
+      status: t.status,
+      ownerName: t.owner?.name ?? null,
+      createdAt: t.createdAt,
+      slaStatus: computeSlaStatus({
+        createdAt: t.createdAt,
+        ownerUserId: t.ownerUserId,
+        lastActionAt: t.lastActionAt,
+        status: t.status,
+        priority: t.priority,
+        ttoDeadline: t.ttoDeadline,
+        ttfaDeadline: t.ttfaDeadline,
+        tslaDeadline: t.tslaDeadline,
+      }),
+    }));
+
+    const breachedThreads = threadsWithSla.filter(
+      (t) => t.slaStatus.isTtoBreached || t.slaStatus.isTtfaBreached || t.slaStatus.isTslaBreached,
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        travelRule: {
+          openCount: openCases.length,
+          redCount: casesWithAging.filter((c) => c.agingStatus === "red").length,
+          amberCount: casesWithAging.filter((c) => c.agingStatus === "amber").length,
+          topUrgent: casesWithAging.slice(0, 5),
+        },
+        comms: {
+          totalActive: activeThreads.length,
+          breachedCount: breachedThreads.length,
+          unassignedCount: activeThreads.filter((t) => t.status === "Unassigned").length,
+          topBreached: breachedThreads.slice(0, 5),
+        },
+        alerts: {
+          activeCount: activeAlerts.length,
+          items: activeAlerts,
+        },
+        recentActivity: recentAudit.map((a) => ({
+          id: a.id,
+          action: a.action,
+          entityType: a.entityType,
+          entityId: a.entityId,
+          userName: a.user?.name ?? "System",
+          details: a.details,
+          createdAt: a.createdAt,
+        })),
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: safeErrorMessage(error) },
+      { status: 500 },
+    );
+  }
+}

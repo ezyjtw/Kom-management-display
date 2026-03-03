@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { computeSlaStatus, isExcessiveBouncing } from "@/lib/sla";
+import { computeSlaStatus, isExcessiveBouncing, computeTravelRuleAging } from "@/lib/sla";
 import { requireRole } from "@/lib/auth-user";
 
 /**
@@ -156,6 +156,37 @@ async function generateAlerts() {
       }
     }
 
+    // --- Travel Rule SLA Checks ---
+    const openCases = await prisma.travelRuleCase.findMany({
+      where: { status: { not: "Resolved" } },
+    });
+
+    for (const tc of openCases) {
+      const { agingStatus } = computeTravelRuleAging(tc.createdAt);
+      if (agingStatus === "red") {
+        const existing = await prisma.alert.findFirst({
+          where: {
+            travelRuleCaseId: tc.id,
+            type: "travel_rule_sla_breach",
+            status: "active",
+          },
+        });
+
+        if (!existing) {
+          await prisma.alert.create({
+            data: {
+              travelRuleCaseId: tc.id,
+              type: "travel_rule_sla_breach",
+              priority: "P1",
+              message: `Travel rule case for ${tc.asset} ${tc.direction} (${tc.transactionId}) is over 48h old`,
+              destination: "in_app",
+            },
+          });
+          alertsCreated++;
+        }
+      }
+    }
+
     // Also check performance trends for employees
     // (mistakes rising, throughput dropping)
     const latestPeriod = await prisma.timePeriod.findFirst({
@@ -243,6 +274,7 @@ async function generateAlerts() {
       success: true,
       data: {
         threadsScanned: threads.length,
+        travelRuleCasesScanned: openCases.length,
         alertsCreated,
         timestamp: now.toISOString(),
       },

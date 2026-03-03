@@ -17,6 +17,7 @@ const alertTypeLabels: Record<string, string> = {
   travel_rule_missing_originator: "Travel Rule: Missing Originator",
   travel_rule_missing_beneficiary: "Travel Rule: Missing Beneficiary",
   travel_rule_unmatched: "Travel Rule: No Data",
+  travel_rule_sla_breach: "Travel Rule: SLA Breach",
 };
 
 const alertTypeColors: Record<string, string> = {
@@ -31,6 +32,7 @@ const alertTypeColors: Record<string, string> = {
   travel_rule_missing_originator: "bg-red-500/10 text-red-400",
   travel_rule_missing_beneficiary: "bg-red-500/10 text-red-400",
   travel_rule_unmatched: "bg-red-500/10 text-red-400",
+  travel_rule_sla_breach: "bg-red-500/10 text-red-400",
 };
 
 export default function AlertsPage() {
