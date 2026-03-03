@@ -7,12 +7,15 @@ import { computeSlaStatus, computeTravelRuleAging } from "@/lib/sla";
  * GET /api/command-center
  *
  * Aggregated data across all modules for the ops command center landing page.
+ * Runs 7 independent queries in parallel via safeQuery — if any single query
+ * fails (e.g. a table doesn't exist yet), the rest still return data so the
+ * dashboard degrades gracefully rather than showing a blank page.
  */
 export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  // Run queries independently so one failure doesn't break the whole page
+  // Wraps each query so one failure doesn't break the whole page
   async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try { return await fn(); } catch { return fallback; }
   }
@@ -61,7 +64,8 @@ export async function GET() {
         });
       }, []),
 
-      // Active projects
+      // Team coverage: count how many Transaction Ops staff are currently active,
+      // on queue monitoring duty, or on break. "Active" excludes lunch/break.
       safeQuery(async () => {
         const txOpsEmployees = await prisma.employee.findMany({
           where: { team: "Transaction Operations", active: true },
@@ -86,7 +90,7 @@ export async function GET() {
       }), []),
     ]);
 
-    // Compute aging for cases
+    // Travel rule aging: green (<24h), amber (24-48h), red (>48h since creation)
     const casesWithAging = openCases.map((c) => ({
       id: c.id,
       transactionId: c.transactionId,
@@ -100,7 +104,8 @@ export async function GET() {
       ...computeTravelRuleAging(c.createdAt),
     }));
 
-    // Compute SLA for threads
+    // SLA status: check TTO (time-to-ownership), TTFA (time-to-first-action),
+    // TSLA (time-since-last-action) deadlines against current time
     const threadsWithSla = activeThreads.map((t) => ({
       id: t.id,
       subject: t.subject,

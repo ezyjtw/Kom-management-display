@@ -1,15 +1,28 @@
+/**
+ * Comms thread SLA engine.
+ *
+ * Three SLA clocks run independently on each thread:
+ *   TTO  — Time To Ownership: how long a thread can sit unassigned
+ *   TTFA — Time To First Action: how long after assignment before first response
+ *   TSLA — Time Since Last Action: max gap between consecutive actions
+ *
+ * Each has per-priority thresholds (P0 = tightest) measured in minutes.
+ * The alert generator checks these and creates breach alerts when overdue.
+ */
 import type { ThreadPriority, ThreadStatus, SlaThresholds, SlaStatus } from "@/types";
 
 /**
  * Default SLA thresholds in minutes.
+ * P0 (outage): 5min TTO, 10min TTFA — essentially "drop everything"
+ * P3 (routine): 8h TTO, 16h TTFA — next business day is fine
  */
 export const DEFAULT_SLA_THRESHOLDS: SlaThresholds = {
   tto: { P0: 5, P1: 30, P2: 120, P3: 480 },
   ttfa: { P0: 10, P1: 60, P2: 240, P3: 960 },
   tsla: {
-    InProgress: 120,
-    WaitingExternal: 480,
-    default: 240,
+    InProgress: 120,       // 2h — actively being worked
+    WaitingExternal: 480,  // 8h — waiting for counterparty
+    default: 240,          // 4h — catch-all for other statuses
   },
 };
 

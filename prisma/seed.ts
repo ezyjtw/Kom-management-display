@@ -660,8 +660,12 @@ async function main() {
 
     console.log("Created sub-teams");
 
-    // Current rotation — Week of March 2-6, 2026
-    // Leads rotate weekly/monthly; juniors rotate under them
+    // Rota assignments model the real team structure:
+    // - 3 leads (Carol, Grace, Kenji) stay on the same sub-team for a month
+    // - Junior analysts rotate between sub-teams weekly
+    // - Liam always works the late shift from home (London)
+    // - APAC (Hong Kong) and Jersey staff share weekend coverage
+    // Week 1: March 2-6, 2026 — Week 2: March 9-13, 2026
     const currentWeekStart = new Date("2026-03-02");
     const currentWeekEnd = new Date("2026-03-06");
     const nextWeekStart = new Date("2026-03-09");

@@ -15,10 +15,17 @@ import {
 import type { TravelRuleReconciliationRow, TravelRuleMatchStatus } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 
+/**
+ * ReconciliationTable displays Komainu transactions matched against Notabene
+ * travel rule transfers. Rows are sorted by urgency (unmatched first).
+ *
+ * When `onSelectionChange` is provided, checkboxes appear on non-matched rows
+ * to support bulk operations (create cases, assign, mark not required).
+ */
 interface ReconciliationTableProps {
   rows: TravelRuleReconciliationRow[];
   onOpenCase?: (row: TravelRuleReconciliationRow) => void;
-  caseIds?: Record<string, string>; // transactionId → caseId
+  caseIds?: Record<string, string>; // transactionId → caseId (used to show "View Case" vs "Open Case")
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
 }
@@ -68,6 +75,7 @@ function MatchStatusBadge({ status }: { status: TravelRuleMatchStatus }) {
   }
 }
 
+/** Color-coded age badge: green (<24h), amber (24-48h), red (>48h = SLA breach). */
 function AgingBadge({ createdAt }: { createdAt: string }) {
   const hours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
   const label = hours < 1 ? `${Math.round(hours * 60)}m` : hours < 24 ? `${Math.round(hours)}h` : `${Math.round(hours / 24)}d`;

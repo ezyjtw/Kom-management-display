@@ -20,6 +20,18 @@ import type {
 
 type FilterTab = "all" | "unmatched" | "missing_originator" | "missing_beneficiary" | "matched";
 
+/**
+ * Travel Rule Reconciliation page.
+ *
+ * Fetches Komainu transactions and Notabene transfers, shows reconciliation
+ * gaps (unmatched, missing originator/beneficiary), and provides:
+ *   - Single-case creation (click "Open Case" on a row)
+ *   - Bulk operations (select rows → create cases / assign / mark not required)
+ *   - Filter by match status tab and asset type
+ *
+ * `caseIds` map links transactionIds to existing case IDs so the table can
+ * show "View Case" instead of "Open Case" for rows that already have a case.
+ */
 export default function TravelRulePage() {
   const router = useRouter();
   const [data, setData] = useState<TravelRuleOverview | null>(null);

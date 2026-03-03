@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
     const { action, rows, caseIds, ownerUserId } = body;
     const actorId = auth.employeeId || auth.id;
 
+    // create_cases: batch-create from reconciliation table rows.
+    // Skips rows that already have a case (deduplication via compound unique).
     if (action === "create_cases") {
       if (!Array.isArray(rows) || rows.length === 0) {
         return NextResponse.json(
@@ -105,6 +107,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // assign: set ownerUserId and auto-transition status to "Investigating".
+    // Uses $transaction to apply all updates atomically.
     if (action === "assign") {
       if (!Array.isArray(caseIds) || caseIds.length === 0 || !ownerUserId) {
         return NextResponse.json(
@@ -152,6 +156,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // mark_not_required: close cases as "Not Required" (e.g. internal transfers,
+    // test transactions, or amounts below the travel rule threshold).
     if (action === "mark_not_required") {
       if (!Array.isArray(caseIds) || caseIds.length === 0) {
         return NextResponse.json(

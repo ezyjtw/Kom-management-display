@@ -28,6 +28,17 @@ export async function POST() {
   return generateAlerts();
 }
 
+/**
+ * Core alert generation logic shared by both GET (cron) and POST (manual).
+ *
+ * Scans three areas for alertable conditions:
+ *   1. Comms threads — TTO, TTFA, TSLA breach and ownership bouncing
+ *   2. Travel rule cases — SLA breach (>48h open)
+ *   3. Employee performance — quality score drops and throughput drops
+ *
+ * Each check is idempotent: only creates an alert if no active alert of
+ * the same type already exists for that entity.
+ */
 async function generateAlerts() {
   try {
     const now = new Date();
@@ -187,8 +198,9 @@ async function generateAlerts() {
       }
     }
 
-    // Also check performance trends for employees
-    // (mistakes rising, throughput dropping)
+    // Performance trend alerts: compare latest vs previous month scores.
+    // A drop of >0.5 points triggers an alert (on the 3-8 scoring scale,
+    // 0.5 is significant enough to warrant manager attention).
     const latestPeriod = await prisma.timePeriod.findFirst({
       where: { type: "month" },
       orderBy: { startDate: "desc" },

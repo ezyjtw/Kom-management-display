@@ -100,12 +100,14 @@ interface CommandCenterData {
   };
 }
 
+// Travel rule case aging thresholds: green (<24h), amber (24-48h), red (>48h SLA breach)
 const AGING_COLORS = {
   green: "text-emerald-400",
   amber: "text-amber-400",
   red: "text-red-400",
 };
 
+// Comms thread priority badges — P0 is critical (outage-level), P3 is routine
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-500/10 text-red-400",
   P1: "bg-orange-500/10 text-orange-400",
@@ -113,6 +115,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P3: "bg-muted text-muted-foreground",
 };
 
+// Human-readable labels for audit log action types
 const ACTION_LABELS: Record<string, string> = {
   travel_rule_case_created: "Opened travel rule case",
   travel_rule_case_updated: "Updated travel rule case",
