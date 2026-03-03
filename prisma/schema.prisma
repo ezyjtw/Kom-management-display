@@ -41,6 +41,7 @@ model Employee {
   ledProjects          Project[]       @relation("ProjectLead")
   projectMemberships   ProjectMember[]
   projectUpdates       ProjectUpdate[]
+  rotaAssignments      RotaAssignment[]
 }
 
 // ─── User / Auth ───
@@ -315,6 +316,40 @@ model DailyTask {
   assignee    Employee? @relation("TaskAssignee", fields: [assigneeId], references: [id])
   completedBy Employee? @relation("TaskCompleter", fields: [completedById], references: [id])
   createdBy   Employee  @relation("TaskCreator", fields: [createdById], references: [id])
+}
+
+// ─── Rota / Sub-Team Assignments ───
+
+model SubTeam {
+  id          String   @id @default(cuid())
+  name        String   // e.g. "Team Alpha", "Team Bravo", "Team Charlie"
+  parentTeam  String   @default("Transaction Operations") // which top-level team this belongs to
+  description String   @default("") // what this sub-team handles
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  assignments RotaAssignment[]
+}
+
+model RotaAssignment {
+  id          String   @id @default(cuid())
+  subTeamId   String
+  employeeId  String
+  role        String   // lead, member
+  startDate   DateTime // period start (e.g. Monday of the rotation week)
+  endDate     DateTime // period end
+  rotationCycle String @default("weekly") // weekly, monthly, bimonthly
+  shiftType   String   @default("standard") // standard, late, weekend
+  isWfh       Boolean  @default(false)
+  location    String   @default("London") // London, Hong Kong, Jersey
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subTeam  SubTeam  @relation(fields: [subTeamId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([subTeamId, employeeId, startDate])
 }
 
 // ─── Projects ───

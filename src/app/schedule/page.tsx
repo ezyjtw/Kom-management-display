@@ -15,6 +15,10 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
+  RotateCcw,
+  MapPin,
+  Home,
+  Moon,
 } from "lucide-react";
 
 interface Employee {
@@ -85,7 +89,41 @@ interface DailySummary {
   teams: TeamSummary[];
 }
 
-type Tab = "daily" | "oncall" | "holidays" | "pto";
+interface RotaMember {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  location: string;
+  shiftType: string;
+  isWfh: boolean;
+  hasPto: boolean;
+}
+
+interface RotaPeriod {
+  startDate: string;
+  endDate: string;
+  rotationCycle: string;
+  lead: RotaMember | null;
+  members: RotaMember[];
+}
+
+interface RotaSubTeam {
+  subTeam: {
+    id: string;
+    name: string;
+    parentTeam: string;
+    description: string;
+  };
+  periods: RotaPeriod[];
+}
+
+interface RotaData {
+  subTeams: RotaSubTeam[];
+  holidays: Array<{ date: string; name: string; region: string }>;
+  pto: Array<{ employeeId: string; employeeName: string; startDate: string; endDate: string; type: string }>;
+}
+
+type Tab = "rota" | "daily" | "oncall" | "holidays" | "pto";
 
 const TEAMS = ["Transaction Operations", "Admin Operations", "Data Operations"];
 const PRIORITY_COLORS: Record<string, string> = {
@@ -102,7 +140,7 @@ const STATUS_ICONS: Record<string, typeof CheckCircle2> = {
 };
 
 export default function SchedulePage() {
-  const [activeTab, setActiveTab] = useState<Tab>("daily");
+  const [activeTab, setActiveTab] = useState<Tab>("rota");
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     return d.toISOString().split("T")[0];
@@ -121,6 +159,9 @@ export default function SchedulePage() {
 
   // PTO state
   const [ptoEntries, setPtoEntries] = useState<PtoEntry[]>([]);
+
+  // Rota state
+  const [rotaData, setRotaData] = useState<RotaData | null>(null);
 
   // Forms
   const [showAddTask, setShowAddTask] = useState(false);
@@ -177,6 +218,23 @@ export default function SchedulePage() {
     setLoading(false);
   }, [selectedDate]);
 
+  const fetchRota = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Get 2 weeks around the selected date
+      const d = new Date(selectedDate);
+      const weekday = d.getDay();
+      const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+      const monday = new Date(d.getTime() + mondayOffset * 86400000);
+      const from = monday.toISOString().split("T")[0];
+      const to = new Date(monday.getTime() + 13 * 86400000).toISOString().split("T")[0];
+      const res = await fetch(`/api/schedule/rota?from=${from}&to=${to}&team=Transaction Operations`);
+      const json = await res.json();
+      if (json.success) setRotaData(json.data);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [selectedDate]);
+
   const fetchPto = useCallback(async () => {
     setLoading(true);
     try {
@@ -195,11 +253,12 @@ export default function SchedulePage() {
   }, [fetchEmployees]);
 
   useEffect(() => {
-    if (activeTab === "daily") fetchDailySummary();
+    if (activeTab === "rota") fetchRota();
+    else if (activeTab === "daily") fetchDailySummary();
     else if (activeTab === "oncall") fetchOnCall();
     else if (activeTab === "holidays") fetchHolidays();
     else if (activeTab === "pto") fetchPto();
-  }, [activeTab, selectedDate, fetchDailySummary, fetchOnCall, fetchHolidays, fetchPto]);
+  }, [activeTab, selectedDate, fetchRota, fetchDailySummary, fetchOnCall, fetchHolidays, fetchPto]);
 
   function changeDate(delta: number) {
     const d = new Date(selectedDate);
@@ -265,6 +324,7 @@ export default function SchedulePage() {
   }
 
   const tabs: Array<{ key: Tab; label: string; icon: typeof Calendar }> = [
+    { key: "rota", label: "Team Rota", icon: RotateCcw },
     { key: "daily", label: "Daily Tasks", icon: CheckCircle2 },
     { key: "oncall", label: "On-Call", icon: Clock },
     { key: "holidays", label: "Holidays", icon: Sun },
@@ -333,6 +393,8 @@ export default function SchedulePage() {
           <RefreshCw size={24} className="mx-auto mb-3 animate-spin" />
           Loading...
         </div>
+      ) : activeTab === "rota" ? (
+        <RotaView rotaData={rotaData} />
       ) : activeTab === "daily" ? (
         <DailyTasksView
           summary={dailySummary}
@@ -527,6 +589,177 @@ function DailyTasksView({
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Rota View ───
+
+function RotaView({ rotaData }: { rotaData: RotaData | null }) {
+  if (!rotaData || rotaData.subTeams.length === 0) {
+    return <div className="text-muted-foreground text-center py-8">No rota data available</div>;
+  }
+
+  const SHIFT_BADGES: Record<string, { label: string; color: string; icon: typeof Clock }> = {
+    standard: { label: "Standard", color: "bg-blue-500/10 text-blue-400", icon: Clock },
+    late: { label: "Late Shift", color: "bg-purple-500/10 text-purple-400", icon: Moon },
+    weekend: { label: "Weekend", color: "bg-amber-500/10 text-amber-400", icon: Calendar },
+  };
+
+  const LOCATION_COLORS: Record<string, string> = {
+    London: "text-blue-400",
+    "Hong Kong": "text-emerald-400",
+    Jersey: "text-amber-400",
+  };
+
+  function formatPeriod(start: string, end: string) {
+    const s = new Date(start);
+    const e = new Date(end);
+    return `${s.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — ${e.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+  }
+
+  function MemberBadge({ member }: { member: RotaMember }) {
+    const shiftCfg = SHIFT_BADGES[member.shiftType] || SHIFT_BADGES.standard;
+    const locColor = LOCATION_COLORS[member.location] || "text-muted-foreground";
+
+    return (
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border ${member.hasPto ? "opacity-50 bg-red-500/5" : "bg-card"}`}>
+        <Users size={14} className="text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">{member.employeeName}</span>
+            {member.hasPto && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">PTO</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+            <span className={`flex items-center gap-1 ${locColor}`}>
+              <MapPin size={10} />
+              {member.location}
+            </span>
+            {member.isWfh && (
+              <span className="flex items-center gap-1 text-purple-400">
+                <Home size={10} />
+                WFH
+              </span>
+            )}
+            {member.shiftType !== "standard" && (
+              <span className={`px-1.5 py-0.5 rounded ${shiftCfg.color}`}>
+                {shiftCfg.label}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* PTO warnings */}
+      {rotaData.pto.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
+          <h4 className="text-xs font-medium text-amber-400 mb-2 flex items-center gap-1">
+            <AlertTriangle size={12} />
+            PTO / Leave in this period
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {rotaData.pto.map((p, i) => (
+              <span key={i} className="text-xs px-2 py-1 bg-amber-500/10 text-amber-300 rounded">
+                {p.employeeName}: {new Date(p.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — {new Date(p.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sub-team cards */}
+      {rotaData.subTeams.map((st) => (
+        <div key={st.subTeam.id} className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground">{st.subTeam.name}</h3>
+            <p className="text-xs text-muted-foreground">{st.subTeam.description}</p>
+          </div>
+
+          {st.periods.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">No assignments for this period</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {st.periods.map((period, idx) => (
+                <div key={idx} className="px-4 py-3">
+                  {/* Period header */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {formatPeriod(period.startDate, period.endDate)}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-accent/50 text-accent-foreground rounded capitalize">
+                      {period.rotationCycle} rotation
+                    </span>
+                  </div>
+
+                  {/* Lead */}
+                  {period.lead && (
+                    <div className="mb-2">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Team Lead</p>
+                      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-primary/30 ${period.lead.hasPto ? "opacity-50 bg-red-500/5" : "bg-primary/5"}`}>
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <Users size={12} className="text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">{period.lead.employeeName}</span>
+                            {period.lead.hasPto && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">PTO</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className={`flex items-center gap-1 ${LOCATION_COLORS[period.lead.location] || ""}`}>
+                              <MapPin size={10} />
+                              {period.lead.location}
+                            </span>
+                            {period.lead.isWfh && (
+                              <span className="flex items-center gap-1 text-purple-400"><Home size={10} /> WFH</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Members */}
+                  {period.members.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Team Members</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {period.members.map((m) => (
+                          <MemberBadge key={m.id} member={m} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Holidays in range */}
+      {rotaData.holidays.length > 0 && (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+            <Sun size={12} className="text-amber-400" />
+            Holidays in this period
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {rotaData.holidays.map((h, i) => (
+              <span key={i} className="text-xs px-2 py-1 bg-amber-500/10 text-amber-300 rounded">
+                {h.name} — {new Date(h.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ({h.region})
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
