@@ -7,12 +7,26 @@ async function main() {
   console.log("Seeding database...");
 
   // Create employees (upsert to be idempotent)
+  // Transaction Operations has 3 sub-teams, each with a lead and juniors
+  // Locations: London (EMEA), Hong Kong (APAC), Jersey (EMEA)
   const employeeData = [
-    { name: "Alice Chen", email: "alice@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },
+    // Transaction Operations — Leads & Seniors
+    { name: "Alice Chen", email: "alice@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },       // Hong Kong
+    { name: "Carol Davies", email: "carol@ops.com", role: "Lead", team: "Transaction Operations", region: "EMEA" },        // London — overall team lead
+    { name: "Grace Thompson", email: "grace@ops.com", role: "Senior", team: "Transaction Operations", region: "EMEA" },     // London — sub-team lead
+    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },     // Hong Kong — sub-team lead
+    // Transaction Operations — Analysts (juniors who rotate)
+    { name: "Liam O'Brien", email: "liam@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },      // London — late shift / WFH
+    { name: "Maria Santos", email: "maria@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },      // London
+    { name: "Nikhil Patel", email: "nikhil@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },     // Jersey
+    { name: "Sophie Laurent", email: "sophie@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },   // Jersey
+    { name: "Tom Nakamura", email: "tom@ops.com", role: "Analyst", team: "Transaction Operations", region: "APAC" },        // Hong Kong
+    { name: "Yuki Tanaka", email: "yuki@ops.com", role: "Analyst", team: "Transaction Operations", region: "APAC" },        // Hong Kong
+    // Admin Operations
     { name: "Bob Martinez", email: "bob@ops.com", role: "Analyst", team: "Admin Operations", region: "Americas" },
-    { name: "Carol Davies", email: "carol@ops.com", role: "Lead", team: "Transaction Operations", region: "EMEA" },
-    { name: "David Park", email: "david@ops.com", role: "Analyst", team: "Data Operations", region: "APAC" },
     { name: "Eva Kowalski", email: "eva@ops.com", role: "Senior", team: "Admin Operations", region: "EMEA" },
+    // Data Operations
+    { name: "David Park", email: "david@ops.com", role: "Analyst", team: "Data Operations", region: "APAC" },
     { name: "Frank Osei", email: "frank@ops.com", role: "Analyst", team: "Data Operations", region: "EMEA" },
   ];
 
@@ -33,14 +47,25 @@ async function main() {
   const userPassword = await bcrypt.hash("user123", 10);
   const leadPassword = await bcrypt.hash("lead123", 10);
 
+  // Build employee lookup by email for stable references
+  const emp = Object.fromEntries(employees.map((e) => [e.email, e]));
+
   const userData = [
     { email: "manager@ops.com", name: "Ops Manager", role: "admin", password: defaultPassword, employeeId: null as string | null },
-    { email: "carol@ops.com", name: "Carol Davies", role: "lead", password: leadPassword, employeeId: employees[2].id },
-    { email: "alice@ops.com", name: "Alice Chen", role: "employee", password: userPassword, employeeId: employees[0].id },
-    { email: "bob@ops.com", name: "Bob Martinez", role: "employee", password: userPassword, employeeId: employees[1].id },
-    { email: "david@ops.com", name: "David Park", role: "employee", password: userPassword, employeeId: employees[3].id },
-    { email: "eva@ops.com", name: "Eva Kowalski", role: "employee", password: userPassword, employeeId: employees[4].id },
-    { email: "frank@ops.com", name: "Frank Osei", role: "employee", password: userPassword, employeeId: employees[5].id },
+    { email: "carol@ops.com", name: "Carol Davies", role: "lead", password: leadPassword, employeeId: emp["carol@ops.com"].id },
+    { email: "alice@ops.com", name: "Alice Chen", role: "employee", password: userPassword, employeeId: emp["alice@ops.com"].id },
+    { email: "bob@ops.com", name: "Bob Martinez", role: "employee", password: userPassword, employeeId: emp["bob@ops.com"].id },
+    { email: "david@ops.com", name: "David Park", role: "employee", password: userPassword, employeeId: emp["david@ops.com"].id },
+    { email: "eva@ops.com", name: "Eva Kowalski", role: "employee", password: userPassword, employeeId: emp["eva@ops.com"].id },
+    { email: "frank@ops.com", name: "Frank Osei", role: "employee", password: userPassword, employeeId: emp["frank@ops.com"].id },
+    { email: "grace@ops.com", name: "Grace Thompson", role: "employee", password: userPassword, employeeId: emp["grace@ops.com"].id },
+    { email: "kenji@ops.com", name: "Kenji Yamamoto", role: "employee", password: userPassword, employeeId: emp["kenji@ops.com"].id },
+    { email: "liam@ops.com", name: "Liam O'Brien", role: "employee", password: userPassword, employeeId: emp["liam@ops.com"].id },
+    { email: "maria@ops.com", name: "Maria Santos", role: "employee", password: userPassword, employeeId: emp["maria@ops.com"].id },
+    { email: "nikhil@ops.com", name: "Nikhil Patel", role: "employee", password: userPassword, employeeId: emp["nikhil@ops.com"].id },
+    { email: "sophie@ops.com", name: "Sophie Laurent", role: "employee", password: userPassword, employeeId: emp["sophie@ops.com"].id },
+    { email: "tom@ops.com", name: "Tom Nakamura", role: "employee", password: userPassword, employeeId: emp["tom@ops.com"].id },
+    { email: "yuki@ops.com", name: "Yuki Tanaka", role: "employee", password: userPassword, employeeId: emp["yuki@ops.com"].id },
   ];
 
   await Promise.all(
@@ -81,32 +106,33 @@ async function main() {
   const categories = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
   const configVersion = "1.0.0";
 
-  const scoreData: Record<string, Record<string, [number, number]>> = {
-    [employees[0].id]: { daily_tasks: [0.75, 0.82], projects: [0.65, 0.70], asset_actions: [0.80, 0.85], quality: [0.85, 0.80], knowledge: [0.70, 0.75] },
-    [employees[1].id]: { daily_tasks: [0.55, 0.65], projects: [0.30, 0.45], asset_actions: [0.60, 0.70], quality: [0.70, 0.75], knowledge: [0.40, 0.50] },
-    [employees[2].id]: { daily_tasks: [0.80, 0.78], projects: [0.90, 0.88], asset_actions: [0.70, 0.72], quality: [0.90, 0.92], knowledge: [0.85, 0.88] },
-    [employees[3].id]: { daily_tasks: [0.60, 0.55], projects: [0.20, 0.15], asset_actions: [0.65, 0.60], quality: [0.50, 0.35], knowledge: [0.35, 0.40] },
-    [employees[4].id]: { daily_tasks: [0.70, 0.72], projects: [0.80, 0.85], asset_actions: [0.75, 0.78], quality: [0.80, 0.82], knowledge: [0.65, 0.70] },
-    [employees[5].id]: { daily_tasks: [0.40, 0.52], projects: [0.25, 0.35], asset_actions: [0.45, 0.55], quality: [0.60, 0.65], knowledge: [0.30, 0.38] },
+  // Score data keyed by email for stability when employee array changes
+  const scoreDataByEmail: Record<string, Record<string, [number, number]>> = {
+    "alice@ops.com": { daily_tasks: [0.75, 0.82], projects: [0.65, 0.70], asset_actions: [0.80, 0.85], quality: [0.85, 0.80], knowledge: [0.70, 0.75] },
+    "bob@ops.com": { daily_tasks: [0.55, 0.65], projects: [0.30, 0.45], asset_actions: [0.60, 0.70], quality: [0.70, 0.75], knowledge: [0.40, 0.50] },
+    "carol@ops.com": { daily_tasks: [0.80, 0.78], projects: [0.90, 0.88], asset_actions: [0.70, 0.72], quality: [0.90, 0.92], knowledge: [0.85, 0.88] },
+    "david@ops.com": { daily_tasks: [0.60, 0.55], projects: [0.20, 0.15], asset_actions: [0.65, 0.60], quality: [0.50, 0.35], knowledge: [0.35, 0.40] },
+    "eva@ops.com": { daily_tasks: [0.70, 0.72], projects: [0.80, 0.85], asset_actions: [0.75, 0.78], quality: [0.80, 0.82], knowledge: [0.65, 0.70] },
+    "frank@ops.com": { daily_tasks: [0.40, 0.52], projects: [0.25, 0.35], asset_actions: [0.45, 0.55], quality: [0.60, 0.65], knowledge: [0.30, 0.38] },
   };
+  const scoreData: Record<string, Record<string, [number, number]>> = {};
+  for (const [email, scores] of Object.entries(scoreDataByEmail)) {
+    if (emp[email]) scoreData[emp[email].id] = scores;
+  }
 
-  for (const emp of employees) {
+  for (const e of employees) {
     for (const cat of categories) {
-      const [janRaw, febRaw] = scoreData[emp.id]?.[cat] ?? [0.5, 0.5];
+      const [janRaw, febRaw] = scoreData[e.id]?.[cat] ?? [0.5, 0.5];
 
       const evidenceType = cat === "daily_tasks" ? "jira" : cat === "projects" ? "confluence" : cat === "asset_actions" ? "asset_action" : cat === "quality" ? "positive" : "knowledge";
 
       // January score
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[0].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[0].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id,
-          periodId: periods[0].id,
-          category: cat,
-          rawIndex: janRaw,
-          score: 3 + janRaw * 5,
-          configVersion,
+          employeeId: e.id, periodId: periods[0].id, category: cat,
+          rawIndex: janRaw, score: 3 + janRaw * 5, configVersion,
           evidence: JSON.stringify([{ type: evidenceType, label: `Sample ${cat} evidence for Jan`, details: "Auto-generated seed data" }]),
           metadata: JSON.stringify({ period: "January 2026", auto_generated: true }),
         },
@@ -114,15 +140,11 @@ async function main() {
 
       // February score
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[1].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[1].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id,
-          periodId: periods[1].id,
-          category: cat,
-          rawIndex: febRaw,
-          score: 3 + febRaw * 5,
-          configVersion,
+          employeeId: e.id, periodId: periods[1].id, category: cat,
+          rawIndex: febRaw, score: 3 + febRaw * 5, configVersion,
           evidence: JSON.stringify([{ type: evidenceType, label: `Sample ${cat} evidence for Feb`, details: "Auto-generated seed data" }]),
           metadata: JSON.stringify({ period: "February 2026", auto_generated: true }),
         },
@@ -131,28 +153,28 @@ async function main() {
   }
 
   // Weekly scores (W08 = periods[2], W09 = periods[3]) — slight variation from monthly
-  for (const emp of employees) {
+  for (const e of employees) {
     for (const cat of categories) {
-      const [janRaw, febRaw] = scoreData[emp.id]?.[cat] ?? [0.5, 0.5];
+      const [janRaw, febRaw] = scoreData[e.id]?.[cat] ?? [0.5, 0.5];
       const w08Raw = Math.max(0, Math.min(1, janRaw + (Math.random() * 0.1 - 0.05)));
       const w09Raw = Math.max(0, Math.min(1, febRaw + (Math.random() * 0.1 - 0.05)));
       const evidenceType = cat === "daily_tasks" ? "jira" : cat === "projects" ? "confluence" : cat === "asset_actions" ? "asset_action" : cat === "quality" ? "positive" : "knowledge";
 
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[2].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[2].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id, periodId: periods[2].id, category: cat,
+          employeeId: e.id, periodId: periods[2].id, category: cat,
           rawIndex: Math.round(w08Raw * 100) / 100, score: Math.round((3 + w08Raw * 5) * 10) / 10,
           configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} W08`, details: "Seed" }]),
           metadata: JSON.stringify({ period: "2026-W08", auto_generated: true }),
         },
       });
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[3].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[3].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id, periodId: periods[3].id, category: cat,
+          employeeId: e.id, periodId: periods[3].id, category: cat,
           rawIndex: Math.round(w09Raw * 100) / 100, score: Math.round((3 + w09Raw * 5) * 10) / 10,
           configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} W09`, details: "Seed" }]),
           metadata: JSON.stringify({ period: "2026-W09", auto_generated: true }),
@@ -162,28 +184,28 @@ async function main() {
   }
 
   // Quarterly scores (Q4-2025 = periods[4], Q1-2026 = periods[5])
-  for (const emp of employees) {
+  for (const e of employees) {
     for (const cat of categories) {
-      const [janRaw, febRaw] = scoreData[emp.id]?.[cat] ?? [0.5, 0.5];
+      const [janRaw, febRaw] = scoreData[e.id]?.[cat] ?? [0.5, 0.5];
       const q4Raw = Math.max(0, Math.min(1, janRaw - 0.05));
       const q1Raw = Math.max(0, Math.min(1, (janRaw + febRaw) / 2));
       const evidenceType = cat === "daily_tasks" ? "jira" : cat === "projects" ? "confluence" : cat === "asset_actions" ? "asset_action" : cat === "quality" ? "positive" : "knowledge";
 
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[4].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[4].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id, periodId: periods[4].id, category: cat,
+          employeeId: e.id, periodId: periods[4].id, category: cat,
           rawIndex: Math.round(q4Raw * 100) / 100, score: Math.round((3 + q4Raw * 5) * 10) / 10,
           configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} Q4-2025`, details: "Seed" }]),
           metadata: JSON.stringify({ period: "2025-Q4", auto_generated: true }),
         },
       });
       await prisma.categoryScore.upsert({
-        where: { employeeId_periodId_category: { employeeId: emp.id, periodId: periods[5].id, category: cat } },
+        where: { employeeId_periodId_category: { employeeId: e.id, periodId: periods[5].id, category: cat } },
         update: {},
         create: {
-          employeeId: emp.id, periodId: periods[5].id, category: cat,
+          employeeId: e.id, periodId: periods[5].id, category: cat,
           rawIndex: Math.round(q1Raw * 100) / 100, score: Math.round((3 + q1Raw * 5) * 10) / 10,
           configVersion, evidence: JSON.stringify([{ type: evidenceType, label: `${cat} Q1-2026`, details: "Seed" }]),
           metadata: JSON.stringify({ period: "2026-Q1", auto_generated: true }),
@@ -196,22 +218,22 @@ async function main() {
 
   // Knowledge scores
   const knowledgeData = [
-    { emp: employees[0], op: 7, asset: 8, compliance: 7, incident: 6 },
-    { emp: employees[1], op: 5, asset: 4, compliance: 5, incident: 4 },
-    { emp: employees[2], op: 9, asset: 8, compliance: 9, incident: 8 },
-    { emp: employees[3], op: 4, asset: 3, compliance: 4, incident: 3 },
-    { emp: employees[4], op: 7, asset: 7, compliance: 6, incident: 7 },
-    { emp: employees[5], op: 3, asset: 3, compliance: 4, incident: 3 },
+    { employee: emp["alice@ops.com"], op: 7, asset: 8, compliance: 7, incident: 6 },
+    { employee: emp["bob@ops.com"], op: 5, asset: 4, compliance: 5, incident: 4 },
+    { employee: emp["carol@ops.com"], op: 9, asset: 8, compliance: 9, incident: 8 },
+    { employee: emp["david@ops.com"], op: 4, asset: 3, compliance: 4, incident: 3 },
+    { employee: emp["eva@ops.com"], op: 7, asset: 7, compliance: 6, incident: 7 },
+    { employee: emp["frank@ops.com"], op: 3, asset: 3, compliance: 4, incident: 3 },
   ];
 
   for (const kd of knowledgeData) {
     const avg = (kd.op + kd.asset + kd.compliance + kd.incident) / 4;
     const mapped = 3 + ((avg - 1) / 9) * 5;
     await prisma.knowledgeScore.upsert({
-      where: { employeeId_periodId: { employeeId: kd.emp.id, periodId: periods[1].id } },
+      where: { employeeId_periodId: { employeeId: kd.employee.id, periodId: periods[1].id } },
       update: {},
       create: {
-        employeeId: kd.emp.id,
+        employeeId: kd.employee.id,
         periodId: periods[1].id,
         operationalUnderstanding: kd.op,
         assetKnowledge: kd.asset,
@@ -237,14 +259,14 @@ async function main() {
         source: "email", sourceThreadRef: "gmail-thread-001",
         participants: JSON.stringify(["client-a@example.com", "ops@company.com"]),
         clientOrPartnerTag: "Client Alpha", subject: "ETH Staking withdrawal request — urgent",
-        priority: "P1", status: "InProgress", ownerUserId: employees[0].id,
+        priority: "P1", status: "InProgress", ownerUserId: emp["alice@ops.com"].id,
         queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T09:30:00Z"), lastActionAt: new Date("2026-02-28T09:45:00Z"),
       },
       {
         source: "slack", sourceThreadRef: "C01234-1709100000.000001",
         participants: JSON.stringify(["@client-b-ops", "@settlements-team"]),
         clientOrPartnerTag: "Client Beta", subject: "Settlement reconciliation discrepancy Q1",
-        priority: "P2", status: "WaitingExternal", ownerUserId: employees[4].id,
+        priority: "P2", status: "WaitingExternal", ownerUserId: emp["eva@ops.com"].id,
         queue: "Admin Operations", lastMessageAt: new Date("2026-02-27T16:00:00Z"), lastActionAt: new Date("2026-02-27T16:30:00Z"),
       },
       {
@@ -258,21 +280,21 @@ async function main() {
         source: "slack", sourceThreadRef: "C05678-1709200000.000002",
         participants: JSON.stringify(["@client-c-team"]),
         clientOrPartnerTag: "Client Gamma", subject: "Transaction stuck — Fireblocks approval pending",
-        priority: "P0", status: "Assigned", ownerUserId: employees[3].id,
+        priority: "P0", status: "Assigned", ownerUserId: emp["david@ops.com"].id,
         queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T10:15:00Z"), ttfaDeadline: new Date("2026-02-28T10:25:00Z"),
       },
       {
         source: "email", sourceThreadRef: "gmail-thread-005",
         participants: JSON.stringify(["compliance@regulator.gov"]),
         clientOrPartnerTag: "Regulator", subject: "Travel Rule data request — March batch",
-        priority: "P1", status: "Assigned", ownerUserId: employees[2].id,
+        priority: "P1", status: "Assigned", ownerUserId: emp["carol@ops.com"].id,
         queue: "Transaction Operations", lastMessageAt: new Date("2026-02-28T07:00:00Z"), lastActionAt: new Date("2026-02-28T08:30:00Z"),
       },
       {
         source: "email", sourceThreadRef: "gmail-thread-006",
         participants: JSON.stringify(["client-d@example.com"]),
         clientOrPartnerTag: "Client Delta", subject: "Monthly reporting — asset allocation summary",
-        priority: "P3", status: "Done", ownerUserId: employees[1].id,
+        priority: "P3", status: "Done", ownerUserId: emp["bob@ops.com"].id,
         queue: "Transaction Operations", lastMessageAt: new Date("2026-02-26T14:00:00Z"), lastActionAt: new Date("2026-02-27T10:00:00Z"),
       },
     ];
@@ -316,19 +338,19 @@ async function main() {
     await prisma.employeeNote.createMany({
       data: [
         {
-          employeeId: employees[3].id, periodLabel: "2026-02",
+          employeeId: emp["david@ops.com"].id, periodLabel: "2026-02",
           content: "Quality issues need attention — 3 mistakes in settlements this month. Scheduling coaching session.",
-          noteType: "manager", authorId: employees[2].id,
+          noteType: "manager", authorId: emp["carol@ops.com"].id,
         },
         {
-          employeeId: employees[3].id, periodLabel: "2026-02",
+          employeeId: emp["david@ops.com"].id, periodLabel: "2026-02",
           content: "Was on-call week of Feb 16. Multiple incident responses impacted normal throughput.",
-          noteType: "context", authorId: employees[3].id,
+          noteType: "context", authorId: emp["david@ops.com"].id,
         },
         {
-          employeeId: employees[5].id, periodLabel: "2026-02",
+          employeeId: emp["frank@ops.com"].id, periodLabel: "2026-02",
           content: "Showing good improvement in second month. Asset knowledge growing. Assigned mentor.",
-          noteType: "manager", authorId: employees[2].id,
+          noteType: "manager", authorId: emp["carol@ops.com"].id,
         },
       ],
     });
@@ -349,7 +371,7 @@ async function main() {
           status: "active", destination: "in_app",
         },
         {
-          employeeId: employees[3].id, type: "mistakes_rising", priority: "P2",
+          employeeId: emp["david@ops.com"].id, type: "mistakes_rising", priority: "P2",
           message: "David Park — quality score dropped from 5.5 to 4.8 this month",
           status: "active", destination: "in_app",
         },
@@ -412,10 +434,11 @@ async function main() {
   if (existingPto === 0) {
     await prisma.ptoRecord.createMany({
       data: [
-        { employeeId: employees[0].id, startDate: new Date("2026-03-09"), endDate: new Date("2026-03-13"), type: "annual_leave", status: "approved", notes: "Spring break" },
-        { employeeId: employees[1].id, startDate: new Date("2026-03-16"), endDate: new Date("2026-03-17"), type: "sick", status: "approved" },
-        { employeeId: employees[3].id, startDate: new Date("2026-03-05"), endDate: new Date("2026-03-06"), type: "wfh", status: "approved", notes: "Remote" },
-        { employeeId: employees[4].id, startDate: new Date("2026-03-20"), endDate: new Date("2026-03-27"), type: "annual_leave", status: "approved", notes: "Family holiday" },
+        { employeeId: emp["alice@ops.com"].id, startDate: new Date("2026-03-09"), endDate: new Date("2026-03-13"), type: "annual_leave", status: "approved", notes: "Spring break" },
+        { employeeId: emp["bob@ops.com"].id, startDate: new Date("2026-03-16"), endDate: new Date("2026-03-17"), type: "sick", status: "approved" },
+        { employeeId: emp["liam@ops.com"].id, startDate: new Date("2026-03-05"), endDate: new Date("2026-03-06"), type: "wfh", status: "approved", notes: "WFH — late shift" },
+        { employeeId: emp["eva@ops.com"].id, startDate: new Date("2026-03-20"), endDate: new Date("2026-03-27"), type: "annual_leave", status: "approved", notes: "Family holiday" },
+        { employeeId: emp["nikhil@ops.com"].id, startDate: new Date("2026-03-10"), endDate: new Date("2026-03-11"), type: "annual_leave", status: "approved", notes: "Personal" },
       ],
     });
     console.log("Created PTO records");
@@ -426,9 +449,9 @@ async function main() {
   if (existingOnCall === 0) {
     // Generate on-call for Mon-Fri of current week (March 2-6, 2026)
     const onCallRotation = [
-      { team: "Transaction Operations", employees: [employees[0], employees[2]] },
-      { team: "Admin Operations", employees: [employees[1], employees[4]] },
-      { team: "Data Operations", employees: [employees[3], employees[5]] },
+      { team: "Transaction Operations", employees: [emp["alice@ops.com"], emp["carol@ops.com"], emp["grace@ops.com"]] },
+      { team: "Admin Operations", employees: [emp["bob@ops.com"], emp["eva@ops.com"]] },
+      { team: "Data Operations", employees: [emp["david@ops.com"], emp["frank@ops.com"]] },
     ];
 
     const weekStart = new Date("2026-03-02");
@@ -456,21 +479,24 @@ async function main() {
   if (existingTasks === 0) {
     const today = new Date("2026-03-03");
     const taskData = [
-      // Transaction Operations tasks
-      { date: today, team: "Transaction Operations", title: "Process ETH staking withdrawals batch", priority: "high", category: "operational", assigneeId: employees[0].id, createdById: employees[2].id },
-      { date: today, team: "Transaction Operations", title: "Review pending Fireblocks approvals", priority: "urgent", category: "operational", assigneeId: employees[2].id, createdById: employees[2].id },
-      { date: today, team: "Transaction Operations", title: "Client Alpha — confirm withdrawal timeline", priority: "normal", category: "client", assigneeId: employees[0].id, createdById: employees[2].id },
-      { date: today, team: "Transaction Operations", title: "Update custody onboarding checklist", priority: "low", category: "administrative", createdById: employees[2].id },
+      // Transaction Operations tasks — allocated across sub-teams
+      { date: today, team: "Transaction Operations", title: "Process ETH staking withdrawals batch", priority: "high", category: "operational", assigneeId: emp["alice@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "Review pending Fireblocks approvals", priority: "urgent", category: "operational", assigneeId: emp["grace@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "Client Alpha — confirm withdrawal timeline", priority: "normal", category: "client", assigneeId: emp["maria@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "Travel rule response — Partner X", priority: "high", category: "compliance", assigneeId: emp["kenji@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "New custody onboarding documentation", priority: "normal", category: "client", assigneeId: emp["sophie@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "Late shift handover — pending items review", priority: "normal", category: "operational", assigneeId: emp["liam@ops.com"].id, createdById: emp["carol@ops.com"].id },
+      { date: today, team: "Transaction Operations", title: "Update custody onboarding checklist", priority: "low", category: "administrative", createdById: emp["carol@ops.com"].id },
 
       // Admin Operations tasks
-      { date: today, team: "Admin Operations", title: "Settlement reconciliation Q1 review", priority: "high", category: "compliance", assigneeId: employees[4].id, createdById: employees[4].id },
-      { date: today, team: "Admin Operations", title: "Client Beta — resolve discrepancy report", priority: "normal", category: "client", assigneeId: employees[1].id, createdById: employees[4].id },
-      { date: today, team: "Admin Operations", title: "Monthly reporting — asset allocation summary", priority: "normal", category: "administrative", assigneeId: employees[1].id, createdById: employees[4].id },
+      { date: today, team: "Admin Operations", title: "Settlement reconciliation Q1 review", priority: "high", category: "compliance", assigneeId: emp["eva@ops.com"].id, createdById: emp["eva@ops.com"].id },
+      { date: today, team: "Admin Operations", title: "Client Beta — resolve discrepancy report", priority: "normal", category: "client", assigneeId: emp["bob@ops.com"].id, createdById: emp["eva@ops.com"].id },
+      { date: today, team: "Admin Operations", title: "Monthly reporting — asset allocation summary", priority: "normal", category: "administrative", assigneeId: emp["bob@ops.com"].id, createdById: emp["eva@ops.com"].id },
 
       // Data Operations tasks
-      { date: today, team: "Data Operations", title: "Notabene travel rule data reconciliation", priority: "high", category: "compliance", assigneeId: employees[3].id, createdById: employees[3].id },
-      { date: today, team: "Data Operations", title: "Update VASP contact directory", priority: "normal", category: "operational", assigneeId: employees[5].id, createdById: employees[3].id },
-      { date: today, team: "Data Operations", title: "Staking rewards calculation audit", priority: "normal", category: "operational", createdById: employees[3].id },
+      { date: today, team: "Data Operations", title: "Notabene travel rule data reconciliation", priority: "high", category: "compliance", assigneeId: emp["david@ops.com"].id, createdById: emp["david@ops.com"].id },
+      { date: today, team: "Data Operations", title: "Update VASP contact directory", priority: "normal", category: "operational", assigneeId: emp["frank@ops.com"].id, createdById: emp["david@ops.com"].id },
+      { date: today, team: "Data Operations", title: "Staking rewards calculation audit", priority: "normal", category: "operational", createdById: emp["david@ops.com"].id },
     ];
 
     for (const t of taskData) {
@@ -488,7 +514,7 @@ async function main() {
         name: "Custody Onboarding Automation",
         description: "Automate the custody onboarding workflow to reduce manual steps and speed up client activation. Includes document collection, KYC integration, and wallet provisioning.",
         team: "Transaction Operations",
-        leadId: employees[2].id,
+        leadId: emp["carol@ops.com"].id,
         status: "active",
         priority: "high",
         startDate: new Date("2026-01-15"),
@@ -500,7 +526,7 @@ async function main() {
         name: "Travel Rule Compliance Enhancement",
         description: "Improve travel rule compliance workflow with Notabene auto-matching, bulk case resolution, and VASP directory enrichment.",
         team: "Data Operations",
-        leadId: employees[3].id,
+        leadId: emp["david@ops.com"].id,
         status: "active",
         priority: "critical",
         startDate: new Date("2026-02-01"),
@@ -512,7 +538,7 @@ async function main() {
         name: "Settlement Process Optimization",
         description: "Reduce settlement reconciliation time from 4h to 1h through automated matching and exception-based review.",
         team: "Admin Operations",
-        leadId: employees[4].id,
+        leadId: emp["eva@ops.com"].id,
         status: "active",
         priority: "medium",
         startDate: new Date("2026-02-10"),
@@ -524,7 +550,7 @@ async function main() {
         name: "Client Reporting Dashboard",
         description: "Build a client-facing reporting dashboard showing portfolio, transaction history, and staking rewards.",
         team: "Transaction Operations",
-        leadId: employees[2].id,
+        leadId: emp["carol@ops.com"].id,
         status: "planned",
         priority: "medium",
         startDate: new Date("2026-04-01"),
@@ -536,7 +562,7 @@ async function main() {
         name: "HiBob Integration for PTO Sync",
         description: "Integrate with HiBob API to automatically sync employee PTO records into the on-call scheduling system.",
         team: "Data Operations",
-        leadId: employees[3].id,
+        leadId: emp["david@ops.com"].id,
         status: "planned",
         priority: "low",
         startDate: null,
@@ -548,7 +574,7 @@ async function main() {
         name: "SLA Monitoring Improvements",
         description: "Enhance SLA monitoring with real-time Slack alerts, escalation chains, and historical SLA compliance reports.",
         team: "Admin Operations",
-        leadId: employees[4].id,
+        leadId: emp["eva@ops.com"].id,
         status: "on_hold",
         priority: "medium",
         startDate: new Date("2026-01-20"),
@@ -598,6 +624,120 @@ async function main() {
     }
 
     console.log("Created projects with members and updates");
+  }
+
+  // ─── Seed Sub-Teams & Rota Assignments ───
+
+  const existingSubTeams = await prisma.subTeam.count();
+  if (existingSubTeams === 0) {
+    // 3 sub-teams within Transaction Operations
+    const subTeams = await Promise.all([
+      prisma.subTeam.create({
+        data: {
+          name: "Custody & Onboarding",
+          parentTeam: "Transaction Operations",
+          description: "Client custody onboarding, KYC documentation, wallet provisioning",
+          sortOrder: 1,
+        },
+      }),
+      prisma.subTeam.create({
+        data: {
+          name: "Transaction Processing",
+          parentTeam: "Transaction Operations",
+          description: "Staking, withdrawals, Fireblocks approvals, settlement execution",
+          sortOrder: 2,
+        },
+      }),
+      prisma.subTeam.create({
+        data: {
+          name: "Compliance & Travel Rule",
+          parentTeam: "Transaction Operations",
+          description: "Travel rule compliance, Notabene matching, regulatory reporting",
+          sortOrder: 3,
+        },
+      }),
+    ]);
+
+    console.log("Created sub-teams");
+
+    // Current rotation — Week of March 2-6, 2026
+    // Leads rotate weekly/monthly; juniors rotate under them
+    const currentWeekStart = new Date("2026-03-02");
+    const currentWeekEnd = new Date("2026-03-06");
+    const nextWeekStart = new Date("2026-03-09");
+    const nextWeekEnd = new Date("2026-03-13");
+
+    // Week 1 rota: Carol leads Custody, Grace leads Txn Processing, Kenji leads Compliance
+    const week1Assignments = [
+      // Sub-team 1: Custody & Onboarding — Lead: Carol, Members: Maria, Nikhil
+      { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[0].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[0].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+
+      // Sub-team 2: Transaction Processing — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
+      { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[1].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
+
+      // Sub-team 3: Compliance & Travel Rule — Lead: Kenji, Members: Sophie, Yuki
+      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[2].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+      { subTeamId: subTeams[2].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+    ];
+
+    // Week 2 rota: juniors rotate — same leads, different member assignments
+    const week2Assignments = [
+      // Sub-team 1: Custody — Lead: Carol, Members: Sophie, Tom (rotated in)
+      { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[0].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+      { subTeamId: subTeams[0].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+
+      // Sub-team 2: Txn Processing — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
+      { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[1].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+      { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
+
+      // Sub-team 3: Compliance — Lead: Kenji, Members: Maria, Alice
+      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[2].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
+      { subTeamId: subTeams[2].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+    ];
+
+    // Weekend shifts — APAC and Jersey share
+    const sat = new Date("2026-03-07");
+    const sun = new Date("2026-03-08");
+    const weekendAssignments = [
+      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: sat, endDate: sat, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Hong Kong" },
+      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: sun, endDate: sun, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Jersey" },
+    ];
+
+    for (const a of [...week1Assignments, ...week2Assignments, ...weekendAssignments]) {
+      await prisma.rotaAssignment.upsert({
+        where: {
+          subTeamId_employeeId_startDate: {
+            subTeamId: a.subTeamId,
+            employeeId: a.employeeId,
+            startDate: a.startDate,
+          },
+        },
+        update: {},
+        create: {
+          subTeamId: a.subTeamId,
+          employeeId: a.employeeId,
+          role: a.role,
+          startDate: a.startDate,
+          endDate: a.endDate,
+          rotationCycle: a.rotationCycle,
+          shiftType: a.shiftType,
+          isWfh: "isWfh" in a ? (a as Record<string, unknown>).isWfh === true : false,
+          location: a.location,
+        },
+      });
+    }
+
+    console.log("Created sub-team rota assignments");
   }
 
   console.log("Seed complete!");
