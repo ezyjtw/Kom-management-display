@@ -17,6 +17,9 @@ import {
   MessageSquare,
   FileText,
   Activity,
+  Zap,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -54,6 +57,7 @@ const STATUS_LABELS: Record<string, string> = {
   Open: "Open",
   Investigating: "Investigating",
   PendingResponse: "Pending Response",
+  AwaitingApproval: "Awaiting API Approval",
   Resolved: "Resolved",
 };
 
@@ -61,6 +65,7 @@ const STATUS_COLORS: Record<string, string> = {
   Open: "bg-red-500/10 text-red-400",
   Investigating: "bg-blue-500/10 text-blue-400",
   PendingResponse: "bg-amber-500/10 text-amber-400",
+  AwaitingApproval: "bg-purple-500/10 text-purple-400",
   Resolved: "bg-emerald-500/10 text-emerald-400",
 };
 
@@ -102,6 +107,24 @@ export default function CaseDetailPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [noteContent, setNoteContent] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // API approval state
+  const [showApproveApi, setShowApproveApi] = useState(false);
+  const [requestId, setRequestId] = useState("");
+  const [submittingApproval, setSubmittingApproval] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [approvalRequestId, setApprovalRequestId] = useState(""); // stored after submit
+
+  // Recheck Notabene state
+  const [recheckLoading, setRecheckLoading] = useState(false);
+  const [recheckResult, setRecheckResult] = useState<{
+    previousMatchStatus: string;
+    newMatchStatus: string;
+    improved: boolean;
+    canAutoResolve: boolean;
+    originatorName: string | null;
+    beneficiaryName: string | null;
+  } | null>(null);
 
   function fetchActivity() {
     fetch(`/api/travel-rule/cases/${params.id}/activity`)
@@ -222,6 +245,76 @@ export default function CaseDetailPage() {
     }
   }
 
+  async function handleApproveApi() {
+    if (!requestId.trim()) return;
+    setSubmittingApproval(true);
+    try {
+      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setApprovalRequestId(requestId);
+        setShowApproveApi(false);
+        setRequestId("");
+        const fresh = await fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
+        if (fresh.success) setCaseData(fresh.data);
+        fetchActivity();
+      }
+    } catch (err) {
+      console.error("API approval failed:", err);
+    } finally {
+      setSubmittingApproval(false);
+    }
+  }
+
+  async function handleCheckApprovalStatus() {
+    setCheckingStatus(true);
+    try {
+      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check_status", requestId: approvalRequestId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        const fresh = await fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
+        if (fresh.success) setCaseData(fresh.data);
+        fetchActivity();
+      }
+    } catch (err) {
+      console.error("Status check failed:", err);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }
+
+  async function handleRecheckNotabene() {
+    setRecheckLoading(true);
+    setRecheckResult(null);
+    try {
+      const res = await fetch(`/api/travel-rule/cases/${params.id}/recheck`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRecheckResult(json.data);
+        // Refresh case data if status changed
+        const fresh = await fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
+        if (fresh.success) setCaseData(fresh.data);
+        fetchActivity();
+      }
+    } catch (err) {
+      console.error("Notabene recheck failed:", err);
+    } finally {
+      setRecheckLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -273,24 +366,36 @@ export default function CaseDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Issue */}
+          {/* Compliance Issue / Match Status */}
           <div className="bg-card rounded-xl border border-border p-5">
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-red-400" />
-              Compliance Issue
+              {caseData.matchStatus === "matched" ? (
+                <><CheckCircle2 size={16} className="text-emerald-400" /> Compliance Status</>
+              ) : (
+                <><AlertTriangle size={16} className="text-red-400" /> Compliance Issue</>
+              )}
             </h3>
-            <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
-              <p className="text-sm font-semibold text-red-400">
-                {MATCH_LABELS[caseData.matchStatus] || caseData.matchStatus}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {caseData.matchStatus === "unmatched"
-                  ? "This transaction has no corresponding travel rule transfer in Notabene. Either request the information from the counterparty or send a travel rule message via email."
-                  : caseData.matchStatus === "missing_originator"
-                    ? "A Notabene transfer exists but the originator details are missing or incomplete. Contact the originating VASP to obtain the required information."
-                    : "A Notabene transfer exists but the beneficiary details are missing or incomplete. Contact the beneficiary VASP to obtain the required information."}
-              </p>
-            </div>
+            {caseData.matchStatus === "matched" ? (
+              <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                <p className="text-sm font-semibold text-emerald-400">Travel Rule Data Complete</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Both originator and beneficiary information are present in Notabene. This case can be resolved.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                <p className="text-sm font-semibold text-red-400">
+                  {MATCH_LABELS[caseData.matchStatus] || caseData.matchStatus}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {caseData.matchStatus === "unmatched"
+                    ? "This transaction has no corresponding travel rule transfer in Notabene. Either request the information from the counterparty or send a travel rule message via email."
+                    : caseData.matchStatus === "missing_originator"
+                      ? "A Notabene transfer exists but the originator details are missing or incomplete. Contact the originating VASP to obtain the required information."
+                      : "A Notabene transfer exists but the beneficiary details are missing or incomplete. Contact the beneficiary VASP to obtain the required information."}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Transaction details */}
@@ -407,6 +512,69 @@ export default function CaseDetailPage() {
             </div>
           )}
 
+          {/* Awaiting API Approval banner */}
+          {caseData.status === "AwaitingApproval" && (
+            <div className="bg-card rounded-xl border-2 border-purple-500/30 p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Loader2 size={16} className="text-purple-400 animate-spin" />
+                Awaiting API Approval
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                An API approval has been submitted for this transaction. The Komainu API is processing the request.
+              </p>
+              <button
+                onClick={handleCheckApprovalStatus}
+                disabled={checkingStatus}
+                className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1"
+              >
+                <RefreshCw size={12} className={checkingStatus ? "animate-spin" : ""} />
+                {checkingStatus ? "Checking..." : "Check Status"}
+              </button>
+            </div>
+          )}
+
+          {/* Notabene Recheck result */}
+          {recheckResult && (
+            <div className={`bg-card rounded-xl border p-5 ${recheckResult.canAutoResolve ? "border-emerald-500/30" : "border-border"}`}>
+              <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                <RefreshCw size={16} />
+                Notabene Recheck Result
+              </h3>
+              {recheckResult.improved ? (
+                <div className={`p-3 rounded-lg text-sm ${recheckResult.canAutoResolve ? "bg-emerald-500/5 border border-emerald-500/20" : "bg-blue-500/5 border border-blue-500/20"}`}>
+                  <p className={`font-medium ${recheckResult.canAutoResolve ? "text-emerald-400" : "text-blue-400"}`}>
+                    {recheckResult.canAutoResolve
+                      ? "Match found — travel rule data is now complete!"
+                      : `Status improved: ${recheckResult.previousMatchStatus.replace(/_/g, " ")} → ${recheckResult.newMatchStatus.replace(/_/g, " ")}`}
+                  </p>
+                  {recheckResult.originatorName && (
+                    <p className="text-xs text-muted-foreground mt-1">Originator: {recheckResult.originatorName}</p>
+                  )}
+                  {recheckResult.beneficiaryName && (
+                    <p className="text-xs text-muted-foreground mt-1">Beneficiary: {recheckResult.beneficiaryName}</p>
+                  )}
+                  {recheckResult.canAutoResolve && (
+                    <p className="text-xs text-emerald-400 mt-2">
+                      This case can now be resolved as &quot;Information Obtained&quot;.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 bg-muted/30 rounded-lg text-sm">
+                  <p className="text-muted-foreground">
+                    No change — match status remains &quot;{recheckResult.newMatchStatus.replace(/_/g, " ")}&quot;.
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={() => setRecheckResult(null)}
+                className="text-xs text-muted-foreground hover:text-foreground mt-2"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Resolution */}
           {caseData.status === "Resolved" && (
             <div className="bg-card rounded-xl border border-border p-5">
@@ -496,6 +664,61 @@ export default function CaseDetailPage() {
                 Resolution Actions
               </h3>
               <div className="space-y-2">
+                {/* Approve via API */}
+                {showApproveApi ? (
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <p className="text-xs font-medium text-foreground">Approve via Komainu API</p>
+                    <p className="text-xs text-muted-foreground">
+                      Enter the Komainu request ID to approve this transaction via API.
+                    </p>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">
+                        Request ID
+                      </label>
+                      <input
+                        value={requestId}
+                        onChange={(e) => setRequestId(e.target.value)}
+                        placeholder="req_..."
+                        className="w-full text-sm border border-border rounded px-2 py-1.5 font-mono"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleApproveApi}
+                        disabled={!requestId.trim() || submittingApproval}
+                        className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Zap size={12} />
+                        {submittingApproval ? "Submitting..." : "Submit Approval"}
+                      </button>
+                      <button
+                        onClick={() => setShowApproveApi(false)}
+                        className="text-xs px-3 py-1.5 border border-border rounded hover:bg-accent/50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : caseData.status !== "AwaitingApproval" ? (
+                  <button
+                    onClick={() => setShowApproveApi(true)}
+                    className="w-full text-xs px-3 py-2 border border-purple-500/30 text-purple-400 rounded-lg hover:bg-purple-500/10 flex items-center justify-center gap-1.5"
+                  >
+                    <Zap size={14} />
+                    Approve via API
+                  </button>
+                ) : null}
+
+                {/* Recheck Notabene */}
+                <button
+                  onClick={handleRecheckNotabene}
+                  disabled={recheckLoading}
+                  className="w-full text-xs px-3 py-2 border border-blue-500/30 text-blue-400 rounded-lg hover:bg-blue-500/10 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={recheckLoading ? "animate-spin" : ""} />
+                  {recheckLoading ? "Rechecking..." : "Recheck Notabene"}
+                </button>
+
                 {/* Send email */}
                 {showSendEmail ? (
                   <div className="p-3 bg-muted/50 rounded-lg space-y-2">
