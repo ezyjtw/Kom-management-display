@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Send,
   UserPlus,
+  Eye,
 } from "lucide-react";
 
 interface CaseData {
@@ -87,6 +88,11 @@ export default function CaseDetailPage() {
   const [resolutionType, setResolutionType] = useState("info_obtained");
   const [resolutionNote, setResolutionNote] = useState("");
 
+  // Email preview / approval state
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewSubject, setPreviewSubject] = useState("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
   useEffect(() => {
     if (params.id) {
       Promise.all([
@@ -122,7 +128,26 @@ export default function CaseDetailPage() {
     setAssignTo("");
   }
 
-  async function handleSendEmail() {
+  async function handlePreviewEmail() {
+    if (!emailTo) return;
+    setLoadingPreview(true);
+    const res = await fetch(`/api/travel-rule/cases/${params.id}/preview-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientEmail: emailTo,
+        recipientName: emailName,
+      }),
+    });
+    const json = await res.json();
+    setLoadingPreview(false);
+    if (json.success) {
+      setPreviewHtml(json.data.html);
+      setPreviewSubject(json.data.subject);
+    }
+  }
+
+  async function handleConfirmSendEmail() {
     if (!emailTo) return;
     setSending(true);
     const res = await fetch(`/api/travel-rule/cases/${params.id}`, {
@@ -137,10 +162,11 @@ export default function CaseDetailPage() {
     const json = await res.json();
     setSending(false);
     if (json.success) {
+      setPreviewHtml(null);
+      setShowSendEmail(false);
       const fresh = await fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
       if (fresh.success) setCaseData(fresh.data);
     }
-    setShowSendEmail(false);
   }
 
   async function handleResolve() {
@@ -274,6 +300,51 @@ export default function CaseDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Email preview — 4-eyes approval */}
+          {previewHtml && (
+            <div className="bg-card rounded-xl border-2 border-amber-500/40 p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+                <Eye size={16} className="text-amber-400" />
+                Email Preview — Review Before Sending
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                To: <span className="font-medium text-foreground">{emailTo}</span>
+                {emailName && <> ({emailName})</>}
+                {" "}&middot; Subject: <span className="font-medium text-foreground">{previewSubject}</span>
+              </p>
+              <div
+                className="border border-border rounded-lg bg-white p-4 max-h-[500px] overflow-y-auto text-black"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+              <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border">
+                <button
+                  onClick={handleConfirmSendEmail}
+                  disabled={sending}
+                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1.5 font-medium"
+                >
+                  <Send size={14} />
+                  {sending ? "Sending..." : "Approve & Send"}
+                </button>
+                <button
+                  onClick={() => setPreviewHtml(null)}
+                  className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent/50"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => { setPreviewHtml(null); setShowSendEmail(false); }}
+                  className="px-4 py-2 text-sm text-red-400 hover:text-red-300"
+                >
+                  Discard
+                </button>
+                <span className="ml-auto text-xs text-amber-400 flex items-center gap-1">
+                  <AlertTriangle size={12} />
+                  Requires human approval before sending
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Email sent */}
           {caseData.emailSentTo && (
@@ -436,15 +507,15 @@ export default function CaseDetailPage() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={handleSendEmail}
-                        disabled={!emailTo || sending}
+                        onClick={handlePreviewEmail}
+                        disabled={!emailTo || loadingPreview}
                         className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
                       >
                         <Send size={12} />
-                        {sending ? "Sending..." : "Send"}
+                        {loadingPreview ? "Loading..." : "Preview Email"}
                       </button>
                       <button
-                        onClick={() => setShowSendEmail(false)}
+                        onClick={() => { setShowSendEmail(false); setPreviewHtml(null); }}
                         className="text-xs px-3 py-1.5 border border-border rounded hover:bg-accent/50"
                       >
                         Cancel
