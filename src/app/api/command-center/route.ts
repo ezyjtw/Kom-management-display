@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activeProjects] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -48,6 +48,25 @@ export async function GET() {
         include: { user: { select: { name: true } } },
         orderBy: { createdAt: "desc" },
         take: 15,
+      }), []),
+
+      // Today's daily tasks
+      safeQuery(() => {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(start.getTime() + 86400000);
+        return prisma.dailyTask.findMany({
+          where: { date: { gte: start, lt: end } },
+          select: { id: true, status: true, team: true, priority: true },
+        });
+      }, []),
+
+      // Active projects
+      safeQuery(() => prisma.project.findMany({
+        where: { status: { in: ["active", "on_hold"] } },
+        select: { id: true, name: true, status: true, priority: true, progress: true, targetDate: true, team: true },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
       }), []),
     ]);
 
@@ -121,6 +140,27 @@ export async function GET() {
           details: a.details,
           createdAt: a.createdAt,
         })),
+        dailyTasks: {
+          total: todaysTasks.length,
+          completed: todaysTasks.filter((t) => t.status === "completed").length,
+          pending: todaysTasks.filter((t) => t.status === "pending").length,
+          inProgress: todaysTasks.filter((t) => t.status === "in_progress").length,
+          urgent: todaysTasks.filter((t) => t.priority === "urgent" || t.priority === "high").length,
+        },
+        projects: {
+          activeCount: activeProjects.filter((p) => p.status === "active").length,
+          onHoldCount: activeProjects.filter((p) => p.status === "on_hold").length,
+          overdueCount: activeProjects.filter((p) => p.targetDate && new Date(p.targetDate) < new Date() && p.status === "active").length,
+          items: activeProjects.map((p) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status,
+            priority: p.priority,
+            progress: p.progress,
+            targetDate: p.targetDate,
+            team: p.team,
+          })),
+        },
       },
     });
   } catch (error) {

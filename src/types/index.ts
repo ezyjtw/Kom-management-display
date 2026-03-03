@@ -290,6 +290,112 @@ export interface TravelRuleOverview {
   configured: { komainu: boolean; notabene: boolean };
 }
 
+// ─── Schedule & On-Call Types ───
+
+export type ShiftType = "primary" | "backup";
+export type PtoType = "annual_leave" | "sick" | "wfh" | "other";
+export type PtoStatus = "pending" | "approved" | "rejected";
+export type TaskPriority = "low" | "normal" | "high" | "urgent";
+export type TaskStatus = "pending" | "in_progress" | "completed" | "skipped";
+export type TaskCategory = "operational" | "compliance" | "client" | "administrative";
+
+export interface OnCallEntry {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  team: string;
+  shiftType: ShiftType;
+}
+
+export interface PublicHolidayEntry {
+  id: string;
+  date: string;
+  name: string;
+  region: string;
+}
+
+export interface PtoEntry {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  startDate: string;
+  endDate: string;
+  type: PtoType;
+  status: PtoStatus;
+  notes: string;
+}
+
+export interface DailyTaskEntry {
+  id: string;
+  date: string;
+  team: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  category: TaskCategory;
+  completedAt: string | null;
+  createdById: string;
+  createdByName: string;
+}
+
+export interface DailyTaskSummary {
+  team: string;
+  teamLead: string;
+  totalTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  inProgressTasks: number;
+  tasks: DailyTaskEntry[];
+}
+
+// ─── Project Types ───
+
+export type ProjectStatus = "planned" | "active" | "on_hold" | "completed" | "cancelled";
+export type ProjectPriority = "low" | "medium" | "high" | "critical";
+export type UpdateType = "progress" | "blocker" | "milestone" | "note";
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string;
+  team: string;
+  leadId: string;
+  leadName: string;
+  status: ProjectStatus;
+  priority: ProjectPriority;
+  startDate: string | null;
+  targetDate: string | null;
+  progress: number;
+  tags: string[];
+  memberCount: number;
+  latestUpdate: string | null;
+  latestUpdateAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  members: Array<{
+    id: string;
+    employeeId: string;
+    employeeName: string;
+    role: string;
+  }>;
+  updates: Array<{
+    id: string;
+    authorId: string;
+    authorName: string;
+    content: string;
+    type: UpdateType;
+    progress: number | null;
+    createdAt: string;
+  }>;
+}
+
 // ─── API Response Types ───
 
 export interface ApiResponse<T> {

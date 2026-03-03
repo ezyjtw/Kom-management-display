@@ -13,6 +13,8 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
+  CalendarClock,
+  FolderKanban,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -68,6 +70,27 @@ interface CommandCenterData {
     details: string;
     createdAt: string;
   }>;
+  dailyTasks: {
+    total: number;
+    completed: number;
+    pending: number;
+    inProgress: number;
+    urgent: number;
+  };
+  projects: {
+    activeCount: number;
+    onHoldCount: number;
+    overdueCount: number;
+    items: Array<{
+      id: string;
+      name: string;
+      status: string;
+      priority: string;
+      progress: number;
+      targetDate: string | null;
+      team: string;
+    }>;
+  };
 }
 
 const AGING_COLORS = {
@@ -95,6 +118,11 @@ const ACTION_LABELS: Record<string, string> = {
   manual_score: "Entered score",
   alert_acknowledge: "Acknowledged alert",
   alert_resolve: "Resolved alert",
+  on_call_assigned: "Assigned on-call",
+  pto_created: "Added PTO record",
+  daily_task_created: "Created daily task",
+  project_created: "Created project",
+  project_update_added: "Updated project",
 };
 
 export default function CommandCenterPage() {
@@ -174,7 +202,7 @@ export default function CommandCenterPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Link href="/travel-rule" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
             <ShieldAlert size={14} />
@@ -215,6 +243,39 @@ export default function CommandCenterPage() {
             {data.alerts.activeCount}
           </p>
           <p className="text-xs text-muted-foreground mt-1">unacknowledged</p>
+        </Link>
+
+        <Link href="/schedule" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <CalendarClock size={14} />
+            Today&apos;s Tasks
+          </div>
+          <p className="text-2xl font-bold text-foreground">
+            {data.dailyTasks.completed}/{data.dailyTasks.total}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.dailyTasks.inProgress > 0 && <span className="text-blue-400">{data.dailyTasks.inProgress} in progress</span>}
+            {data.dailyTasks.urgent > 0 && <span className="text-red-400 ml-2">{data.dailyTasks.urgent} urgent</span>}
+            {data.dailyTasks.total === 0 && "no tasks allocated"}
+          </p>
+        </Link>
+
+        <Link href="/projects" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <FolderKanban size={14} />
+            Active Projects
+          </div>
+          <p className="text-2xl font-bold text-foreground">{data.projects.activeCount}</p>
+          {data.projects.overdueCount > 0 && (
+            <p className="text-xs text-red-400 font-medium mt-1">
+              {data.projects.overdueCount} overdue
+            </p>
+          )}
+          {data.projects.onHoldCount > 0 && (
+            <p className="text-xs text-amber-400 mt-0.5">
+              {data.projects.onHoldCount} on hold
+            </p>
+          )}
         </Link>
 
         <Link href="/comms?view=unassigned" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
@@ -333,6 +394,48 @@ export default function CommandCenterPage() {
             </div>
           )}
           <Link href="/admin/alerts" className="flex items-center gap-1 text-xs text-primary hover:underline mt-3">
+            View all <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        {/* Active Projects */}
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <FolderKanban size={16} className="text-primary" />
+            Projects ({data.projects.activeCount} active)
+          </h3>
+          {data.projects.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No active projects.</p>
+          ) : (
+            <div className="space-y-2">
+              {data.projects.items.slice(0, 5).map((p) => {
+                const isOverdue = p.targetDate && new Date(p.targetDate) < new Date() && p.status === "active";
+                return (
+                  <Link
+                    key={p.id}
+                    href="/projects"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/30 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.team}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isOverdue && <span className="text-xs text-red-400">Overdue</span>}
+                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${p.progress >= 75 ? "bg-emerald-500" : p.progress >= 40 ? "bg-blue-500" : "bg-amber-500"}`}
+                          style={{ width: `${Math.min(p.progress, 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground w-8">{p.progress}%</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+          <Link href="/projects" className="flex items-center gap-1 text-xs text-primary hover:underline mt-3">
             View all <ArrowRight size={12} />
           </Link>
         </div>

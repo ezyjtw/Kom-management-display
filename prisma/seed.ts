@@ -380,6 +380,226 @@ async function main() {
   });
 
   console.log("Created scoring config");
+
+  // ─── Seed Schedule Data ───
+
+  // Public Holidays 2026
+  const holidayData = [
+    { date: new Date("2026-01-01"), name: "New Year's Day", region: "Global" },
+    { date: new Date("2026-04-03"), name: "Good Friday", region: "Global" },
+    { date: new Date("2026-04-06"), name: "Easter Monday", region: "EMEA" },
+    { date: new Date("2026-05-04"), name: "Early May Bank Holiday", region: "EMEA" },
+    { date: new Date("2026-05-25"), name: "Spring Bank Holiday", region: "EMEA" },
+    { date: new Date("2026-07-04"), name: "Independence Day", region: "Americas" },
+    { date: new Date("2026-08-31"), name: "Summer Bank Holiday", region: "EMEA" },
+    { date: new Date("2026-12-25"), name: "Christmas Day", region: "Global" },
+    { date: new Date("2026-12-26"), name: "Boxing Day", region: "EMEA" },
+    { date: new Date("2026-01-26"), name: "Republic Day", region: "APAC" },
+    { date: new Date("2026-02-19"), name: "Chinese New Year", region: "APAC" },
+  ];
+
+  for (const h of holidayData) {
+    await prisma.publicHoliday.upsert({
+      where: { date_region: { date: h.date, region: h.region } },
+      update: {},
+      create: h,
+    });
+  }
+  console.log("Upserted public holidays");
+
+  // PTO records (a few sample entries)
+  const existingPto = await prisma.ptoRecord.count();
+  if (existingPto === 0) {
+    await prisma.ptoRecord.createMany({
+      data: [
+        { employeeId: employees[0].id, startDate: new Date("2026-03-09"), endDate: new Date("2026-03-13"), type: "annual_leave", status: "approved", notes: "Spring break" },
+        { employeeId: employees[1].id, startDate: new Date("2026-03-16"), endDate: new Date("2026-03-17"), type: "sick", status: "approved" },
+        { employeeId: employees[3].id, startDate: new Date("2026-03-05"), endDate: new Date("2026-03-06"), type: "wfh", status: "approved", notes: "Remote" },
+        { employeeId: employees[4].id, startDate: new Date("2026-03-20"), endDate: new Date("2026-03-27"), type: "annual_leave", status: "approved", notes: "Family holiday" },
+      ],
+    });
+    console.log("Created PTO records");
+  }
+
+  // On-Call Schedule — this week
+  const existingOnCall = await prisma.onCallSchedule.count();
+  if (existingOnCall === 0) {
+    // Generate on-call for Mon-Fri of current week (March 2-6, 2026)
+    const onCallRotation = [
+      { team: "Transaction Operations", employees: [employees[0], employees[2]] },
+      { team: "Admin Operations", employees: [employees[1], employees[4]] },
+      { team: "Data Operations", employees: [employees[3], employees[5]] },
+    ];
+
+    const weekStart = new Date("2026-03-02");
+    for (let day = 0; day < 5; day++) {
+      const date = new Date(weekStart.getTime() + day * 86400000);
+      for (const rotation of onCallRotation) {
+        const primaryIdx = day % rotation.employees.length;
+        await prisma.onCallSchedule.upsert({
+          where: { date_team_shiftType: { date, team: rotation.team, shiftType: "primary" } },
+          update: {},
+          create: {
+            date,
+            team: rotation.team,
+            shiftType: "primary",
+            employeeId: rotation.employees[primaryIdx].id,
+          },
+        });
+      }
+    }
+    console.log("Created on-call schedule");
+  }
+
+  // Daily Tasks — sample tasks for today (March 3, 2026)
+  const existingTasks = await prisma.dailyTask.count();
+  if (existingTasks === 0) {
+    const today = new Date("2026-03-03");
+    const taskData = [
+      // Transaction Operations tasks
+      { date: today, team: "Transaction Operations", title: "Process ETH staking withdrawals batch", priority: "high", category: "operational", assigneeId: employees[0].id, createdById: employees[2].id },
+      { date: today, team: "Transaction Operations", title: "Review pending Fireblocks approvals", priority: "urgent", category: "operational", assigneeId: employees[2].id, createdById: employees[2].id },
+      { date: today, team: "Transaction Operations", title: "Client Alpha — confirm withdrawal timeline", priority: "normal", category: "client", assigneeId: employees[0].id, createdById: employees[2].id },
+      { date: today, team: "Transaction Operations", title: "Update custody onboarding checklist", priority: "low", category: "administrative", createdById: employees[2].id },
+
+      // Admin Operations tasks
+      { date: today, team: "Admin Operations", title: "Settlement reconciliation Q1 review", priority: "high", category: "compliance", assigneeId: employees[4].id, createdById: employees[4].id },
+      { date: today, team: "Admin Operations", title: "Client Beta — resolve discrepancy report", priority: "normal", category: "client", assigneeId: employees[1].id, createdById: employees[4].id },
+      { date: today, team: "Admin Operations", title: "Monthly reporting — asset allocation summary", priority: "normal", category: "administrative", assigneeId: employees[1].id, createdById: employees[4].id },
+
+      // Data Operations tasks
+      { date: today, team: "Data Operations", title: "Notabene travel rule data reconciliation", priority: "high", category: "compliance", assigneeId: employees[3].id, createdById: employees[3].id },
+      { date: today, team: "Data Operations", title: "Update VASP contact directory", priority: "normal", category: "operational", assigneeId: employees[5].id, createdById: employees[3].id },
+      { date: today, team: "Data Operations", title: "Staking rewards calculation audit", priority: "normal", category: "operational", createdById: employees[3].id },
+    ];
+
+    for (const t of taskData) {
+      await prisma.dailyTask.create({ data: t });
+    }
+    console.log("Created daily tasks");
+  }
+
+  // ─── Seed Projects ───
+
+  const existingProjects = await prisma.project.count();
+  if (existingProjects === 0) {
+    const projectData = [
+      {
+        name: "Custody Onboarding Automation",
+        description: "Automate the custody onboarding workflow to reduce manual steps and speed up client activation. Includes document collection, KYC integration, and wallet provisioning.",
+        team: "Transaction Operations",
+        leadId: employees[2].id,
+        status: "active",
+        priority: "high",
+        startDate: new Date("2026-01-15"),
+        targetDate: new Date("2026-04-30"),
+        progress: 45,
+        tags: JSON.stringify(["automation", "onboarding", "Q1"]),
+      },
+      {
+        name: "Travel Rule Compliance Enhancement",
+        description: "Improve travel rule compliance workflow with Notabene auto-matching, bulk case resolution, and VASP directory enrichment.",
+        team: "Data Operations",
+        leadId: employees[3].id,
+        status: "active",
+        priority: "critical",
+        startDate: new Date("2026-02-01"),
+        targetDate: new Date("2026-03-31"),
+        progress: 70,
+        tags: JSON.stringify(["compliance", "travel-rule", "notabene"]),
+      },
+      {
+        name: "Settlement Process Optimization",
+        description: "Reduce settlement reconciliation time from 4h to 1h through automated matching and exception-based review.",
+        team: "Admin Operations",
+        leadId: employees[4].id,
+        status: "active",
+        priority: "medium",
+        startDate: new Date("2026-02-10"),
+        targetDate: new Date("2026-05-15"),
+        progress: 25,
+        tags: JSON.stringify(["settlements", "optimization"]),
+      },
+      {
+        name: "Client Reporting Dashboard",
+        description: "Build a client-facing reporting dashboard showing portfolio, transaction history, and staking rewards.",
+        team: "Transaction Operations",
+        leadId: employees[2].id,
+        status: "planned",
+        priority: "medium",
+        startDate: new Date("2026-04-01"),
+        targetDate: new Date("2026-06-30"),
+        progress: 0,
+        tags: JSON.stringify(["reporting", "client-facing", "Q2"]),
+      },
+      {
+        name: "HiBob Integration for PTO Sync",
+        description: "Integrate with HiBob API to automatically sync employee PTO records into the on-call scheduling system.",
+        team: "Data Operations",
+        leadId: employees[3].id,
+        status: "planned",
+        priority: "low",
+        startDate: null,
+        targetDate: null,
+        progress: 0,
+        tags: JSON.stringify(["integration", "hibob", "scheduling"]),
+      },
+      {
+        name: "SLA Monitoring Improvements",
+        description: "Enhance SLA monitoring with real-time Slack alerts, escalation chains, and historical SLA compliance reports.",
+        team: "Admin Operations",
+        leadId: employees[4].id,
+        status: "on_hold",
+        priority: "medium",
+        startDate: new Date("2026-01-20"),
+        targetDate: new Date("2026-03-15"),
+        progress: 35,
+        tags: JSON.stringify(["sla", "monitoring", "alerts"]),
+      },
+    ];
+
+    for (const p of projectData) {
+      const project = await prisma.project.create({ data: p });
+
+      // Add lead as member
+      await prisma.projectMember.create({
+        data: { projectId: project.id, employeeId: p.leadId, role: "lead" },
+      });
+
+      // Add 1-2 additional members
+      const otherMembers = employees.filter((e) => e.id !== p.leadId && e.team === p.team);
+      for (const m of otherMembers.slice(0, 2)) {
+        await prisma.projectMember.create({
+          data: { projectId: project.id, employeeId: m.id, role: "contributor" },
+        });
+      }
+    }
+
+    // Add some project updates
+    const allProjects = await prisma.project.findMany({ where: { status: { not: "planned" } } });
+    const updateData = [
+      { type: "progress", content: "Completed document collection module. Working on KYC API integration next.", progress: 45 },
+      { type: "milestone", content: "Auto-matching engine deployed to staging. 85% match rate on test data.", progress: 70 },
+      { type: "blocker", content: "Waiting on settlement team to provide reconciliation file format spec.", progress: null },
+      { type: "progress", content: "Initial SLA dashboard mockups completed. On hold pending alert system refactor.", progress: 35 },
+      { type: "progress", content: "Fireblocks webhook integration completed. Moving to wallet provisioning flow.", progress: 30 },
+      { type: "note", content: "Discussed with compliance team — need to add beneficiary name validation before go-live.", progress: null },
+    ];
+
+    for (let i = 0; i < Math.min(allProjects.length, updateData.length); i++) {
+      await prisma.projectUpdate.create({
+        data: {
+          projectId: allProjects[i].id,
+          authorId: allProjects[i].leadId,
+          ...updateData[i],
+          createdAt: new Date(Date.now() - (updateData.length - i) * 86400000),
+        },
+      });
+    }
+
+    console.log("Created projects with members and updates");
+  }
+
   console.log("Seed complete!");
 }
 
