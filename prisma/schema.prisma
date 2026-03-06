@@ -483,6 +483,62 @@ model IncidentUpdate {
   incident Incident @relation(fields: [incidentId], references: [id])
 }
 
+// ─── OES Settlements ───
+
+model OesSettlement {
+  id                String   @id @default(cuid())
+  settlementRef     String   @unique // Komainu settlement reference
+  clientName        String
+  clientAccount     String   @default("")
+  asset             String   // BTC, ETH, USDC, etc.
+  amount            Float
+  direction         String   // IN, OUT
+  counterparty      String   @default("") // OES venue or counterparty name
+  expectedSettleAt  DateTime // when settlement was expected
+  actualSettleAt    DateTime? // when it actually settled (null = pending)
+  mappingStatus     String   @default("pending") // pending, mapped, mismatch, failed
+  mappingNote       String   @default("") // reason for mismatch or manual note
+  komainuTxId       String   @default("") // Komainu transaction ID if mapped
+  oesTradeId        String   @default("") // OES trade reference
+  status            String   @default("pending") // pending, completed, failed, cancelled
+  reviewedById      String?  // employee who reviewed/confirmed
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status])
+  @@index([mappingStatus])
+  @@index([clientName])
+}
+
+// ─── USDC On/Off Ramp Requests ───
+
+model UsdcRampRequest {
+  id              String   @id @default(cuid())
+  clientName      String
+  clientAccount   String   @default("")
+  direction       String   // onramp (fiat→USDC), offramp (USDC→fiat)
+  amount          Float    // amount in USDC
+  fiatCurrency    String   @default("USD") // USD, EUR, GBP, etc.
+  fiatAmount      Float?   // equivalent fiat amount
+  bankReference   String   @default("") // bank wire reference
+  walletAddress   String   @default("") // destination USDC wallet
+  status          String   @default("pending") // pending, awaiting_funds, processing, completed, rejected, cancelled
+  priority        String   @default("normal") // low, normal, high, urgent
+  requestedAt     DateTime @default(now())
+  completedAt     DateTime?
+  assignedToId    String?  // ops team member handling
+  notes           String   @default("")
+  rejectionReason String   @default("")
+  txHash          String   @default("") // on-chain tx hash once minted/redeemed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([clientName])
+  @@index([direction])
+}
+
 // ─── Audit ───
 
 model AuditLog {
