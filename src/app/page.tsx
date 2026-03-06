@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import {
   Zap,
   ShieldAlert,
@@ -16,6 +17,7 @@ import {
   CalendarClock,
   FolderKanban,
   Eye,
+  LogOut,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -175,16 +177,29 @@ export default function CommandCenterPage() {
   if (!data) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-2">
+        <AlertTriangle size={24} className="mx-auto mb-3 text-red-400" />
+        <p className="text-muted-foreground mb-1">
           {error || "Failed to load data."}
         </p>
-        <button
-          onClick={fetchData}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-accent/50 text-foreground"
-        >
-          <RefreshCw size={14} />
-          Retry
-        </button>
+        <p className="text-xs text-muted-foreground mb-4">
+          If this persists, try signing out and back in.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={fetchData}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-accent/50 text-foreground"
+          >
+            <RefreshCw size={14} />
+            Retry
+          </button>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 text-red-400"
+          >
+            <LogOut size={14} />
+            Sign Out
+          </button>
+        </div>
       </div>
     );
   }

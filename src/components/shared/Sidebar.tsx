@@ -32,6 +32,7 @@ const navItems = [
   { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
   { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
   { href: "/activity", label: "Activity Tracker", icon: Activity },
+  { href: "/clients", label: "Client Issues", icon: Users },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
 ];

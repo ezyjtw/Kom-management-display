@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ThreadList } from "@/components/comms/ThreadList";
+import { ErrorState } from "@/components/shared/ErrorState";
 import {
   Inbox,
   User,
@@ -24,6 +25,7 @@ const viewTabs: { key: ViewTab; label: string; icon: typeof Inbox }[] = [
 export default function CommsPage() {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewTab>("all");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [queueFilter, setQueueFilter] = useState("");
@@ -35,6 +37,7 @@ export default function CommsPage() {
 
   async function fetchThreads() {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       params.set("view", activeView);
@@ -46,9 +49,12 @@ export default function CommsPage() {
       const json = await res.json();
       if (json.success) {
         setThreads(json.data || []);
+      } else {
+        setError(json.error || "Failed to load threads");
       }
     } catch (err) {
       console.error("Failed to fetch threads:", err);
+      setError("Network error — could not reach server");
     } finally {
       setLoading(false);
     }
@@ -86,6 +92,9 @@ export default function CommsPage() {
           Refresh
         </button>
       </div>
+
+      {/* Error state */}
+      {error && <ErrorState message={error} onRetry={fetchThreads} />}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

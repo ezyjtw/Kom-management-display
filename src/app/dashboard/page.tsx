@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { TeamOverviewTable } from "@/components/dashboard/TeamOverviewTable";
 import { StatsCards } from "@/components/dashboard/StatsCards";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { Download, RefreshCw } from "lucide-react";
 import type { EmployeeOverview } from "@/types";
 
 export default function DashboardPage() {
   const [employees, setEmployees] = useState<EmployeeOverview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [periodType, setPeriodType] = useState<"week" | "month" | "quarter">("month");
   const [teamFilter, setTeamFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -19,14 +21,18 @@ export default function DashboardPage() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/scores?periodType=${periodType}`);
       const json = await res.json();
       if (json.success) {
         setEmployees(json.data || []);
+      } else {
+        setError(json.error || "Failed to load scores");
       }
     } catch (err) {
       console.error("Failed to fetch scores:", err);
+      setError("Network error — could not reach server");
     } finally {
       setLoading(false);
     }
@@ -65,6 +71,9 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Error state */}
+      {error && <ErrorState message={error} onRetry={fetchData} />}
 
       {/* Stats */}
       <StatsCards employees={filteredEmployees} />
