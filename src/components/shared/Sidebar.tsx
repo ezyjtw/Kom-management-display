@@ -21,6 +21,7 @@ import {
   FolderKanban,
   Activity,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/clients", label: "Client Issues", icon: Users },
   { href: "/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/briefing", label: "AI Briefing", icon: Sparkles },
   { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
 ];
 

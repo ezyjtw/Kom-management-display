@@ -19,6 +19,7 @@ import {
   X,
   Send,
   Link2,
+  Sparkles,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -99,6 +100,8 @@ export default function IncidentsPage() {
   const [newSeverity, setNewSeverity] = useState("medium");
   const [newDescription, setNewDescription] = useState("");
   const [newImpact, setNewImpact] = useState("");
+
+  const [draftingImpact, setDraftingImpact] = useState(false);
 
   // Update form state
   const [updateText, setUpdateText] = useState("");
@@ -330,7 +333,41 @@ export default function IncidentsPage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1">Operational Impact</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-muted-foreground">Operational Impact</label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!newTitle || !newProvider) return;
+                    setDraftingImpact(true);
+                    try {
+                      const res = await fetch("/api/ai/assist", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "draft_impact",
+                          data: {
+                            title: newTitle,
+                            provider: newProvider,
+                            severity: newSeverity,
+                            description: newDescription,
+                          },
+                        }),
+                      });
+                      const json = await res.json();
+                      if (json.success && json.data?.suggestion) {
+                        setNewImpact(json.data.suggestion);
+                      }
+                    } catch { /* ignore */ }
+                    setDraftingImpact(false);
+                  }}
+                  disabled={draftingImpact || !newTitle}
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 disabled:opacity-50"
+                >
+                  {draftingImpact ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {draftingImpact ? "Drafting..." : "AI Suggest"}
+                </button>
+              </div>
               <textarea
                 value={newImpact}
                 onChange={(e) => setNewImpact(e.target.value)}
