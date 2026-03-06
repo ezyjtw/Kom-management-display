@@ -22,6 +22,8 @@ import {
   Activity,
   AlertTriangle,
   Sparkles,
+  ArrowDownUp,
+  DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -35,6 +37,8 @@ const navItems = [
   { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
   { href: "/activity", label: "Activity Tracker", icon: Activity },
   { href: "/clients", label: "Client Issues", icon: Users },
+  { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
+  { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign },
   { href: "/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/briefing", label: "AI Briefing", icon: Sparkles },

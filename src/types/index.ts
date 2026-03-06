@@ -396,6 +396,86 @@ export interface ProjectDetail extends ProjectSummary {
   }>;
 }
 
+// ─── OES Settlement Types ───
+
+export type SettlementMappingStatus = "pending" | "mapped" | "mismatch" | "failed";
+export type SettlementStatus = "pending" | "completed" | "failed" | "cancelled";
+
+export interface OesSettlementEntry {
+  id: string;
+  settlementRef: string;
+  clientName: string;
+  clientAccount: string;
+  asset: string;
+  amount: number;
+  direction: string;
+  counterparty: string;
+  expectedSettleAt: string;
+  actualSettleAt: string | null;
+  mappingStatus: SettlementMappingStatus;
+  mappingNote: string;
+  komainuTxId: string;
+  oesTradeId: string;
+  status: SettlementStatus;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+export interface OesSettlementOverview {
+  settlements: OesSettlementEntry[];
+  summary: {
+    total: number;
+    pending: number;
+    completed: number;
+    failed: number;
+    mismatched: number;
+    unmapped: number;
+  };
+}
+
+// ─── USDC On/Off Ramp Types ───
+
+export type RampDirection = "onramp" | "offramp";
+export type RampStatus = "pending" | "awaiting_funds" | "processing" | "completed" | "rejected" | "cancelled";
+export type RampPriority = "low" | "normal" | "high" | "urgent";
+
+export interface UsdcRampEntry {
+  id: string;
+  clientName: string;
+  clientAccount: string;
+  direction: RampDirection;
+  amount: number;
+  fiatCurrency: string;
+  fiatAmount: number | null;
+  bankReference: string;
+  walletAddress: string;
+  status: RampStatus;
+  priority: RampPriority;
+  requestedAt: string;
+  completedAt: string | null;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  notes: string;
+  rejectionReason: string;
+  txHash: string;
+  createdAt: string;
+}
+
+export interface UsdcRampOverview {
+  requests: UsdcRampEntry[];
+  summary: {
+    total: number;
+    pending: number;
+    awaitingFunds: number;
+    processing: number;
+    completed: number;
+    rejected: number;
+    totalOnrampVolume: number;
+    totalOfframpVolume: number;
+  };
+}
+
 // ─── API Response Types ───
 
 export interface ApiResponse<T> {
