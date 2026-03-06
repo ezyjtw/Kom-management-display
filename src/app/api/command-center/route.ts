@@ -21,7 +21,7 @@ export async function GET() {
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -87,6 +87,13 @@ export async function GET() {
         select: { id: true, name: true, status: true, priority: true, progress: true, targetDate: true, team: true },
         orderBy: { updatedAt: "desc" },
         take: 10,
+      }), []),
+
+      // Active 3rd party incidents (active or monitoring)
+      safeQuery(() => prisma.incident.findMany({
+        where: { status: { in: ["active", "monitoring"] } },
+        select: { id: true, title: true, provider: true, severity: true, status: true, startedAt: true },
+        orderBy: { startedAt: "desc" },
       }), []),
     ]);
 
@@ -182,6 +189,12 @@ export async function GET() {
             targetDate: p.targetDate,
             team: p.team,
           })),
+        },
+        incidents: {
+          activeCount: activeIncidents.filter((i) => i.status === "active").length,
+          monitoringCount: activeIncidents.filter((i) => i.status === "monitoring").length,
+          criticalCount: activeIncidents.filter((i) => i.severity === "critical" && i.status === "active").length,
+          items: activeIncidents,
         },
       },
     });

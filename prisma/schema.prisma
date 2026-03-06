@@ -43,6 +43,8 @@ model Employee {
   projectUpdates       ProjectUpdate[]
   rotaAssignments      RotaAssignment[]
   activityStatuses     ActivityStatus[]
+  reportedIncidents    Incident[]      @relation("IncidentReporter")
+  resolvedIncidents    Incident[]      @relation("IncidentResolver")
 }
 
 // ─── User / Auth ───
@@ -427,6 +429,7 @@ model Alert {
   threadId     String?
   employeeId   String?
   travelRuleCaseId String?
+  incidentId   String?  // link alert to a 3rd party incident
   type         String   // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping, travel_rule_sla_breach
   priority     String   @default("P2")
   message      String
@@ -439,6 +442,45 @@ model Alert {
   thread          CommsThread?    @relation(fields: [threadId], references: [id])
   employee        Employee?       @relation(fields: [employeeId], references: [id])
   travelRuleCase  TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id])
+  incident        Incident?       @relation(fields: [incidentId], references: [id])
+}
+
+// ─── 3rd Party Incidents ───
+
+model Incident {
+  id           String    @id @default(cuid())
+  title        String    // e.g. "Fireblocks signing service degraded"
+  provider     String    // Fireblocks, Ledger, GX, Komainu, Notabene, etc.
+  severity     String    @default("medium") // low, medium, high, critical
+  status       String    @default("active") // active, monitoring, resolved
+  description  String    @default("")
+  impact       String    @default("") // what ops impact this causes
+  startedAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  reportedById String    // employee who raised it
+  resolvedById String?
+  linkedThreadIds    String @default("[]") // JSON array of commsThread IDs
+  linkedTransactionIds String @default("[]") // JSON array of transaction IDs (Komainu)
+  updates      IncidentUpdate[]
+  alerts       Alert[]
+  reportedBy   Employee  @relation("IncidentReporter", fields: [reportedById], references: [id])
+  resolvedBy   Employee? @relation("IncidentResolver", fields: [resolvedById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([provider])
+}
+
+model IncidentUpdate {
+  id         String   @id @default(cuid())
+  incidentId String
+  authorId   String
+  content    String
+  type       String   @default("update") // update, escalation, resolution
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
 }
 
 // ─── Audit ───

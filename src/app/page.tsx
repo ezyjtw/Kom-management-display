@@ -100,6 +100,19 @@ interface CommandCenterData {
       team: string;
     }>;
   };
+  incidents: {
+    activeCount: number;
+    monitoringCount: number;
+    criticalCount: number;
+    items: Array<{
+      id: string;
+      title: string;
+      provider: string;
+      severity: string;
+      status: string;
+      startedAt: string;
+    }>;
+  };
 }
 
 // Travel rule case aging thresholds: green (<24h), amber (24-48h), red (>48h SLA breach)
@@ -135,6 +148,9 @@ const ACTION_LABELS: Record<string, string> = {
   daily_task_created: "Created daily task",
   project_created: "Created project",
   project_update_added: "Updated project",
+  incident_created: "Raised incident",
+  incident_updated: "Updated incident",
+  incident_resolved: "Resolved incident",
 };
 
 export default function CommandCenterPage() {
@@ -226,8 +242,25 @@ export default function CommandCenterPage() {
         </button>
       </div>
 
+      {/* Active incidents banner */}
+      {data.incidents.activeCount > 0 && (
+        <Link href="/incidents" className={`flex items-center gap-3 p-4 rounded-xl border ${data.incidents.criticalCount > 0 ? "bg-red-500/10 border-red-500/20 animate-pulse" : "bg-amber-500/10 border-amber-500/20"}`}>
+          <AlertTriangle size={20} className={data.incidents.criticalCount > 0 ? "text-red-400" : "text-amber-400"} />
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${data.incidents.criticalCount > 0 ? "text-red-400" : "text-amber-400"}`}>
+              {data.incidents.activeCount} Active Incident{data.incidents.activeCount !== 1 ? "s" : ""}
+              {data.incidents.criticalCount > 0 && ` (${data.incidents.criticalCount} critical)`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {data.incidents.items.slice(0, 2).map((i) => `${i.provider}: ${i.title}`).join(" · ")}
+            </p>
+          </div>
+          <ArrowRight size={16} className="text-muted-foreground" />
+        </Link>
+      )}
+
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/travel-rule" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
             <ShieldAlert size={14} />

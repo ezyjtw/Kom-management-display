@@ -20,6 +20,7 @@ import {
   CalendarClock,
   FolderKanban,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -33,6 +34,7 @@ const navItems = [
   { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
   { href: "/activity", label: "Activity Tracker", icon: Activity },
   { href: "/clients", label: "Client Issues", icon: Users },
+  { href: "/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
 ];
