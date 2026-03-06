@@ -26,6 +26,7 @@ export default function BriefingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [aiProvider, setAiProvider] = useState<string>("none");
   const [copied, setCopied] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
 
@@ -42,6 +43,7 @@ export default function BriefingPage() {
       });
       const json = await res.json();
       setAiEnabled(json.data?.enabled ?? false);
+      setAiProvider(json.data?.provider ?? "none");
     } catch {
       setAiEnabled(false);
     }
@@ -110,7 +112,7 @@ export default function BriefingPage() {
         <div className="flex items-center gap-2">
           {aiEnabled !== null && (
             <span className={`text-xs px-2 py-1 rounded-full ${aiEnabled ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-              {aiEnabled ? "AI Connected" : "AI Not Configured"}
+              {aiEnabled ? `AI Connected (${aiProvider})` : "AI Not Configured"}
             </span>
           )}
         </div>
@@ -124,7 +126,9 @@ export default function BriefingPage() {
             <div>
               <p className="text-sm font-medium text-amber-400">AI features not configured</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Set <code className="bg-muted px-1 py-0.5 rounded text-foreground">ANTHROPIC_API_KEY</code> in
+                Set one of <code className="bg-muted px-1 py-0.5 rounded text-foreground">GROQ_API_KEY</code> (free),{" "}
+                <code className="bg-muted px-1 py-0.5 rounded text-foreground">ANTHROPIC_API_KEY</code>, or{" "}
+                <code className="bg-muted px-1 py-0.5 rounded text-foreground">OLLAMA_BASE_URL</code> in
                 your environment to enable AI-powered briefings, thread triage, and incident impact drafting.
               </p>
               <p className="text-xs text-muted-foreground mt-2">

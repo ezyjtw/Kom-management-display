@@ -1,34 +1,149 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 /**
- * AI assist client for the ops dashboard.
+ * AI assist client for the ops dashboard — multi-provider.
  *
- * Wraps the Anthropic Claude API with ops-specific system prompts.
+ * Supports three LLM backends, configured via environment variables:
+ *
+ *   AI_PROVIDER=groq       → Groq free tier (default if GROQ_API_KEY set)
+ *   AI_PROVIDER=anthropic  → Anthropic Claude API (needs ANTHROPIC_API_KEY)
+ *   AI_PROVIDER=ollama     → Local Ollama instance (no key needed)
+ *
  * The LLM never writes to the database directly — it returns suggestions
  * that the UI presents for human approval before any action is taken.
- *
- * Set ANTHROPIC_API_KEY in environment to enable AI features.
- * When the key is missing, all functions return graceful fallbacks
- * so the dashboard works without AI.
  */
 
-let client: Anthropic | null = null;
+import Anthropic from "@anthropic-ai/sdk";
 
-function getClient(): Anthropic | null {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  if (!client) {
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-  return client;
+// ─── Provider types ─────────────────────────────────────────────────────────
+
+type Provider = "anthropic" | "groq" | "ollama";
+
+interface CompletionRequest {
+  system: string;
+  userMessage: string;
+  maxTokens: number;
+}
+
+// ─── Provider detection ─────────────────────────────────────────────────────
+
+function getProvider(): Provider | null {
+  const explicit = process.env.AI_PROVIDER?.toLowerCase();
+  if (explicit === "anthropic" || explicit === "groq" || explicit === "ollama") return explicit;
+
+  // Auto-detect from available keys
+  if (process.env.GROQ_API_KEY) return "groq";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.OLLAMA_BASE_URL) return "ollama";
+  return null;
 }
 
 export function isAiEnabled(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return getProvider() !== null;
 }
 
-// Model to use — Sonnet for speed/cost balance on operational tasks
-const MODEL = "claude-sonnet-4-20250514";
-const MAX_TOKENS = 1024;
+export function getProviderName(): string {
+  return getProvider() || "none";
+}
+
+// ─── Anthropic backend ──────────────────────────────────────────────────────
+
+let anthropicClient: Anthropic | null = null;
+
+async function callAnthropic(req: CompletionRequest): Promise<string | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+
+  const response = await anthropicClient.messages.create({
+    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+    max_tokens: req.maxTokens,
+    system: req.system,
+    messages: [{ role: "user", content: req.userMessage }],
+  });
+
+  const block = response.content[0];
+  return block.type === "text" ? block.text : null;
+}
+
+// ─── Groq backend (OpenAI-compatible API, free tier) ────────────────────────
+
+async function callGroq(req: CompletionRequest): Promise<string | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+
+  const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: req.maxTokens,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: req.system },
+        { role: "user", content: req.userMessage },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    console.error("Groq API error:", response.status, await response.text());
+    return null;
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || null;
+}
+
+// ─── Ollama backend (local, no API key needed) ─────────────────────────────
+
+async function callOllama(req: CompletionRequest): Promise<string | null> {
+  const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  const model = process.env.OLLAMA_MODEL || "llama3.1";
+
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      stream: false,
+      messages: [
+        { role: "system", content: req.system },
+        { role: "user", content: req.userMessage },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    console.error("Ollama error:", response.status, await response.text());
+    return null;
+  }
+
+  const data = await response.json();
+  return data.message?.content || null;
+}
+
+// ─── Unified completion call ────────────────────────────────────────────────
+
+async function complete(req: CompletionRequest): Promise<string | null> {
+  const provider = getProvider();
+  if (!provider) return null;
+
+  switch (provider) {
+    case "anthropic":
+      return callAnthropic(req);
+    case "groq":
+      return callGroq(req);
+    case "ollama":
+      return callOllama(req);
+  }
+}
+
+// ─── Public AI functions ────────────────────────────────────────────────────
 
 /**
  * Generate a daily ops briefing from Command Centre data.
@@ -44,25 +159,15 @@ export async function generateBriefing(data: {
   projects: { activeCount: number; overdueCount: number };
   recentActivity: Array<{ action: string; userName: string; details: string }>;
 }): Promise<string | null> {
-  const ai = getClient();
-  if (!ai) return null;
-
-  const response = await ai.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
+  return complete({
     system: `You are an operations briefing assistant for a digital asset custody firm (Komainu).
 Generate a concise morning briefing for the ops team. Use short bullet points grouped by priority.
 Start with any critical items (incidents, SLA breaches), then status overview, then action items.
 Use plain text with markdown formatting. Be direct and specific — no filler.
 If there are active incidents, lead with those. If everything is clear, say so briefly.`,
-    messages: [{
-      role: "user",
-      content: `Generate the morning ops briefing from this data:\n\n${JSON.stringify(data, null, 2)}`,
-    }],
+    userMessage: `Generate the morning ops briefing from this data:\n\n${JSON.stringify(data, null, 2)}`,
+    maxTokens: 1024,
   });
-
-  const block = response.content[0];
-  return block.type === "text" ? block.text : null;
 }
 
 /**
@@ -75,12 +180,7 @@ export async function suggestThreadPriority(thread: {
   clientOrPartnerTag: string;
   latestMessage?: string;
 }): Promise<{ priority: string; reason: string } | null> {
-  const ai = getClient();
-  if (!ai) return null;
-
-  const response = await ai.messages.create({
-    model: MODEL,
-    max_tokens: 256,
+  const text = await complete({
     system: `You are a triage assistant for a digital asset custody ops team.
 Given a thread subject, source, client tag, and latest message, suggest a priority level.
 
@@ -91,17 +191,15 @@ Priority levels:
 - P3: Routine queries, informational, low-impact administrative
 
 Respond with ONLY valid JSON: {"priority":"P0","reason":"one sentence explanation"}`,
-    messages: [{
-      role: "user",
-      content: JSON.stringify(thread),
-    }],
+    userMessage: JSON.stringify(thread),
+    maxTokens: 256,
   });
 
-  const block = response.content[0];
-  if (block.type !== "text") return null;
-
+  if (!text) return null;
   try {
-    return JSON.parse(block.text);
+    // Extract JSON from response (some models wrap it in markdown code blocks)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
   } catch {
     return null;
   }
@@ -117,24 +215,14 @@ export async function draftIncidentImpact(incident: {
   severity: string;
   description: string;
 }): Promise<string | null> {
-  const ai = getClient();
-  if (!ai) return null;
-
-  const response = await ai.messages.create({
-    model: MODEL,
-    max_tokens: 512,
+  return complete({
     system: `You are an ops incident assistant for a digital asset custody firm.
 Given an incident title, provider, severity, and description, draft a concise operational impact statement.
 Focus on: what operations are affected, what clients might notice, and what workarounds exist.
 Keep it to 2-3 sentences. Be specific to digital asset custody operations (transactions, signing, staking, settlements).`,
-    messages: [{
-      role: "user",
-      content: JSON.stringify(incident),
-    }],
+    userMessage: JSON.stringify(incident),
+    maxTokens: 512,
   });
-
-  const block = response.content[0];
-  return block.type === "text" ? block.text : null;
 }
 
 /**
@@ -149,24 +237,14 @@ export async function analyseClientPattern(client: {
   highPriorityThreads: number;
   recentThreads: Array<{ subject: string; priority: string; status: string; source: string }>;
 }): Promise<string | null> {
-  const ai = getClient();
-  if (!ai) return null;
-
-  const response = await ai.messages.create({
-    model: MODEL,
-    max_tokens: 256,
+  return complete({
     system: `You are an ops analyst for a digital asset custody firm.
 Analyse this client's recent activity pattern and provide a 1-2 sentence insight.
 Focus on: repeated issues, escalation patterns, potential relationship risks, or positive signals.
 If nothing notable, respond with just "No notable patterns."`,
-    messages: [{
-      role: "user",
-      content: JSON.stringify(client),
-    }],
+    userMessage: JSON.stringify(client),
+    maxTokens: 256,
   });
-
-  const block = response.content[0];
-  return block.type === "text" ? block.text : null;
 }
 
 /**
@@ -180,23 +258,13 @@ export async function draftTravelRuleEmail(caseData: {
   matchStatus: string;
   counterpartyVasp?: string;
 }): Promise<string | null> {
-  const ai = getClient();
-  if (!ai) return null;
-
-  const response = await ai.messages.create({
-    model: MODEL,
-    max_tokens: 512,
+  return complete({
     system: `You are a compliance assistant for a digital asset custody firm (Komainu).
 Draft a professional email to a counterparty VASP requesting missing travel rule information.
 The email should be formal, reference the specific transaction, and clearly state what information is needed.
 Follow FATF Travel Rule requirements (originator/beneficiary name, address, account).
 Return ONLY the email body text (no subject line, no headers).`,
-    messages: [{
-      role: "user",
-      content: JSON.stringify(caseData),
-    }],
+    userMessage: JSON.stringify(caseData),
+    maxTokens: 512,
   });
-
-  const block = response.content[0];
-  return block.type === "text" ? block.text : null;
 }
