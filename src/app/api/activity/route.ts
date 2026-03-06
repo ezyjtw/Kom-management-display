@@ -3,9 +3,16 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/activity
- * Get current activity status for all employees (or filtered by team).
- * ?team=Transaction+Operations — filter by team
- * ?history=true&from=...&to=... — get historical time log
+ *
+ * Two modes:
+ *   1. Current status (default): returns each employee with their currently active task
+ *      (endedAt = null). Used by the live Status Board.
+ *   2. Historical time log (?history=true&from=&to=): returns completed activity entries
+ *      for the Time Breakdown view.
+ *
+ * Query params:
+ *   ?team=Transaction+Operations — filter employees by team
+ *   ?history=true&from=2026-03-03&to=2026-03-04 — return completed entries for date range
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +23,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get("to");
 
     if (history) {
-      // Historical time log
+      // Historical mode: fetch completed activity entries for time tracking analysis
       const fromDate = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
       const toDate = to ? new Date(to) : new Date();
 
@@ -26,6 +33,7 @@ export async function GET(request: NextRequest) {
       if (to) {
         where.startedAt = { gte: fromDate, lte: toDate };
       }
+      // Filter via nested relation — Prisma resolves the join
       if (team) {
         where.employee = { team };
       }
@@ -36,7 +44,7 @@ export async function GET(request: NextRequest) {
           employee: { select: { id: true, name: true, team: true, region: true } },
         },
         orderBy: { startedAt: "desc" },
-        take: 200,
+        take: 200, // cap to prevent large payloads
       });
 
       return NextResponse.json({
@@ -56,7 +64,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Current status — get the latest active entry for each employee
+    // Current status mode: fetch employees with their latest active (endedAt=null) entry.
+    // We query from Employee side so we get ALL employees, even those not checked in.
     const employeeWhere: Record<string, unknown> = { active: true };
     if (team) employeeWhere.team = team;
 
@@ -68,6 +77,7 @@ export async function GET(request: NextRequest) {
         team: true,
         role: true,
         region: true,
+        // Only fetch the single currently-active entry (endedAt is null)
         activityStatuses: {
           where: { endedAt: null },
           orderBy: { startedAt: "desc" },
@@ -91,6 +101,7 @@ export async function GET(request: NextRequest) {
               activity: current.activity,
               detail: current.detail,
               startedAt: current.startedAt.toISOString(),
+              // Compute elapsed time server-side so the client doesn't need to parse timestamps
               elapsedMin: Math.floor((Date.now() - current.startedAt.getTime()) / 60000),
             }
           : null,
@@ -106,8 +117,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/activity
- * Start a new activity (ends any currently active one for the same employee).
+ *
+ * Start a new activity for an employee. Automatically ends any previously
+ * active entry for that employee first (each person can only have one
+ * current activity at a time). Duration is computed when an activity ends.
+ *
  * Body: { employeeId, activity, detail? }
+ * activity: one of project|bau|queue_monitoring|lunch|break|meeting|admin|training
  */
 export async function POST(request: NextRequest) {
   try {
@@ -118,13 +134,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "employeeId and activity are required" }, { status: 400 });
     }
 
-    // End any active activity for this employee
+    // End any currently-active activity for this employee before starting a new one.
+    // This enforces the one-activity-at-a-time constraint.
     const activeEntries = await prisma.activityStatus.findMany({
       where: { employeeId, endedAt: null },
     });
 
     const now = new Date();
     for (const entry of activeEntries) {
+      // Compute duration at close time rather than relying on a cron job
       const durationMin = Math.floor((now.getTime() - entry.startedAt.getTime()) / 60000);
       await prisma.activityStatus.update({
         where: { id: entry.id },
@@ -132,7 +150,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Start new activity
+    // Start the new activity (endedAt defaults to null = currently active)
     const newStatus = await prisma.activityStatus.create({
       data: {
         employeeId,
@@ -153,7 +171,11 @@ export async function POST(request: NextRequest) {
 
 /**
  * PATCH /api/activity
- * End an activity. Body: { id } or { employeeId } (ends all active for that employee)
+ *
+ * End an activity without starting a new one (e.g. employee clocking off).
+ * Two modes:
+ *   { id } — end a specific activity entry
+ *   { employeeId } — end all active entries for that employee
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -162,6 +184,7 @@ export async function PATCH(request: NextRequest) {
 
     const now = new Date();
 
+    // Mode 1: End a specific activity by ID
     if (id) {
       const entry = await prisma.activityStatus.findUnique({ where: { id } });
       if (!entry || entry.endedAt) {
@@ -175,6 +198,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, data: updated });
     }
 
+    // Mode 2: End all active entries for an employee (used by "End" button on the board)
     if (employeeId) {
       const active = await prisma.activityStatus.findMany({
         where: { employeeId, endedAt: null },

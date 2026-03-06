@@ -660,8 +660,12 @@ async function main() {
 
     console.log("Created sub-teams");
 
-    // Current rotation — Week of March 2-6, 2026
-    // Leads rotate weekly/monthly; juniors rotate under them
+    // Rota assignments model the real team structure:
+    // - 3 leads (Carol, Grace, Kenji) stay on the same sub-team for a month
+    // - Junior analysts rotate between sub-teams weekly
+    // - Liam always works the late shift from home (London)
+    // - APAC (Hong Kong) and Jersey staff share weekend coverage
+    // Week 1: March 2-6, 2026 — Week 2: March 9-13, 2026
     const currentWeekStart = new Date("2026-03-02");
     const currentWeekEnd = new Date("2026-03-06");
     const nextWeekStart = new Date("2026-03-09");
@@ -781,6 +785,83 @@ async function main() {
     }
 
     console.log("Created activity status entries");
+  }
+
+  // ─── 3rd Party Incidents ───
+  // Seed example incidents to demonstrate the incident tracking workflow:
+  // one active critical (Fireblocks down), one resolved (Ledger firmware),
+  // one monitoring (GX latency)
+  const existingIncidents = await prisma.incident.count();
+  if (existingIncidents === 0) {
+    const incNow = new Date();
+
+    const fireblocksIncident = await prisma.incident.create({
+      data: {
+        title: "Fireblocks signing service degraded — outbound transactions failing",
+        provider: "Fireblocks",
+        severity: "critical",
+        status: "active",
+        description: "Fireblocks API returning 503 on transaction signing endpoints. Status page confirms degraded performance in EU region.",
+        impact: "Cannot process outbound ETH/ERC-20 transactions. Client withdrawals delayed. Approximately 12 pending transactions stuck.",
+        reportedById: emp["carol@ops.com"].id,
+        linkedThreadIds: JSON.stringify([]),
+        linkedTransactionIds: JSON.stringify([]),
+        startedAt: new Date(incNow.getTime() - 2 * 60 * 60000), // started 2 hours ago
+      },
+    });
+
+    await prisma.incidentUpdate.createMany({
+      data: [
+        {
+          incidentId: fireblocksIncident.id,
+          authorId: emp["carol@ops.com"].id,
+          content: "Fireblocks status page updated — investigating signing delays in EU-WEST region",
+          type: "update",
+          createdAt: new Date(incNow.getTime() - 90 * 60000),
+        },
+        {
+          incidentId: fireblocksIncident.id,
+          authorId: emp["kenji@ops.com"].id,
+          content: "Confirmed 12 pending outbound transactions stuck in PENDING_SIGNATURE state. Notified affected clients via email.",
+          type: "escalation",
+          createdAt: new Date(incNow.getTime() - 60 * 60000),
+        },
+      ],
+    });
+
+    await prisma.incident.create({
+      data: {
+        title: "Ledger firmware update causing HSM reconnection issues",
+        provider: "Ledger",
+        severity: "medium",
+        status: "resolved",
+        description: "Ledger Enterprise HSM required firmware update. Reconnection took longer than expected.",
+        impact: "Signing ceremony delayed by 45 minutes. One client staking operation pushed to next window.",
+        reportedById: emp["grace@ops.com"].id,
+        resolvedById: emp["grace@ops.com"].id,
+        linkedThreadIds: JSON.stringify([]),
+        linkedTransactionIds: JSON.stringify([]),
+        startedAt: new Date(incNow.getTime() - 26 * 60 * 60000), // yesterday
+        resolvedAt: new Date(incNow.getTime() - 25 * 60 * 60000), // resolved after 1h
+      },
+    });
+
+    await prisma.incident.create({
+      data: {
+        title: "GX exchange API intermittent latency spikes",
+        provider: "GX",
+        severity: "low",
+        status: "monitoring",
+        description: "GX REST API response times spiking to 5-10s periodically. No failed requests but causing UI timeouts.",
+        impact: "Transaction status polling slower than usual. No direct client impact.",
+        reportedById: emp["alice@ops.com"].id,
+        linkedThreadIds: JSON.stringify([]),
+        linkedTransactionIds: JSON.stringify([]),
+        startedAt: new Date(incNow.getTime() - 4 * 60 * 60000), // 4 hours ago
+      },
+    });
+
+    console.log("Created incident seed data");
   }
 
   console.log("Seed complete!");

@@ -7,18 +7,21 @@ import { computeSlaStatus, computeTravelRuleAging } from "@/lib/sla";
  * GET /api/command-center
  *
  * Aggregated data across all modules for the ops command center landing page.
+ * Runs 7 independent queries in parallel via safeQuery — if any single query
+ * fails (e.g. a table doesn't exist yet), the rest still return data so the
+ * dashboard degrades gracefully rather than showing a blank page.
  */
 export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  // Run queries independently so one failure doesn't break the whole page
+  // Wraps each query so one failure doesn't break the whole page
   async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try { return await fn(); } catch { return fallback; }
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -61,7 +64,8 @@ export async function GET() {
         });
       }, []),
 
-      // Active projects
+      // Team coverage: count how many Transaction Ops staff are currently active,
+      // on queue monitoring duty, or on break. "Active" excludes lunch/break.
       safeQuery(async () => {
         const txOpsEmployees = await prisma.employee.findMany({
           where: { team: "Transaction Operations", active: true },
@@ -84,9 +88,16 @@ export async function GET() {
         orderBy: { updatedAt: "desc" },
         take: 10,
       }), []),
+
+      // Active 3rd party incidents (active or monitoring)
+      safeQuery(() => prisma.incident.findMany({
+        where: { status: { in: ["active", "monitoring"] } },
+        select: { id: true, title: true, provider: true, severity: true, status: true, startedAt: true },
+        orderBy: { startedAt: "desc" },
+      }), []),
     ]);
 
-    // Compute aging for cases
+    // Travel rule aging: green (<24h), amber (24-48h), red (>48h since creation)
     const casesWithAging = openCases.map((c) => ({
       id: c.id,
       transactionId: c.transactionId,
@@ -100,7 +111,8 @@ export async function GET() {
       ...computeTravelRuleAging(c.createdAt),
     }));
 
-    // Compute SLA for threads
+    // SLA status: check TTO (time-to-ownership), TTFA (time-to-first-action),
+    // TSLA (time-since-last-action) deadlines against current time
     const threadsWithSla = activeThreads.map((t) => ({
       id: t.id,
       subject: t.subject,
@@ -177,6 +189,12 @@ export async function GET() {
             targetDate: p.targetDate,
             team: p.team,
           })),
+        },
+        incidents: {
+          activeCount: activeIncidents.filter((i) => i.status === "active").length,
+          monitoringCount: activeIncidents.filter((i) => i.status === "monitoring").length,
+          criticalCount: activeIncidents.filter((i) => i.severity === "critical" && i.status === "active").length,
+          items: activeIncidents,
         },
       },
     });

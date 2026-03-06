@@ -1,5 +1,20 @@
+/**
+ * Employee performance scoring engine.
+ *
+ * All scores are on a 3-8 scale (not 1-10) to avoid false precision and
+ * compressed distributions. Each category computes a raw 0-1 index from
+ * metrics, then maps to 3-8 via `rawIndexToScore()`.
+ *
+ * Categories and their weights (configurable):
+ *   - daily_tasks (25%): ticket throughput, on-time rate, cycle time
+ *   - asset_actions (25%): completed actions, SLA compliance, complexity
+ *   - quality (25%): mistakes (severity-weighted) vs positive contributions
+ *   - projects (15%): documentation created/updated in Confluence
+ *   - knowledge (10%): monthly rubric assessment by lead (mapped from 1-10)
+ */
 import type { Category, CategoryWeight, ScoringConfigData } from "@/types";
 
+// Dashboard score range — 3 is the floor, 8 is the ceiling
 const CLAMP_MIN = 3;
 const CLAMP_MAX = 8;
 
@@ -43,6 +58,10 @@ export function computeOverallScore(
 
 /**
  * Calculate raw index for daily tasks category.
+ *
+ * Breakdown: 40% throughput, 30% on-time rate, 20% cycle time, 10% quality.
+ * Each sub-score is capped (1.2-1.5x) to allow slight over-performance
+ * without gaming. `workingDaysFactor` adjusts targets for PTO.
  */
 export function computeDailyTasksIndex(metrics: {
   ticketsResolved: number;

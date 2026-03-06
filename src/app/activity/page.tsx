@@ -45,6 +45,11 @@ interface HistoryEntry {
   durationMin: number | null;
 }
 
+// Each activity type has a display label, icon, and colour scheme.
+// These categories were chosen to reflect the actual work patterns of the
+// Transaction Operations team — BAU (daily operational tasks), queue monitoring
+// (watching Fireblocks/settlement queues), and project work alongside standard
+// categories like meetings and breaks.
 const ACTIVITY_CONFIG: Record<string, { label: string; icon: typeof Activity; color: string; bgColor: string }> = {
   project: { label: "Project", icon: Briefcase, color: "text-blue-400", bgColor: "bg-blue-500/10" },
   bau: { label: "BAU", icon: Monitor, color: "text-emerald-400", bgColor: "bg-emerald-500/10" },
@@ -72,6 +77,7 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("board");
   const [teamFilter, setTeamFilter] = useState("Transaction Operations");
+  // Tracks which employee's activity-selector dropdown is open (by employee ID)
   const [changingActivity, setChangingActivity] = useState<string | null>(null);
   const [newActivity, setNewActivity] = useState({ activity: "", detail: "" });
 
@@ -150,13 +156,15 @@ export default function ActivityPage() {
     activityGroups.get(key)!.push(emp);
   }
 
-  // Coverage stats
+  // Coverage stats: "active" means checked in and not on lunch/break,
+  // which tells managers how many people are currently working on ops tasks
   const totalStaff = employees.length;
   const activeStaff = employees.filter((e) => e.currentActivity && e.currentActivity.activity !== "lunch" && e.currentActivity.activity !== "break").length;
   const onQueues = employees.filter((e) => e.currentActivity?.activity === "queue_monitoring").length;
   const onBreak = employees.filter((e) => e.currentActivity?.activity === "lunch" || e.currentActivity?.activity === "break").length;
 
-  // Time breakdown from history
+  // Aggregate completed activity durations by type for the time breakdown chart.
+  // Only includes entries with a computed durationMin (i.e. already ended).
   const timeTotals = new Map<string, number>();
   for (const entry of history) {
     const dur = entry.durationMin || 0;
@@ -375,6 +383,9 @@ export default function ActivityPage() {
               <p className="text-sm text-muted-foreground">No activity recorded today</p>
             ) : (
               <div className="space-y-2">
+                {/* Sort activities by total time descending; bar width is relative
+                    to the highest total (not a percentage of the day) so even small
+                    values are visible */}
                 {Array.from(timeTotals.entries())
                   .sort((a, b) => b[1] - a[1])
                   .map(([activity, totalMin]) => {

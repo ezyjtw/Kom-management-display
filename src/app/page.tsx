@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import {
   Zap,
   ShieldAlert,
@@ -16,6 +17,7 @@ import {
   CalendarClock,
   FolderKanban,
   Eye,
+  LogOut,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -98,14 +100,29 @@ interface CommandCenterData {
       team: string;
     }>;
   };
+  incidents: {
+    activeCount: number;
+    monitoringCount: number;
+    criticalCount: number;
+    items: Array<{
+      id: string;
+      title: string;
+      provider: string;
+      severity: string;
+      status: string;
+      startedAt: string;
+    }>;
+  };
 }
 
+// Travel rule case aging thresholds: green (<24h), amber (24-48h), red (>48h SLA breach)
 const AGING_COLORS = {
   green: "text-emerald-400",
   amber: "text-amber-400",
   red: "text-red-400",
 };
 
+// Comms thread priority badges — P0 is critical (outage-level), P3 is routine
 const PRIORITY_COLORS: Record<string, string> = {
   P0: "bg-red-500/10 text-red-400",
   P1: "bg-orange-500/10 text-orange-400",
@@ -113,6 +130,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P3: "bg-muted text-muted-foreground",
 };
 
+// Human-readable labels for audit log action types
 const ACTION_LABELS: Record<string, string> = {
   travel_rule_case_created: "Opened travel rule case",
   travel_rule_case_updated: "Updated travel rule case",
@@ -130,6 +148,9 @@ const ACTION_LABELS: Record<string, string> = {
   daily_task_created: "Created daily task",
   project_created: "Created project",
   project_update_added: "Updated project",
+  incident_created: "Raised incident",
+  incident_updated: "Updated incident",
+  incident_resolved: "Resolved incident",
 };
 
 export default function CommandCenterPage() {
@@ -172,16 +193,29 @@ export default function CommandCenterPage() {
   if (!data) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-2">
+        <AlertTriangle size={24} className="mx-auto mb-3 text-red-400" />
+        <p className="text-muted-foreground mb-1">
           {error || "Failed to load data."}
         </p>
-        <button
-          onClick={fetchData}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-accent/50 text-foreground"
-        >
-          <RefreshCw size={14} />
-          Retry
-        </button>
+        <p className="text-xs text-muted-foreground mb-4">
+          If this persists, try signing out and back in.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={fetchData}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-accent/50 text-foreground"
+          >
+            <RefreshCw size={14} />
+            Retry
+          </button>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 text-red-400"
+          >
+            <LogOut size={14} />
+            Sign Out
+          </button>
+        </div>
       </div>
     );
   }
@@ -208,8 +242,25 @@ export default function CommandCenterPage() {
         </button>
       </div>
 
+      {/* Active incidents banner */}
+      {data.incidents.activeCount > 0 && (
+        <Link href="/incidents" className={`flex items-center gap-3 p-4 rounded-xl border ${data.incidents.criticalCount > 0 ? "bg-red-500/10 border-red-500/20 animate-pulse" : "bg-amber-500/10 border-amber-500/20"}`}>
+          <AlertTriangle size={20} className={data.incidents.criticalCount > 0 ? "text-red-400" : "text-amber-400"} />
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${data.incidents.criticalCount > 0 ? "text-red-400" : "text-amber-400"}`}>
+              {data.incidents.activeCount} Active Incident{data.incidents.activeCount !== 1 ? "s" : ""}
+              {data.incidents.criticalCount > 0 && ` (${data.incidents.criticalCount} critical)`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {data.incidents.items.slice(0, 2).map((i) => `${i.provider}: ${i.title}`).join(" · ")}
+            </p>
+          </div>
+          <ArrowRight size={16} className="text-muted-foreground" />
+        </Link>
+      )}
+
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/travel-rule" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
             <ShieldAlert size={14} />

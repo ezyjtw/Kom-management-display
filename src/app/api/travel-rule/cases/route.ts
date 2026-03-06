@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
     } else if (owner) {
       where.ownerUserId = owner;
     }
+    // ?overdue=true filters to unresolved cases older than the SLA deadline (48h).
+    // Uses createdAt rather than slaDeadline so it works even for cases
+    // created before the slaDeadline column was added.
     if (overdue === "true") {
       where.status = { not: "Resolved" };
       where.createdAt = {
@@ -79,7 +82,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Avoid duplicate cases
+    // Uniqueness is enforced by transactionId + matchStatus compound key.
+    // If a case already exists for this combination, return it rather than
+    // creating a duplicate (idempotent create pattern).
     const existing = await prisma.travelRuleCase.findUnique({
       where: {
         transactionId_matchStatus: { transactionId, matchStatus },
@@ -90,6 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: existing });
     }
 
+    // SLA deadline is createdAt + 48 hours — displayed on the case detail page
     const now = new Date();
     const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
 

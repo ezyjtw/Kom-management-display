@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ThreadList } from "@/components/comms/ThreadList";
+import { ErrorState } from "@/components/shared/ErrorState";
 import {
   Inbox,
   User,
@@ -9,6 +10,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Filter,
+  Sparkles,
+  Check,
+  X,
 } from "lucide-react";
 import type { ThreadSummary } from "@/types";
 
@@ -24,10 +28,14 @@ const viewTabs: { key: ViewTab; label: string; icon: typeof Inbox }[] = [
 export default function CommsPage() {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewTab>("all");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [queueFilter, setQueueFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  // AI triage suggestions: threadId → { priority, reason }
+  const [triageSuggestions, setTriageSuggestions] = useState<Record<string, { priority: string; reason: string }>>({});
+  const [triaging, setTriaging] = useState(false);
 
   useEffect(() => {
     fetchThreads();
@@ -35,6 +43,7 @@ export default function CommsPage() {
 
   async function fetchThreads() {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       params.set("view", activeView);
@@ -46,9 +55,12 @@ export default function CommsPage() {
       const json = await res.json();
       if (json.success) {
         setThreads(json.data || []);
+      } else {
+        setError(json.error || "Failed to load threads");
       }
     } catch (err) {
       console.error("Failed to fetch threads:", err);
+      setError("Network error — could not reach server");
     } finally {
       setLoading(false);
     }
@@ -78,14 +90,50 @@ export default function CommsPage() {
             Manage inbound emails and Slack messages — track ownership and SLAs
           </p>
         </div>
-        <button
-          onClick={fetchThreads}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50 self-start sm:self-auto"
-        >
-          <RefreshCw size={16} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={async () => {
+              setTriaging(true);
+              const unassigned = threads.filter((t) => t.status === "Unassigned" || t.priority === "P2" || t.priority === "P3");
+              const suggestions: Record<string, { priority: string; reason: string }> = {};
+              // Triage up to 5 threads at a time
+              for (const t of unassigned.slice(0, 5)) {
+                try {
+                  const res = await fetch("/api/ai/assist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      action: "triage_thread",
+                      data: { subject: t.subject, source: t.source, clientOrPartnerTag: t.clientOrPartnerTag },
+                    }),
+                  });
+                  const json = await res.json();
+                  if (json.success && json.data?.suggestion) {
+                    suggestions[t.id] = json.data.suggestion;
+                  }
+                } catch { /* skip failed threads */ }
+              }
+              setTriageSuggestions(suggestions);
+              setTriaging(false);
+            }}
+            disabled={triaging || threads.length === 0}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-primary bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 disabled:opacity-50"
+          >
+            {triaging ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            <span className="hidden sm:inline">{triaging ? "Triaging..." : "AI Triage"}</span>
+          </button>
+          <button
+            onClick={fetchThreads}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
+          >
+            <RefreshCw size={16} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
       </div>
+
+      {/* Error state */}
+      {error && <ErrorState message={error} onRetry={fetchThreads} />}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -181,6 +229,85 @@ export default function CommsPage() {
           <option value="jira">Jira</option>
         </select>
       </div>
+
+      {/* AI Triage Suggestions */}
+      {Object.keys(triageSuggestions).length > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <Sparkles size={14} className="text-primary" />
+              AI Priority Suggestions
+              <span className="text-muted-foreground font-normal">— review and approve</span>
+            </p>
+            <button
+              onClick={() => setTriageSuggestions({})}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Dismiss all
+            </button>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(triageSuggestions).map(([threadId, suggestion]) => {
+              const thread = threads.find((t) => t.id === threadId);
+              if (!thread) return null;
+              const changed = thread.priority !== suggestion.priority;
+              return (
+                <div key={threadId} className="flex items-center gap-3 p-2.5 rounded-lg bg-card/50 text-sm">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    suggestion.priority === "P0" ? "bg-red-500/10 text-red-400" :
+                    suggestion.priority === "P1" ? "bg-orange-500/10 text-orange-400" :
+                    suggestion.priority === "P2" ? "bg-amber-500/10 text-amber-400" :
+                    "bg-muted text-muted-foreground"
+                  }`}>
+                    {suggestion.priority}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground truncate">{thread.subject}</p>
+                    <p className="text-xs text-muted-foreground">{suggestion.reason}</p>
+                  </div>
+                  {changed ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs text-muted-foreground">was {thread.priority}</span>
+                      <button
+                        onClick={async () => {
+                          await fetch(`/api/comms/threads/${threadId}/status`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ priority: suggestion.priority }),
+                          });
+                          setTriageSuggestions((prev) => {
+                            const next = { ...prev };
+                            delete next[threadId];
+                            return next;
+                          });
+                          fetchThreads();
+                        }}
+                        className="p-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                        title="Accept suggestion"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={() => setTriageSuggestions((prev) => {
+                          const next = { ...prev };
+                          delete next[threadId];
+                          return next;
+                        })}
+                        className="p-1 rounded bg-muted text-muted-foreground hover:text-foreground"
+                        title="Dismiss"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-emerald-400 shrink-0">Priority correct</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Thread List */}
       {loading ? (

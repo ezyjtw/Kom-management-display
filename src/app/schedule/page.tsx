@@ -221,9 +221,11 @@ export default function SchedulePage() {
   const fetchRota = useCallback(async () => {
     setLoading(true);
     try {
-      // Get 2 weeks around the selected date
+      // Snap to the Monday of the selected date's week, then fetch 2 weeks of rota data.
+      // This ensures we always show complete rotation periods (Mon-Fri).
       const d = new Date(selectedDate);
       const weekday = d.getDay();
+      // Sunday (0) maps to -6 (previous Monday), otherwise subtract weekday-1
       const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
       const monday = new Date(d.getTime() + mondayOffset * 86400000);
       const from = monday.toISOString().split("T")[0];
