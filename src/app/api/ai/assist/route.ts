@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import {
   isAiEnabled,
+  getProviderName,
   generateBriefing,
   suggestThreadPriority,
   draftIncidentImpact,
@@ -45,14 +46,14 @@ export async function POST(request: NextRequest) {
     if (action === "status") {
       return NextResponse.json({
         success: true,
-        data: { enabled: isAiEnabled() },
+        data: { enabled: isAiEnabled(), provider: getProviderName() },
       });
     }
 
     if (!isAiEnabled()) {
       return NextResponse.json({
         success: false,
-        error: "AI features not configured. Set ANTHROPIC_API_KEY in environment.",
+        error: "AI features not configured. Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_BASE_URL in environment.",
       }, { status: 503 });
     }
 
