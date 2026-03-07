@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         asset,
         rewardModel,
         validator: body.validator || "",
-        stakedAmount: body.stakedAmount || 0,
+        stakedAmount: typeof body.stakedAmount === "number" && !isNaN(body.stakedAmount) ? body.stakedAmount : 0,
         clientName: body.clientName || "",
         isColdStaking: body.isColdStaking || false,
         isTestWallet: body.isTestWallet || false,

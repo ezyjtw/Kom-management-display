@@ -106,6 +106,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (isNaN(parseFloat(amount))) {
+      return NextResponse.json(
+        { success: false, error: "amount must be a valid number" },
+        { status: 400 },
+      );
+    }
+
     const settlement = await prisma.oesSettlement.create({
       data: {
         settlementRef,
@@ -192,7 +199,7 @@ export async function PATCH(request: NextRequest) {
 
       case "update_delegation":
         if (fields.delegationStatus) data.delegationStatus = fields.delegationStatus;
-        if (fields.delegatedAmount !== undefined) data.delegatedAmount = parseFloat(fields.delegatedAmount);
+        if (fields.delegatedAmount !== undefined && !isNaN(parseFloat(fields.delegatedAmount))) data.delegatedAmount = parseFloat(fields.delegatedAmount);
         break;
 
       case "complete":
