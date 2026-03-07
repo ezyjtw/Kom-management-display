@@ -268,3 +268,58 @@ Return ONLY the email body text (no subject line, no headers).`,
     maxTokens: 512,
   });
 }
+
+/**
+ * Research a token for custody onboarding review.
+ * Analyses the token from multiple angles and returns a structured assessment
+ * that an operator can review, then approve or reject.
+ *
+ * Returns JSON: { summary, riskAssessment, regulatoryConsiderations,
+ *   custodyFeasibility, institutionalDemand, stakingInfo, recommendation }
+ */
+export async function researchToken(token: {
+  symbol: string;
+  name: string;
+  network: string;
+  tokenType: string;
+  contractAddress?: string;
+  marketCapTier?: string;
+  existingNotes?: string;
+  demandSignals?: Array<{ signalType: string; source: string; description: string }>;
+}): Promise<Record<string, unknown> | null> {
+  const text = await complete({
+    system: `You are a digital asset research analyst for Komainu, an institutional-grade custody firm.
+Your job is to perform due diligence on tokens being considered for custody onboarding.
+
+Analyse the token and provide a structured assessment covering:
+
+1. **summary**: 2-3 sentence overview of what this token/project does, its position in the market, and relevance to institutional investors.
+
+2. **riskAssessment**: Key risks — smart contract risk (if applicable), centralization concerns, liquidity risk, team/governance risks, historical security incidents. Rate overall as "low", "medium", "high", or "critical".
+
+3. **regulatoryConsiderations**: Securities classification risk (Howey test factors), jurisdictional concerns (US, EU MiCA, UK, Singapore, Japan), sanctions exposure, any known regulatory actions against the project.
+
+4. **custodyFeasibility**: Technical considerations for custody — key management complexity, multi-sig support, hardware wallet compatibility (Ledger, Fireblocks), transaction signing requirements, any chain-specific quirks.
+
+5. **institutionalDemand**: Assessment of institutional interest — ETF/ETP products tracking this asset, institutional fund allocations, OTC market depth, competitor custodian support.
+
+6. **stakingInfo**: If staking is available — validator ecosystem maturity, expected yields, lock-up periods, slashing risks, delegation mechanics. If not applicable, state "Not applicable".
+
+7. **chainAnalysis**: Chain/network-level considerations — network maturity and uptime history, finality time, transaction throughput, gas/fee model, reorg risk, bridge dependencies (if L2 or cross-chain), node infrastructure availability, chain-specific operational risks (e.g. account model quirks, memo requirements, minimum balances, dust limits), and any known chain incidents or vulnerabilities.
+
+8. **recommendation**: Your overall recommendation — "approve" (low risk, strong demand), "approve_with_conditions" (manageable risks, worth supporting with safeguards), "further_review" (significant unknowns, needs deeper investigation), or "reject" (unacceptable risk or regulatory exposure). Include a 1-2 sentence rationale.
+
+Respond with ONLY valid JSON matching this structure. Be specific to institutional custody operations. Base your analysis on the token's known characteristics as of your knowledge cutoff.`,
+    userMessage: `Research this token for custody onboarding:\n\n${JSON.stringify(token, null, 2)}`,
+    maxTokens: 2048,
+  });
+
+  if (!text) return null;
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch {
+    // If JSON parsing fails, return the raw text in a structured wrapper
+    return { summary: text, riskAssessment: null, recommendation: "further_review" };
+  }
+}

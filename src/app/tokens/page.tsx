@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Coins, Plus, X, ChevronDown, ChevronRight, TrendingUp, Shield, ArrowRight } from "lucide-react";
+import { RefreshCw, AlertTriangle, Coins, Plus, X, ChevronDown, ChevronRight, TrendingUp, Shield, ArrowRight, Sparkles, CheckCircle2, XCircle, AlertCircle, HelpCircle } from "lucide-react";
 import { TokenStatusBadge, RiskLevelBadge } from "@/components/shared/StatusBadge";
 
 interface DemandSignal {
@@ -85,8 +85,23 @@ export default function TokenReviewPage() {
   const [showSignalForm, setShowSignalForm] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [researchResults, setResearchResults] = useState<Record<string, Record<string, unknown>>>({});
+  const [researchLoading, setResearchLoading] = useState<string | null>(null);
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); checkAi(); }, []);
+
+  async function checkAi() {
+    try {
+      const res = await fetch("/api/ai/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status" }),
+      });
+      const json = await res.json();
+      if (json.success) setAiEnabled(json.data.enabled);
+    } catch { /* */ }
+  }
 
   async function fetchData() {
     setLoading(true);
@@ -156,6 +171,83 @@ export default function TokenReviewPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "update", tokenId, [field]: !currentValue }),
+    });
+    fetchData();
+  }
+
+  async function handleResearch(token: TokenEntry) {
+    setResearchLoading(token.id);
+    try {
+      const res = await fetch("/api/ai/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "research_token",
+          data: {
+            symbol: token.symbol,
+            name: token.name,
+            network: token.network,
+            tokenType: token.tokenType,
+            contractAddress: token.contractAddress,
+            marketCapTier: token.marketCapTier,
+            existingNotes: token.notes,
+            demandSignals: token.demandSignals.map((s) => ({
+              signalType: s.signalType,
+              source: s.source,
+              description: s.description,
+            })),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data?.suggestion) {
+        setResearchResults((prev) => ({ ...prev, [token.id]: json.data.suggestion }));
+      }
+    } catch { /* */ } finally {
+      setResearchLoading(null);
+    }
+  }
+
+  async function handleApplyResearch(tokenId: string) {
+    const research = researchResults[tokenId];
+    if (!research) return;
+
+    const updateData: Record<string, unknown> = { action: "update", tokenId };
+
+    // Apply risk level from research
+    if (research.riskAssessment && typeof research.riskAssessment === "object") {
+      const ra = research.riskAssessment as Record<string, unknown>;
+      if (typeof ra === "string") {
+        updateData.riskLevel = ra;
+      }
+    }
+    if (typeof research.riskAssessment === "string") {
+      const level = research.riskAssessment.toLowerCase();
+      if (["low", "medium", "high", "critical"].includes(level)) {
+        updateData.riskLevel = level;
+      }
+    }
+
+    // Build combined notes from research sections
+    const noteParts: string[] = [];
+    if (research.summary) noteParts.push(`AI Summary: ${research.summary}`);
+    if (research.custodyFeasibility) noteParts.push(`Custody: ${research.custodyFeasibility}`);
+    if (research.stakingInfo && research.stakingInfo !== "Not applicable") noteParts.push(`Staking: ${research.stakingInfo}`);
+    if (noteParts.length > 0) updateData.notes = noteParts.join("\n\n");
+
+    // Build risk and regulatory notes
+    if (research.riskAssessment && typeof research.riskAssessment === "object") {
+      const ra = research.riskAssessment as Record<string, unknown>;
+      if (ra.reasoning || ra.details) updateData.riskNotes = String(ra.reasoning || ra.details || "");
+    } else if (typeof research.riskAssessment === "string") {
+      // riskAssessment might just be the level
+    }
+    if (research.regulatoryConsiderations) updateData.regulatoryNotes = String(research.regulatoryConsiderations);
+
+    await fetch("/api/tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updateData),
     });
     fetchData();
   }
@@ -447,6 +539,165 @@ export default function TokenReviewPage() {
                           </form>
                         )}
                       </div>
+                    </div>
+
+                    {/* AI Research Panel — full width below the two columns */}
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <Sparkles size={12} className="text-primary" /> AI Due Diligence
+                        </h4>
+                        {aiEnabled && !researchResults[token.id] && (
+                          <button
+                            onClick={() => handleResearch(token)}
+                            disabled={researchLoading === token.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 disabled:opacity-50"
+                          >
+                            {researchLoading === token.id ? (
+                              <><RefreshCw size={12} className="animate-spin" /> Researching...</>
+                            ) : (
+                              <><Sparkles size={12} /> Run AI Research</>
+                            )}
+                          </button>
+                        )}
+                        {aiEnabled === false && (
+                          <span className="text-xs text-muted-foreground">AI not configured</span>
+                        )}
+                      </div>
+
+                      {researchResults[token.id] != null && (() => {
+                        const r = researchResults[token.id] as Record<string, string | Record<string, unknown> | null>;
+                        const recMap: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
+                          approve: { icon: CheckCircle2, color: "text-emerald-400", label: "Approve" },
+                          approve_with_conditions: { icon: AlertCircle, color: "text-amber-400", label: "Approve with Conditions" },
+                          further_review: { icon: HelpCircle, color: "text-blue-400", label: "Further Review Needed" },
+                          reject: { icon: XCircle, color: "text-red-400", label: "Reject" },
+                        };
+                        const recKey = typeof r.recommendation === "string" ? r.recommendation.toLowerCase().replace(/\s+/g, "_") : "";
+                        const recInfo = recMap[recKey] || recMap["further_review"];
+                        const RecIcon = recInfo?.icon || HelpCircle;
+
+                        return (
+                          <div className="space-y-3">
+                            {/* Recommendation banner */}
+                            {!!r.recommendation && (
+                              <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+                                recKey === "approve" ? "bg-emerald-500/5 border-emerald-500/20" :
+                                recKey === "reject" ? "bg-red-500/5 border-red-500/20" :
+                                recKey === "approve_with_conditions" ? "bg-amber-500/5 border-amber-500/20" :
+                                "bg-blue-500/5 border-blue-500/20"
+                              }`}>
+                                <RecIcon size={16} className={recInfo?.color || "text-muted-foreground"} />
+                                <div className="flex-1">
+                                  <p className={`text-sm font-semibold ${recInfo?.color || "text-foreground"}`}>
+                                    AI Recommendation: {recInfo?.label || String(r.recommendation)}
+                                  </p>
+                                  {typeof r.recommendation === "object" && !!(r.recommendation as Record<string, unknown>)?.rationale && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{String((r.recommendation as Record<string, unknown>).rationale)}</p>
+                                  )}
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                  <button
+                                    onClick={() => handleApplyResearch(token.id)}
+                                    className="px-3 py-1 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20"
+                                  >
+                                    Apply Findings
+                                  </button>
+                                  <button
+                                    onClick={() => setResearchResults((prev) => {
+                                      const next = { ...prev };
+                                      delete next[token.id];
+                                      return next;
+                                    })}
+                                    className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                  >
+                                    Dismiss
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Research sections */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {!!r.summary && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Summary</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.summary)}</p>
+                                </div>
+                              )}
+                              {!!r.riskAssessment && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Risk Assessment</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                                    {typeof r.riskAssessment === "object" ? JSON.stringify(r.riskAssessment, null, 2) : String(r.riskAssessment)}
+                                  </p>
+                                </div>
+                              )}
+                              {!!r.regulatoryConsiderations && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Regulatory Considerations</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.regulatoryConsiderations)}</p>
+                                </div>
+                              )}
+                              {!!r.custodyFeasibility && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Custody Feasibility</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.custodyFeasibility)}</p>
+                                </div>
+                              )}
+                              {!!r.institutionalDemand && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Institutional Demand</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.institutionalDemand)}</p>
+                                </div>
+                              )}
+                              {!!r.stakingInfo && r.stakingInfo !== "Not applicable" && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Staking Info</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.stakingInfo)}</p>
+                                </div>
+                              )}
+                              {!!r.chainAnalysis && (
+                                <div className="p-3 bg-muted/20 rounded-lg">
+                                  <p className="text-xs font-semibold text-foreground mb-1">Chain Analysis</p>
+                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.chainAnalysis)}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Operator action buttons */}
+                            {token.status !== "live" && token.status !== "rejected" && (
+                              <div className="flex items-center gap-2 pt-2">
+                                <span className="text-xs text-muted-foreground">Based on AI research:</span>
+                                {(recKey === "approve" || recKey === "approve_with_conditions") && token.status === "proposed" && (
+                                  <button onClick={() => handleStatusChange(token.id, "under_review")} className="px-3 py-1 text-xs bg-indigo-500/10 text-indigo-400 rounded hover:bg-indigo-500/20">Start Review</button>
+                                )}
+                                {(recKey === "approve" || recKey === "approve_with_conditions") && token.status === "under_review" && (
+                                  <button onClick={() => handleStatusChange(token.id, "compliance_review")} className="px-3 py-1 text-xs bg-amber-500/10 text-amber-400 rounded hover:bg-amber-500/20">Send to Compliance</button>
+                                )}
+                                {recKey === "approve" && token.status === "compliance_review" && (
+                                  <button onClick={() => handleStatusChange(token.id, "approved")} className="px-3 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20">Approve</button>
+                                )}
+                                {recKey === "reject" && (
+                                  <button onClick={() => handleStatusChange(token.id, "rejected")} className="px-3 py-1 text-xs bg-red-500/10 text-red-400 rounded hover:bg-red-500/20">Reject</button>
+                                )}
+                                <button
+                                  onClick={() => handleResearch(token)}
+                                  className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  Re-run Research
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {!researchResults[token.id] && aiEnabled && !researchLoading && (
+                        <p className="text-xs text-muted-foreground">
+                          Click &quot;Run AI Research&quot; to get an automated due diligence report covering risk, regulatory, custody feasibility, and institutional demand analysis.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
