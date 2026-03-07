@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { TeamOverviewTable } from "@/components/dashboard/TeamOverviewTable";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -15,11 +15,7 @@ export default function DashboardPage() {
   const [teamFilter, setTeamFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
 
-  useEffect(() => {
-    fetchData();
-  }, [periodType]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -36,7 +32,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [periodType]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredEmployees = employees.filter((e) => {
     if (teamFilter && e.team !== teamFilter) return false;

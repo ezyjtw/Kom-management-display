@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import {
@@ -107,11 +107,7 @@ export default function IncidentsPage() {
   const [updateText, setUpdateText] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchIncidents();
-  }, [statusFilter]);
-
-  async function fetchIncidents() {
+  const fetchIncidents = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -129,7 +125,11 @@ export default function IncidentsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchIncidents();
+  }, [fetchIncidents]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
