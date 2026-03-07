@@ -361,7 +361,16 @@ export default function AdminPage() {
             Different targets by seniority level to ensure fair comparison.
           </p>
           <div className="space-y-6">
-            {Object.entries(config.targets).map(([role, targets]) => (
+            {Object.entries(config.targets || {}).map(([role, targets]) => {
+              if (!targets?.daily_tasks || !targets?.projects || !targets?.asset_actions || !targets?.quality) {
+                return (
+                  <div key={role} className="p-4 bg-muted/50 rounded-lg">
+                    <h4 className="text-sm font-semibold text-foreground mb-3">{role}</h4>
+                    <p className="text-sm text-muted-foreground">Target data incomplete for this role.</p>
+                  </div>
+                );
+              }
+              return (
               <div key={role} className="p-4 bg-muted/50 rounded-lg">
                 <h4 className="text-sm font-semibold text-foreground mb-3">{role}</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -401,7 +410,8 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
