@@ -1005,6 +1005,76 @@ export default function TokenReviewPage() {
                                 )}
                               </div>
 
+                              {/* Security History — full width */}
+                              {!!r.securityHistory && typeof r.securityHistory === "object" && (() => {
+                                const sh = r.securityHistory as Record<string, unknown>;
+                                const incidents = Array.isArray(sh.incidents) ? sh.incidents as Array<Record<string, string>> : [];
+                                const ratingColors: Record<string, string> = {
+                                  strong: "text-emerald-400 bg-emerald-500/10",
+                                  adequate: "text-blue-400 bg-blue-500/10",
+                                  concerning: "text-amber-400 bg-amber-500/10",
+                                  poor: "text-red-400 bg-red-500/10",
+                                };
+                                const rating = typeof sh.overallSecurityRating === "string" ? sh.overallSecurityRating : "unknown";
+
+                                return (
+                                  <div className="p-3 bg-muted/20 rounded-lg border border-border/50">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-xs font-semibold text-foreground flex items-center gap-1">
+                                        <Shield size={12} /> Security History & Hack Analysis
+                                      </p>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${ratingColors[rating] || "text-muted-foreground bg-muted/30"}`}>
+                                        {rating.charAt(0).toUpperCase() + rating.slice(1)}
+                                      </span>
+                                    </div>
+
+                                    {incidents.length > 0 ? (
+                                      <div className="space-y-2 mb-3">
+                                        <p className="text-[10px] text-red-400 font-medium uppercase tracking-wider">Known Incidents ({incidents.length})</p>
+                                        {incidents.map((inc, idx) => (
+                                          <div key={idx} className="p-2 bg-red-500/5 border border-red-500/10 rounded text-xs space-y-1">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-red-400 font-medium">{inc.date || "Unknown date"}</span>
+                                              <span className="px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded text-[10px]">{(inc.type || "incident").replace(/_/g, " ")}</span>
+                                              {inc.fundsLost && inc.fundsLost !== "N/A" && (
+                                                <span className="text-red-400 font-medium">{inc.fundsLost} lost</span>
+                                              )}
+                                              {inc.recovered && (
+                                                <span className={`text-[10px] ${inc.recovered.toLowerCase().includes("not") ? "text-red-400" : "text-emerald-400"}`}>
+                                                  {inc.recovered}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <p className="text-muted-foreground">{inc.description}</p>
+                                            {inc.rootCause && <p className="text-muted-foreground"><span className="text-foreground font-medium">Root cause:</span> {inc.rootCause}</p>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-emerald-400 mb-2">No known security incidents.</p>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                      {!!sh.auditHistory && (
+                                        <div>
+                                          <p className="text-foreground font-medium mb-0.5">Audit History</p>
+                                          <p className="text-muted-foreground">{String(sh.auditHistory)}</p>
+                                        </div>
+                                      )}
+                                      {!!sh.bugBountyProgram && (
+                                        <div>
+                                          <p className="text-foreground font-medium mb-0.5">Bug Bounty</p>
+                                          <p className="text-muted-foreground">{String(sh.bugBountyProgram)}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {!!sh.operationalRisks && (
+                                      <p className="text-xs text-muted-foreground mt-2"><span className="font-medium text-foreground">Operational Risks:</span> {String(sh.operationalRisks)}</p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
                               {/* Operator action buttons */}
                               {token.status !== "live" && token.status !== "rejected" && (
                                 <div className="flex items-center gap-2 pt-2">

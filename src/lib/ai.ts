@@ -295,7 +295,7 @@ Analyse the token and provide a structured assessment covering:
 
 1. **summary**: 2-3 sentence overview of what this token/project does, its position in the market, and relevance to institutional investors.
 
-2. **riskAssessment**: Key risks — smart contract risk (if applicable), centralization concerns, liquidity risk, team/governance risks, historical security incidents. Rate overall as "low", "medium", "high", or "critical".
+2. **riskAssessment**: Key risks — smart contract risk (if applicable), centralization concerns, liquidity risk, team/governance risks. Rate overall as "low", "medium", "high", or "critical".
 
 3. **regulatoryConsiderations**: An object with per-jurisdiction analysis. Structure it as:
    {
@@ -322,11 +322,30 @@ Analyse the token and provide a structured assessment covering:
 
 7. **chainAnalysis**: Chain/network-level considerations — network maturity and uptime history, finality time, transaction throughput, gas/fee model, reorg risk, bridge dependencies (if L2 or cross-chain), node infrastructure availability, chain-specific operational risks (e.g. account model quirks, memo requirements, minimum balances, dust limits), and any known chain incidents or vulnerabilities.
 
-8. **recommendation**: Your overall recommendation — "approve" (low risk, strong demand), "approve_with_conditions" (manageable risks, worth supporting with safeguards), "further_review" (significant unknowns, needs deeper investigation), or "reject" (unacceptable risk or regulatory exposure). Include a 1-2 sentence rationale.
+8. **securityHistory**: An object covering the token/project/chain's history of hacks, exploits, and security incidents. Structure it as:
+   {
+     "incidents": [
+       {
+         "date": "YYYY-MM or approximate",
+         "type": "hack|exploit|rug_pull|bridge_exploit|flash_loan|governance_attack|smart_contract_bug|51%_attack|other",
+         "description": "Brief description of the incident",
+         "fundsLost": "Estimated USD value lost, or 'N/A'",
+         "recovered": "Whether funds were recovered, partially recovered, or not",
+         "rootCause": "Brief root cause explanation"
+       }
+     ],
+     "auditHistory": "Summary of smart contract audits — who audited, when, findings severity",
+     "bugBountyProgram": "Whether a bug bounty program exists, platform (Immunefi, HackerOne, etc.), max payout",
+     "overallSecurityRating": "strong|adequate|concerning|poor — based on incident history, audit coverage, and security posture",
+     "operationalRisks": "Any ongoing security concerns relevant to custody operations (e.g. bridge dependencies, admin key risks, upgrade mechanisms)"
+   }
+   If no known incidents exist, return an empty incidents array but still assess audit history and security posture.
+
+9. **recommendation**: Your overall recommendation — "approve" (low risk, strong demand), "approve_with_conditions" (manageable risks, worth supporting with safeguards), "further_review" (significant unknowns, needs deeper investigation), or "reject" (unacceptable risk or regulatory exposure). Include a 1-2 sentence rationale.
 
 Respond with ONLY valid JSON matching this structure. Be specific to institutional custody operations. Base your analysis on the token's known characteristics as of your knowledge cutoff.`,
     userMessage: `Research this token for custody onboarding:\n\n${JSON.stringify(token, null, 2)}`,
-    maxTokens: 2048,
+    maxTokens: 3072,
   });
 
   if (!text) return null;
