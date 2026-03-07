@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { useBranding } from "@/lib/use-branding";
 import {
   Zap,
   ShieldAlert,
@@ -194,6 +195,7 @@ export default function CommandCenterPage() {
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { branding } = useBranding();
 
   useEffect(() => {
     fetchData();
@@ -263,8 +265,12 @@ export default function CommandCenterPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
-            <Zap size={24} className="text-primary" />
-            KOMmand Centre
+            {branding.logoData ? (
+              <img src={branding.logoData} alt={branding.appName} className="h-6 w-6 rounded object-contain" />
+            ) : (
+              <Zap size={24} className="text-primary" />
+            )}
+            {branding.appName}
           </h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
             Operational overview across all modules
