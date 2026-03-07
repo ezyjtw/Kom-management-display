@@ -778,9 +778,19 @@ model TokenReview {
   // Custody support details
   custodianSupport String  @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
   stakingAvailable Boolean @default(false)
+  // Third-party vendor support tracking
+  chainalysisSupport String @default("unknown") // supported, partial, not_supported, unknown
+  notabeneSupport    String @default("unknown") // supported, partial, not_supported, unknown
+  fireblocksSupport  String @default("unknown") // supported, partial, not_supported, unknown
+  ledgerSupport      String @default("unknown") // supported, partial, not_supported, unknown
+  vendorNotes        String @default("") // JSON: per-vendor notes/caveats
   // Institutional demand
   demandScore     Int      @default(0) // 0-100 computed from demand signals
   demandSignals   TokenDemandSignal[]
+  // AI research persistence
+  aiResearchResult String   @default("") // JSON: full AI research output
+  aiResearchedAt   DateTime? // when AI research was last run
+  aiRecommendation String   @default("") // approve, approve_with_conditions, further_review, reject
   // Metadata
   marketCapTier   String   @default("unknown") // mega, large, mid, small, micro, unknown
   notes           String   @default("")

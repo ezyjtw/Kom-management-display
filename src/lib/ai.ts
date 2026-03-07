@@ -297,7 +297,22 @@ Analyse the token and provide a structured assessment covering:
 
 2. **riskAssessment**: Key risks — smart contract risk (if applicable), centralization concerns, liquidity risk, team/governance risks, historical security incidents. Rate overall as "low", "medium", "high", or "critical".
 
-3. **regulatoryConsiderations**: Securities classification risk (Howey test factors), jurisdictional concerns (US, EU MiCA, UK, Singapore, Japan), sanctions exposure, any known regulatory actions against the project.
+3. **regulatoryConsiderations**: An object with per-jurisdiction analysis. Structure it as:
+   {
+     "overall": "Brief overall regulatory risk summary",
+     "jurisdictions": {
+       "US": "SEC/CFTC classification risk, Howey test analysis, any enforcement actions",
+       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), compliance status",
+       "UK": "FCA classification, financial promotion rules, whether it's a specified investment",
+       "Switzerland": "FINMA token classification (payment, utility, asset), Swiss DLT framework status",
+       "Singapore": "MAS classification under Payment Services Act, Digital Payment Token status",
+       "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status",
+       "UAE": "VARA/ADGM classification and licensing requirements",
+       "Hong_Kong": "SFC classification, whether it's a virtual asset under the new regime"
+     },
+     "sanctionsExposure": "Any sanctions-related concerns (OFAC, EU sanctions lists)",
+     "keyRisks": ["risk1", "risk2"]
+   }
 
 4. **custodyFeasibility**: Technical considerations for custody — key management complexity, multi-sig support, hardware wallet compatibility (Ledger, Fireblocks), transaction signing requirements, any chain-specific quirks.
 
@@ -321,5 +336,58 @@ Respond with ONLY valid JSON matching this structure. Be specific to institution
   } catch {
     // If JSON parsing fails, return the raw text in a structured wrapper
     return { summary: text, riskAssessment: null, recommendation: "further_review" };
+  }
+}
+
+/**
+ * Suggest popular tokens/chain combos that institutions want but aren't
+ * yet in the custody registry. Takes the current list of supported tokens
+ * and proposes gaps worth filling.
+ *
+ * Returns JSON array of suggested tokens with rationale.
+ */
+export async function suggestTokensToOnboard(context: {
+  existingTokens: Array<{ symbol: string; network: string; status: string }>;
+  clientDemandSignals?: Array<{ source: string; description: string }>;
+}): Promise<Array<Record<string, unknown>> | null> {
+  const text = await complete({
+    system: `You are a digital asset strategy analyst for Komainu, an institutional-grade custody firm.
+Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported.
+
+Given the list of tokens already in the registry, suggest 5-8 popular token/chain combinations worth evaluating. Focus on:
+
+1. **Institutional demand**: Tokens with existing ETFs/ETPs, significant institutional fund allocations, or growing OTC markets
+2. **Chain diversity**: Major L1s, important L2s, and multi-chain deployments (e.g. USDT on Tron, stablecoins on multiple chains)
+3. **Competitor gap**: Tokens supported by competing custodians (BitGo, Anchorage, Coinbase Custody, Copper) but not yet listed
+4. **Emerging institutional assets**: RWA tokens, liquid staking derivatives, and tokenized assets gaining traction
+5. **Staking opportunities**: Tokens where custody clients would benefit from staking yield
+
+For each suggestion, provide:
+- **symbol**: Token ticker
+- **name**: Full name
+- **network**: Primary chain/network
+- **tokenType**: native, erc20, spl, substrate, other
+- **marketCapTier**: mega, large, mid, small
+- **rationale**: 1-2 sentences on why institutions want this
+- **urgency**: "high" (clients actively asking), "medium" (growing demand), "low" (proactive positioning)
+- **suggestedRiskLevel**: Initial risk assessment — low, medium, high
+- **chains**: Array of chains this token operates on (for multi-chain tokens)
+
+Do NOT suggest tokens that already appear in the existing registry.
+Respond with ONLY a valid JSON array.`,
+    userMessage: `Current token registry:\n${JSON.stringify(context.existingTokens, null, 2)}\n\n${
+      context.clientDemandSignals?.length
+        ? `Recent client demand signals:\n${JSON.stringify(context.clientDemandSignals, null, 2)}`
+        : "No specific client demand signals provided."
+    }`,
+    maxTokens: 2048,
+  });
+
+  if (!text) return null;
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch {
+    return null;
   }
 }

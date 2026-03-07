@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
     const data = tokens.map((t) => {
       let custodianSupport: string[] = [];
       try { custodianSupport = JSON.parse(t.custodianSupport); } catch { /* */ }
+      let vendorNotes: Record<string, string> = {};
+      try { if (t.vendorNotes) vendorNotes = JSON.parse(t.vendorNotes); } catch { /* */ }
+      let aiResearchResult: Record<string, unknown> | null = null;
+      try { if (t.aiResearchResult) aiResearchResult = JSON.parse(t.aiResearchResult); } catch { /* */ }
 
       return {
         id: t.id,
@@ -41,7 +45,7 @@ export async function GET(request: NextRequest) {
         tokenType: t.tokenType,
         status: t.status,
         proposedById: t.proposedById,
-        proposedByName: null as string | null, // filled below if needed
+        proposedByName: null as string | null,
         proposedAt: t.proposedAt,
         reviewedById: t.reviewedById,
         reviewedAt: t.reviewedAt,
@@ -58,6 +62,14 @@ export async function GET(request: NextRequest) {
         amlRiskAssessed: t.amlRiskAssessed,
         custodianSupport,
         stakingAvailable: t.stakingAvailable,
+        chainalysisSupport: t.chainalysisSupport,
+        notabeneSupport: t.notabeneSupport,
+        fireblocksSupport: t.fireblocksSupport,
+        ledgerSupport: t.ledgerSupport,
+        vendorNotes,
+        aiResearchResult,
+        aiResearchedAt: t.aiResearchedAt,
+        aiRecommendation: t.aiRecommendation,
         demandScore: t.demandScore,
         demandSignals: t.demandSignals.map((s) => ({
           id: s.id,
@@ -220,6 +232,7 @@ export async function POST(request: NextRequest) {
           "riskLevel", "riskNotes", "regulatoryNotes", "sanctionsCheck",
           "amlRiskAssessed", "stakingAvailable", "marketCapTier", "notes",
           "network", "contractAddress",
+          "chainalysisSupport", "notabeneSupport", "fireblocksSupport", "ledgerSupport",
         ];
         for (const field of allowedFields) {
           if (body[field] !== undefined) updateData[field] = body[field];
@@ -227,10 +240,31 @@ export async function POST(request: NextRequest) {
         if (body.custodianSupport !== undefined) {
           updateData.custodianSupport = JSON.stringify(body.custodianSupport);
         }
+        if (body.vendorNotes !== undefined) {
+          updateData.vendorNotes = JSON.stringify(body.vendorNotes);
+        }
 
         await prisma.tokenReview.update({
           where: { id: tokenId },
           data: updateData,
+        });
+
+        return NextResponse.json({ success: true });
+      }
+
+      case "save_research": {
+        const { tokenId, researchResult, recommendation } = body;
+        if (!tokenId || !researchResult) {
+          return NextResponse.json({ success: false, error: "tokenId and researchResult are required" }, { status: 400 });
+        }
+
+        await prisma.tokenReview.update({
+          where: { id: tokenId },
+          data: {
+            aiResearchResult: JSON.stringify(researchResult),
+            aiResearchedAt: new Date(),
+            aiRecommendation: recommendation || "",
+          },
         });
 
         return NextResponse.json({ success: true });

@@ -726,6 +726,7 @@ export type TokenRiskLevel = "low" | "medium" | "high" | "critical";
 export type MarketCapTier = "mega" | "large" | "mid" | "small" | "micro" | "unknown";
 export type TokenType = "native" | "erc20" | "spl" | "substrate" | "other";
 export type DemandSignalType = "client_request" | "market_trend" | "competitor_listed" | "internal_proposal";
+export type VendorSupportStatus = "supported" | "partial" | "not_supported" | "unknown";
 
 export interface TokenDemandSignalEntry {
   id: string;
@@ -763,11 +764,34 @@ export interface TokenReviewEntry {
   amlRiskAssessed: boolean;
   custodianSupport: string[];
   stakingAvailable: boolean;
+  // Third-party vendor support
+  chainalysisSupport: VendorSupportStatus;
+  notabeneSupport: VendorSupportStatus;
+  fireblocksSupport: VendorSupportStatus;
+  ledgerSupport: VendorSupportStatus;
+  vendorNotes: Record<string, string>;
+  // AI research persistence
+  aiResearchResult: Record<string, unknown> | null;
+  aiResearchedAt: string | null;
+  aiRecommendation: string;
+  // Other
   demandScore: number;
   demandSignals: TokenDemandSignalEntry[];
   marketCapTier: MarketCapTier;
   notes: string;
   createdAt: string;
+}
+
+export interface TokenSuggestion {
+  symbol: string;
+  name: string;
+  network: string;
+  tokenType: string;
+  marketCapTier: string;
+  rationale: string;
+  urgency: "high" | "medium" | "low";
+  suggestedRiskLevel: string;
+  chains: string[];
 }
 
 export interface TokenReviewOverview {
