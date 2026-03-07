@@ -25,7 +25,7 @@ export default function DailyChecksPage() {
         setRun(null);
         setNoRun(true);
       }
-    } catch { /* */ } finally { setLoading(false); }
+    } catch (err) { console.error("Failed to load daily checks:", err); setRun(null); setNoRun(true); } finally { setLoading(false); }
   }
 
   async function createRun() {

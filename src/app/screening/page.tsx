@@ -23,6 +23,7 @@ type Tab = "health" | "classifications" | "alerts";
 export default function ScreeningPage() {
   const [data, setData] = useState<ScreeningData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("health");
   const [showForm, setShowForm] = useState(false);
 
@@ -30,11 +31,12 @@ export default function ScreeningPage() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/screening");
       const json = await res.json();
-      if (json.success) setData(json.data);
-    } catch { /* */ } finally { setLoading(false); }
+      if (json.success) { setData(json.data); } else { setError(json.error || `Request failed (${res.status})`); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); } finally { setLoading(false); }
   }
 
   async function handleReclassify(id: string) {
@@ -71,7 +73,7 @@ export default function ScreeningPage() {
   }
 
   if (!data) {
-    return <div className="text-center py-12"><AlertTriangle size={24} className="mx-auto mb-3 text-red-400" /><p className="text-muted-foreground">Failed to load screening data.</p></div>;
+    return <div className="text-center py-12"><AlertTriangle size={24} className="mx-auto mb-3 text-red-400" /><p className="text-muted-foreground">Failed to load screening data.</p>{error && <p className="text-xs text-red-400 mt-1">{error}</p>}<button onClick={fetchData} className="mt-3 text-sm text-primary hover:underline">Retry</button></div>;
   }
 
   return (
