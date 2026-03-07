@@ -36,7 +36,7 @@ const alertTypeColors: Record<string, string> = {
 };
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("active");
   const [scanning, setScanning] = useState(false);
