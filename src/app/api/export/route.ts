@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
 import { requireRole, safeErrorMessage } from "@/lib/auth-user";
 import type { Category } from "@/types";
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const config = getDefaultScoringConfig();
+    const config = await getActiveScoringConfig();
     const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
 
     // Group by employee

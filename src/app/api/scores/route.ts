@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { rawIndexToScore, computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import { rawIndexToScore, computeOverallScore, getActiveScoringConfig, getDefaultScoringConfig } from "@/lib/scoring";
 import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
 import type { Category } from "@/types";
 
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
           })
         : [];
 
-      const config = getDefaultScoringConfig();
+      const config = await getActiveScoringConfig();
 
       // Build employee overviews
       const employeeMap = new Map<string, {
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = getDefaultScoringConfig();
+    const config = await getActiveScoringConfig();
     const score = rawIndexToScore(rawIndex);
 
     const categoryScore = await prisma.categoryScore.upsert({

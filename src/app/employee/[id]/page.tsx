@@ -8,6 +8,7 @@ import { EmployeeScorecard } from "@/components/dashboard/EmployeeScorecard";
 import { EvidencePanel } from "@/components/dashboard/EvidencePanel";
 import { FlagBadge } from "@/components/shared/FlagBadge";
 import { computeOverallScore, getDefaultScoringConfig } from "@/lib/scoring";
+import type { ScoringConfigData } from "@/types";
 import type { Category } from "@/types";
 
 interface EmployeeData {
@@ -49,14 +50,25 @@ interface EmployeeData {
 export default function EmployeeDetailPage() {
   const params = useParams();
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfigData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (params.id) {
-      fetch(`/api/employees/${params.id}`)
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success) setEmployee(json.data);
+      Promise.all([
+        fetch(`/api/employees/${params.id}`).then((res) => res.json()),
+        fetch("/api/scoring-config").then((res) => res.json()),
+      ])
+        .then(([empJson, configJson]) => {
+          if (empJson.success) setEmployee(empJson.data);
+          if (configJson.success && configJson.data?.config) {
+            try {
+              const parsed = typeof configJson.data.config === "string"
+                ? JSON.parse(configJson.data.config)
+                : configJson.data.config;
+              setScoringConfig(parsed);
+            } catch { /* use default */ }
+          }
         })
         .catch(console.error)
         .finally(() => setLoading(false));
@@ -83,7 +95,7 @@ export default function EmployeeDetailPage() {
   }
 
   // Build category scores from latest period
-  const config = getDefaultScoringConfig();
+  const config = scoringConfig || getDefaultScoringConfig();
   const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
   const latestScores = new Map<string, typeof employee.scores[0]>();
 
