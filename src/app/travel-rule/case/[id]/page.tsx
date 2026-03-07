@@ -3,6 +3,22 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+
+/** Strip dangerous tags/attributes from HTML to prevent XSS */
+function sanitizeHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const dangerous = doc.querySelectorAll("script, iframe, object, embed, form, link[rel=import]");
+  dangerous.forEach((el) => el.remove());
+  // Remove event handler attributes
+  doc.querySelectorAll("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name.startsWith("on") || attr.value.startsWith("javascript:")) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+  return doc.body.innerHTML;
+}
 import {
   ArrowLeft,
   ShieldAlert,
@@ -461,7 +477,7 @@ export default function CaseDetailPage() {
               </p>
               <div
                 className="border border-border rounded-lg bg-white p-4 max-h-[500px] overflow-y-auto text-black"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }}
               />
               <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border">
                 <button

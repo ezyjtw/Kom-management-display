@@ -166,6 +166,12 @@ model CommsThread {
   ownershipChanges  OwnershipChange[]
   alerts            Alert[]
   notes             ThreadNote[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([queue])
+  @@index([createdAt])
+  @@index([source, sourceThreadRef])
 }
 
 model CommsMessage {
@@ -179,7 +185,9 @@ model CommsMessage {
   bodyLink    String   @default("") // link to full content
   attachments String   @default("[]") // JSON: [{name, size, type}]
 
-  thread CommsThread @relation(fields: [threadId], references: [id])
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
 }
 
 model OwnershipChange {
@@ -192,10 +200,13 @@ model OwnershipChange {
   reason       String   @default("")
   handoverNote String   @default("")
 
-  thread    CommsThread @relation(fields: [threadId], references: [id])
+  thread    CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   oldOwner  Employee?   @relation("OldOwner", fields: [oldOwnerId], references: [id])
   newOwner  Employee?   @relation("NewOwner", fields: [newOwnerId], references: [id])
   changedBy Employee    @relation("ChangedBy", fields: [changedById], references: [id])
+
+  @@index([threadId])
+  @@index([changedAt])
 }
 
 model ThreadNote {
@@ -205,8 +216,10 @@ model ThreadNote {
   content    String
   createdAt  DateTime @default(now())
 
-  thread   CommsThread @relation(fields: [threadId], references: [id])
+  thread   CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   author   Employee    @relation(fields: [authorId], references: [id])
+
+  @@index([threadId])
 }
 
 // ─── Travel Rule Cases ───
@@ -237,6 +250,9 @@ model TravelRuleCase {
   alerts           Alert[]
 
   @@unique([transactionId, matchStatus])
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model VaspContact {
@@ -256,8 +272,10 @@ model CaseNote {
   content   String
   createdAt DateTime @default(now())
 
-  case   TravelRuleCase @relation(fields: [caseId], references: [id])
+  case   TravelRuleCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   author Employee       @relation(fields: [authorId], references: [id])
+
+  @@index([caseId])
 }
 
 // ─── Schedule & On-Call ───
@@ -440,10 +458,16 @@ model Alert {
   resolvedAt     DateTime?
   createdAt    DateTime @default(now())
 
-  thread          CommsThread?    @relation(fields: [threadId], references: [id])
+  thread          CommsThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
   employee        Employee?       @relation(fields: [employeeId], references: [id])
-  travelRuleCase  TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id])
+  travelRuleCase  TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
   incident        Incident?       @relation(fields: [incidentId], references: [id])
+
+  @@index([threadId])
+  @@index([employeeId])
+  @@index([travelRuleCaseId])
+  @@index([status])
+  @@index([type])
 }
 
 // ─── 3rd Party Incidents ───
@@ -500,7 +524,9 @@ model IncidentUpdate {
   type       String   @default("update") // update, escalation, resolution
   createdAt  DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id])
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
 }
 
 // ─── External Ticket Event Log ───
@@ -518,7 +544,7 @@ model ExternalTicketEvent {
   jiraComment String   @default("") // comment posted to Jira (if any)
   createdAt   DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id])
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@index([incidentId])
 }

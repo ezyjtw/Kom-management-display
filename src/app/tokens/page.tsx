@@ -125,6 +125,7 @@ const JURISDICTION_LABELS: Record<string, string> = {
 export default function TokenReviewPage() {
   const [data, setData] = useState<TokenData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("pipeline");
   const [showForm, setShowForm] = useState(false);
   const [showSignalForm, setShowSignalForm] = useState<string | null>(null);
@@ -165,11 +166,18 @@ export default function TokenReviewPage() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/tokens");
       const json = await res.json();
-      if (json.success) setData(json.data);
-    } catch { /* */ } finally { setLoading(false); }
+      if (json.success) {
+        setData(json.data);
+      } else {
+        setError(json.error || `Request failed (${res.status})`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error — check your connection");
+    } finally { setLoading(false); }
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -449,6 +457,7 @@ export default function TokenReviewPage() {
       <div className="text-center py-12">
         <AlertTriangle size={24} className="mx-auto mb-3 text-red-400" />
         <p className="text-muted-foreground">Failed to load token data.</p>
+        {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
         <button onClick={fetchData} className="mt-3 text-sm text-primary hover:underline">Retry</button>
       </div>
     );

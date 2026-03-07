@@ -22,6 +22,7 @@ type Tab = "all" | "heartbeat" | "cold" | "reconciliation";
 export default function StakingPage() {
   const [data, setData] = useState<StakingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [showForm, setShowForm] = useState(false);
   const [filterAsset, setFilterAsset] = useState("");
@@ -30,11 +31,12 @@ export default function StakingPage() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/staking");
       const json = await res.json();
-      if (json.success) setData(json.data);
-    } catch { /* */ } finally { setLoading(false); }
+      if (json.success) { setData(json.data); } else { setError(json.error || `Request failed (${res.status})`); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); } finally { setLoading(false); }
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -59,7 +61,7 @@ export default function StakingPage() {
   }
 
   if (!data) {
-    return <div className="text-center py-12"><AlertTriangle size={24} className="mx-auto mb-3 text-red-400" /><p className="text-muted-foreground">Failed to load staking data.</p></div>;
+    return <div className="text-center py-12"><AlertTriangle size={24} className="mx-auto mb-3 text-red-400" /><p className="text-muted-foreground">Failed to load staking data.</p>{error && <p className="text-xs text-red-400 mt-1">{error}</p>}<button onClick={fetchData} className="mt-3 text-sm text-primary hover:underline">Retry</button></div>;
   }
 
   const filtered = data.wallets.filter((w) => {

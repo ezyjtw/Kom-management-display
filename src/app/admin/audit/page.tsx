@@ -3,8 +3,37 @@
 import { useState, useEffect } from "react";
 import { Shield, RefreshCw } from "lucide-react";
 
+const actionColors: Record<string, string> = {
+  config_change: "bg-purple-500/10 text-purple-400",
+  config_update: "bg-purple-500/10 text-purple-400",
+  manual_score: "bg-blue-500/10 text-blue-400",
+  score_updated: "bg-blue-500/10 text-blue-400",
+  ownership_change: "bg-amber-500/10 text-amber-400",
+  status_change: "bg-indigo-500/10 text-indigo-400",
+  export: "bg-emerald-500/10 text-emerald-400",
+  login_success: "bg-green-500/10 text-green-400",
+  login_failed: "bg-red-500/10 text-red-400",
+  thread_created: "bg-cyan-500/10 text-cyan-400",
+  note_created: "bg-sky-500/10 text-sky-400",
+  integration_sync: "bg-teal-500/10 text-teal-400",
+  alert_acknowledge: "bg-yellow-500/10 text-yellow-400",
+  alert_resolve: "bg-lime-500/10 text-lime-400",
+  employee_created: "bg-fuchsia-500/10 text-fuchsia-400",
+  employee_updated: "bg-fuchsia-500/10 text-fuchsia-400",
+  user_created: "bg-rose-500/10 text-rose-400",
+  secondary_owner_add: "bg-violet-500/10 text-violet-400",
+  secondary_owner_remove: "bg-violet-500/10 text-violet-400",
+  travel_rule_missing_originator: "bg-red-500/10 text-red-400",
+  travel_rule_missing_beneficiary: "bg-red-500/10 text-red-400",
+  travel_rule_unmatched: "bg-red-500/10 text-red-400",
+  travel_rule_case_created: "bg-orange-500/10 text-orange-400",
+  travel_rule_case_updated: "bg-orange-500/10 text-orange-400",
+  travel_rule_email_sent: "bg-cyan-500/10 text-cyan-400",
+  vasp_contact_upsert: "bg-teal-500/10 text-teal-400",
+};
+
 export default function AuditPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<Array<{ id: string; action: string; entityType: string; entityId: string; userId: string; user?: { name: string }; details: string; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -28,35 +57,6 @@ export default function AuditPage() {
       setLoading(false);
     }
   }
-
-  const actionColors: Record<string, string> = {
-    config_change: "bg-purple-500/10 text-purple-400",
-    config_update: "bg-purple-500/10 text-purple-400",
-    manual_score: "bg-blue-500/10 text-blue-400",
-    score_updated: "bg-blue-500/10 text-blue-400",
-    ownership_change: "bg-amber-500/10 text-amber-400",
-    status_change: "bg-indigo-500/10 text-indigo-400",
-    export: "bg-emerald-500/10 text-emerald-400",
-    login_success: "bg-green-500/10 text-green-400",
-    login_failed: "bg-red-500/10 text-red-400",
-    thread_created: "bg-cyan-500/10 text-cyan-400",
-    note_created: "bg-sky-500/10 text-sky-400",
-    integration_sync: "bg-teal-500/10 text-teal-400",
-    alert_acknowledge: "bg-yellow-500/10 text-yellow-400",
-    alert_resolve: "bg-lime-500/10 text-lime-400",
-    employee_created: "bg-fuchsia-500/10 text-fuchsia-400",
-    employee_updated: "bg-fuchsia-500/10 text-fuchsia-400",
-    user_created: "bg-rose-500/10 text-rose-400",
-    secondary_owner_add: "bg-violet-500/10 text-violet-400",
-    secondary_owner_remove: "bg-violet-500/10 text-violet-400",
-    travel_rule_missing_originator: "bg-red-500/10 text-red-400",
-    travel_rule_missing_beneficiary: "bg-red-500/10 text-red-400",
-    travel_rule_unmatched: "bg-red-500/10 text-red-400",
-    travel_rule_case_created: "bg-orange-500/10 text-orange-400",
-    travel_rule_case_updated: "bg-orange-500/10 text-orange-400",
-    travel_rule_email_sent: "bg-cyan-500/10 text-cyan-400",
-    vasp_contact_upsert: "bg-teal-500/10 text-teal-400",
-  };
 
   return (
     <div className="space-y-6">

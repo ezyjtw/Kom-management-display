@@ -11,13 +11,13 @@ import { requireRole } from "@/lib/auth-user";
  * Manual trigger from admin panel. Admin only.
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret in production
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ success: false, error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   return generateAlerts();
 }
@@ -44,7 +44,8 @@ async function generateAlerts() {
     const now = new Date();
     let alertsCreated = 0;
 
-    // Get all active threads (not Done/Closed)
+    // --- Comms Thread SLA Checks ---
+    // Batch-fetch all active alerts for threads to avoid N+1 queries
     const threads = await prisma.commsThread.findMany({
       where: {
         status: { notIn: ["Done", "Closed"] },
@@ -58,6 +59,25 @@ async function generateAlerts() {
       },
     });
 
+    const threadIds = threads.map((t) => t.id);
+    const existingThreadAlerts = await prisma.alert.findMany({
+      where: {
+        threadId: { in: threadIds },
+        status: "active",
+        type: { in: ["tto_breach", "ttfa_breach", "tsla_breach", "ownership_bounce"] },
+      },
+      select: { threadId: true, type: true },
+    });
+    const threadAlertSet = new Set(existingThreadAlerts.map((a) => `${a.threadId}:${a.type}`));
+
+    const threadAlertBatch: Array<{
+      threadId: string;
+      type: string;
+      priority: string;
+      message: string;
+      destination: string;
+    }> = [];
+
     for (const thread of threads) {
       const sla = computeSlaStatus({
         createdAt: thread.createdAt,
@@ -70,101 +90,50 @@ async function generateAlerts() {
         tslaDeadline: thread.tslaDeadline,
       });
 
-      // Check TTO breach (unassigned too long)
-      if (sla.isTtoBreached) {
-        const existing = await prisma.alert.findFirst({
-          where: {
-            threadId: thread.id,
-            type: "tto_breach",
-            status: "active",
-          },
+      if (sla.isTtoBreached && !threadAlertSet.has(`${thread.id}:tto_breach`)) {
+        threadAlertBatch.push({
+          threadId: thread.id,
+          type: "tto_breach",
+          priority: thread.priority,
+          message: `Thread "${thread.subject}" has been unassigned past SLA (${thread.priority})`,
+          destination: "in_app",
         });
-
-        if (!existing) {
-          await prisma.alert.create({
-            data: {
-              threadId: thread.id,
-              type: "tto_breach",
-              priority: thread.priority,
-              message: `Thread "${thread.subject}" has been unassigned past SLA (${thread.priority})`,
-              destination: "in_app",
-            },
-          });
-          alertsCreated++;
-        }
       }
 
-      // Check TTFA breach (assigned but no action)
-      if (sla.isTtfaBreached) {
-        const existing = await prisma.alert.findFirst({
-          where: {
-            threadId: thread.id,
-            type: "ttfa_breach",
-            status: "active",
-          },
+      if (sla.isTtfaBreached && !threadAlertSet.has(`${thread.id}:ttfa_breach`)) {
+        threadAlertBatch.push({
+          threadId: thread.id,
+          type: "ttfa_breach",
+          priority: thread.priority,
+          message: `Thread "${thread.subject}" assigned but no action taken past SLA`,
+          destination: "in_app",
         });
-
-        if (!existing) {
-          await prisma.alert.create({
-            data: {
-              threadId: thread.id,
-              type: "ttfa_breach",
-              priority: thread.priority,
-              message: `Thread "${thread.subject}" assigned but no action taken past SLA`,
-              destination: "in_app",
-            },
-          });
-          alertsCreated++;
-        }
       }
 
-      // Check TSLA breach (stale — no activity for too long)
-      if (sla.isTslaBreached) {
-        const existing = await prisma.alert.findFirst({
-          where: {
-            threadId: thread.id,
-            type: "tsla_breach",
-            status: "active",
-          },
+      if (sla.isTslaBreached && !threadAlertSet.has(`${thread.id}:tsla_breach`)) {
+        threadAlertBatch.push({
+          threadId: thread.id,
+          type: "tsla_breach",
+          priority: thread.priority,
+          message: `Thread "${thread.subject}" has no activity past SLA threshold (status: ${thread.status})`,
+          destination: "in_app",
         });
-
-        if (!existing) {
-          await prisma.alert.create({
-            data: {
-              threadId: thread.id,
-              type: "tsla_breach",
-              priority: thread.priority,
-              message: `Thread "${thread.subject}" has no activity past SLA threshold (status: ${thread.status})`,
-              destination: "in_app",
-            },
-          });
-          alertsCreated++;
-        }
       }
 
-      // Check for excessive ownership bouncing
-      if (isExcessiveBouncing(thread.ownershipChanges)) {
-        const existing = await prisma.alert.findFirst({
-          where: {
-            threadId: thread.id,
-            type: "ownership_bounce",
-            status: "active",
-          },
+      if (isExcessiveBouncing(thread.ownershipChanges) && !threadAlertSet.has(`${thread.id}:ownership_bounce`)) {
+        threadAlertBatch.push({
+          threadId: thread.id,
+          type: "ownership_bounce",
+          priority: "P1",
+          message: `Thread "${thread.subject}" has excessive ownership changes (>2 in 24h)`,
+          destination: "in_app",
         });
-
-        if (!existing) {
-          await prisma.alert.create({
-            data: {
-              threadId: thread.id,
-              type: "ownership_bounce",
-              priority: "P1",
-              message: `Thread "${thread.subject}" has excessive ownership changes (>2 in 24h)`,
-              destination: "in_app",
-            },
-          });
-          alertsCreated++;
-        }
       }
+    }
+
+    if (threadAlertBatch.length > 0) {
+      await prisma.alert.createMany({ data: threadAlertBatch });
+      alertsCreated += threadAlertBatch.length;
     }
 
     // --- Travel Rule SLA Checks ---
@@ -172,35 +141,32 @@ async function generateAlerts() {
       where: { status: { not: "Resolved" } },
     });
 
-    for (const tc of openCases) {
-      const { agingStatus } = computeTravelRuleAging(tc.createdAt);
-      if (agingStatus === "red") {
-        const existing = await prisma.alert.findFirst({
-          where: {
-            travelRuleCaseId: tc.id,
-            type: "travel_rule_sla_breach",
-            status: "active",
-          },
-        });
+    const caseIds = openCases.filter((tc) => computeTravelRuleAging(tc.createdAt).agingStatus === "red").map((tc) => tc.id);
+    const existingCaseAlerts = caseIds.length > 0
+      ? await prisma.alert.findMany({
+          where: { travelRuleCaseId: { in: caseIds }, type: "travel_rule_sla_breach", status: "active" },
+          select: { travelRuleCaseId: true },
+        })
+      : [];
+    const caseAlertSet = new Set(existingCaseAlerts.map((a) => a.travelRuleCaseId));
 
-        if (!existing) {
-          await prisma.alert.create({
-            data: {
-              travelRuleCaseId: tc.id,
-              type: "travel_rule_sla_breach",
-              priority: "P1",
-              message: `Travel rule case for ${tc.asset} ${tc.direction} (${tc.transactionId}) is over 48h old`,
-              destination: "in_app",
-            },
-          });
-          alertsCreated++;
-        }
-      }
+    const caseAlertBatch = openCases
+      .filter((tc) => computeTravelRuleAging(tc.createdAt).agingStatus === "red" && !caseAlertSet.has(tc.id))
+      .map((tc) => ({
+        travelRuleCaseId: tc.id,
+        type: "travel_rule_sla_breach",
+        priority: "P1",
+        message: `Travel rule case for ${tc.asset} ${tc.direction} (${tc.transactionId}) is over 48h old`,
+        destination: "in_app",
+      }));
+
+    if (caseAlertBatch.length > 0) {
+      await prisma.alert.createMany({ data: caseAlertBatch });
+      alertsCreated += caseAlertBatch.length;
     }
 
-    // Performance trend alerts: compare latest vs previous month scores.
-    // A drop of >0.5 points triggers an alert (on the 3-8 scoring scale,
-    // 0.5 is significant enough to warrant manager attention).
+    // --- Performance trend alerts ---
+    // Batch-fetch all scores to avoid N+1 per employee
     const latestPeriod = await prisma.timePeriod.findFirst({
       where: { type: "month" },
       orderBy: { startDate: "desc" },
@@ -217,67 +183,76 @@ async function generateAlerts() {
 
       if (previousPeriod) {
         const employees = await prisma.employee.findMany({ where: { active: true } });
+        const empIds = employees.map((e) => e.id);
+
+        // Batch-fetch all category scores for both periods
+        const allScores = await prisma.categoryScore.findMany({
+          where: {
+            employeeId: { in: empIds },
+            periodId: { in: [latestPeriod.id, previousPeriod.id] },
+            category: { in: ["quality", "daily_tasks"] },
+          },
+        });
+
+        const scoreMap = new Map<string, number>();
+        for (const s of allScores) {
+          scoreMap.set(`${s.employeeId}:${s.periodId}:${s.category}`, s.score);
+        }
+
+        // Batch-fetch existing active perf alerts
+        const existingPerfAlerts = await prisma.alert.findMany({
+          where: {
+            employeeId: { in: empIds },
+            type: { in: ["mistakes_rising", "throughput_drop"] },
+            status: "active",
+          },
+          select: { employeeId: true, type: true },
+        });
+        const perfAlertSet = new Set(existingPerfAlerts.map((a) => `${a.employeeId}:${a.type}`));
+
+        const perfAlertBatch: Array<{
+          employeeId: string;
+          type: string;
+          priority: string;
+          message: string;
+          destination: string;
+        }> = [];
 
         for (const emp of employees) {
-          const currentQuality = await prisma.categoryScore.findFirst({
-            where: { employeeId: emp.id, periodId: latestPeriod.id, category: "quality" },
-          });
-          const prevQuality = await prisma.categoryScore.findFirst({
-            where: { employeeId: emp.id, periodId: previousPeriod.id, category: "quality" },
-          });
+          const curQuality = scoreMap.get(`${emp.id}:${latestPeriod.id}:quality`);
+          const prevQuality = scoreMap.get(`${emp.id}:${previousPeriod.id}:quality`);
 
-          if (currentQuality && prevQuality && currentQuality.score < prevQuality.score - 0.5) {
-            const existing = await prisma.alert.findFirst({
-              where: {
+          if (curQuality !== undefined && prevQuality !== undefined && curQuality < prevQuality - 0.5) {
+            if (!perfAlertSet.has(`${emp.id}:mistakes_rising`)) {
+              perfAlertBatch.push({
                 employeeId: emp.id,
                 type: "mistakes_rising",
-                status: "active",
-              },
-            });
-
-            if (!existing) {
-              await prisma.alert.create({
-                data: {
-                  employeeId: emp.id,
-                  type: "mistakes_rising",
-                  priority: "P2",
-                  message: `${emp.name} — quality score dropped from ${prevQuality.score.toFixed(1)} to ${currentQuality.score.toFixed(1)}`,
-                  destination: "in_app",
-                },
+                priority: "P2",
+                message: `${emp.name} — quality score dropped from ${prevQuality.toFixed(1)} to ${curQuality.toFixed(1)}`,
+                destination: "in_app",
               });
-              alertsCreated++;
             }
           }
 
-          const currentTasks = await prisma.categoryScore.findFirst({
-            where: { employeeId: emp.id, periodId: latestPeriod.id, category: "daily_tasks" },
-          });
-          const prevTasks = await prisma.categoryScore.findFirst({
-            where: { employeeId: emp.id, periodId: previousPeriod.id, category: "daily_tasks" },
-          });
+          const curTasks = scoreMap.get(`${emp.id}:${latestPeriod.id}:daily_tasks`);
+          const prevTasks = scoreMap.get(`${emp.id}:${previousPeriod.id}:daily_tasks`);
 
-          if (currentTasks && prevTasks && currentTasks.score < prevTasks.score - 0.5) {
-            const existing = await prisma.alert.findFirst({
-              where: {
+          if (curTasks !== undefined && prevTasks !== undefined && curTasks < prevTasks - 0.5) {
+            if (!perfAlertSet.has(`${emp.id}:throughput_drop`)) {
+              perfAlertBatch.push({
                 employeeId: emp.id,
                 type: "throughput_drop",
-                status: "active",
-              },
-            });
-
-            if (!existing) {
-              await prisma.alert.create({
-                data: {
-                  employeeId: emp.id,
-                  type: "throughput_drop",
-                  priority: "P2",
-                  message: `${emp.name} — task throughput dropped from ${prevTasks.score.toFixed(1)} to ${currentTasks.score.toFixed(1)}`,
-                  destination: "in_app",
-                },
+                priority: "P2",
+                message: `${emp.name} — task throughput dropped from ${prevTasks.toFixed(1)} to ${curTasks.toFixed(1)}`,
+                destination: "in_app",
               });
-              alertsCreated++;
             }
           }
+        }
+
+        if (perfAlertBatch.length > 0) {
+          await prisma.alert.createMany({ data: perfAlertBatch });
+          alertsCreated += perfAlertBatch.length;
         }
       }
     }

@@ -12,10 +12,19 @@ const categoryLabels: Record<Category, string> = {
   knowledge: "Crypto Knowledge",
 };
 
+const tabs = [
+  { key: "weights" as const, label: "Scoring Weights", icon: BarChart3 },
+  { key: "targets" as const, label: "Role Targets", icon: Shield },
+  { key: "employees" as const, label: "Employees", icon: Users },
+  { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock },
+  { key: "users" as const, label: "User Accounts", icon: UserPlus },
+  { key: "integrations" as const, label: "Integrations", icon: Link2 },
+];
+
 export default function AdminPage() {
   const [config, setConfig] = useState<ScoringConfigData | null>(null);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string; role: string; team: string; region: string; active: boolean }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; employeeId: string | null; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"weights" | "targets" | "employees" | "knowledge" | "users" | "integrations">("weights");
@@ -165,15 +174,6 @@ export default function AdminPage() {
       setSyncingEmail(false);
     }
   }
-
-  const tabs = [
-    { key: "weights" as const, label: "Scoring Weights", icon: BarChart3 },
-    { key: "targets" as const, label: "Role Targets", icon: Shield },
-    { key: "employees" as const, label: "Employees", icon: Users },
-    { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock },
-    { key: "users" as const, label: "User Accounts", icon: UserPlus },
-    { key: "integrations" as const, label: "Integrations", icon: Link2 },
-  ];
 
   return (
     <div className="space-y-6">

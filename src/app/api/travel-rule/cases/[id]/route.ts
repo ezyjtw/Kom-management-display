@@ -144,17 +144,22 @@ export async function PATCH(
     const auditDetails: Record<string, unknown> = {};
 
     if (body.ownerUserId !== undefined) {
-      data.ownerUserId = body.ownerUserId || null;
-
-      // Resolve owner name for the audit trail
+      // Validate employee exists before assignment
       let newOwnerName = "Unassigned";
       if (body.ownerUserId) {
         const emp = await prisma.employee.findUnique({
           where: { id: body.ownerUserId },
           select: { name: true },
         });
-        newOwnerName = emp?.name || body.ownerUserId;
+        if (!emp) {
+          return NextResponse.json(
+            { success: false, error: "Invalid employee ID" },
+            { status: 400 },
+          );
+        }
+        newOwnerName = emp.name;
       }
+      data.ownerUserId = body.ownerUserId || null;
 
       auditDetails.ownerChange = {
         previous: travelCase.ownerUserId,

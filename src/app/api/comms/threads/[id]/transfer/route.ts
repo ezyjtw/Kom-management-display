@@ -42,6 +42,17 @@ export async function POST(
       );
     }
 
+    // Validate new owner exists
+    if (newOwnerId) {
+      const emp = await prisma.employee.findUnique({ where: { id: newOwnerId }, select: { id: true } });
+      if (!emp) {
+        return NextResponse.json(
+          { success: false, error: "Invalid employee ID" },
+          { status: 400 },
+        );
+      }
+    }
+
     const now = new Date();
     const updateData: Record<string, unknown> = {
       ownerUserId: newOwnerId || null,
