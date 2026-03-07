@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       include: {
         reportedBy: { select: { id: true, name: true } },
         rcaResponsible: { select: { id: true, name: true } },
+        updates: { orderBy: { createdAt: "desc" }, take: 5 },
       },
       orderBy: { updatedAt: "desc" },
     });
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
         provider: inc.provider,
         severity: inc.severity,
         status: inc.status,
+        description: inc.description,
+        impact: inc.impact,
         rcaStatus: inc.rcaStatus,
         rcaDocumentRef: inc.rcaDocumentRef,
         rcaResponsibleId: inc.rcaResponsibleId,
@@ -53,7 +56,10 @@ export async function GET(request: NextRequest) {
         ageDays,
         slaOverdue,
         startedAt: inc.startedAt,
+        resolvedAt: inc.resolvedAt,
         createdAt: inc.createdAt,
+        reportedByName: inc.reportedBy?.name || null,
+        updatesCount: inc.updates.length,
       };
     });
 

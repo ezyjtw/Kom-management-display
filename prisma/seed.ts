@@ -829,7 +829,7 @@ async function main() {
       ],
     });
 
-    await prisma.incident.create({
+    const ledgerIncident = await prisma.incident.create({
       data: {
         title: "Ledger firmware update causing HSM reconnection issues",
         provider: "Ledger",
@@ -846,7 +846,7 @@ async function main() {
       },
     });
 
-    await prisma.incident.create({
+    const gxIncident = await prisma.incident.create({
       data: {
         title: "GX exchange API intermittent latency spikes",
         provider: "GX",
@@ -861,7 +861,9 @@ async function main() {
       },
     });
 
-    // Add RCA tracking to Fireblocks incident
+    // ─── RCA tracking across all 3 provider incidents ───
+
+    // Fireblocks: active incident, awaiting RCA from provider — SLA set to 48h
     await prisma.incident.update({
       where: { id: fireblocksIncident.id },
       data: {
@@ -869,6 +871,35 @@ async function main() {
         rcaRaisedAt: new Date(incNow.getTime() - 1 * 60 * 60000),
         rcaResponsibleId: emp["carol@ops.com"].id,
         rcaSlaDeadline: new Date(incNow.getTime() + 48 * 60 * 60000), // 48h from now
+      },
+    });
+
+    // Ledger: resolved incident, RCA received with follow-up remediation items
+    await prisma.incident.update({
+      where: { id: ledgerIncident.id },
+      data: {
+        rcaStatus: "follow_up_pending",
+        rcaRaisedAt: new Date(incNow.getTime() - 24 * 60 * 60000), // raised yesterday
+        rcaReceivedAt: new Date(incNow.getTime() - 12 * 60 * 60000), // received 12h ago
+        rcaResponsibleId: emp["grace@ops.com"].id,
+        rcaSlaDeadline: new Date(incNow.getTime() - 6 * 60 * 60000), // SLA already passed (met on time)
+        rcaDocumentRef: "https://confluence.internal/ledger-hsm-rca-2026-03",
+        rcaFollowUpItems: JSON.stringify([
+          { title: "Schedule monthly HSM firmware check window with Ledger", status: "done" },
+          { title: "Update runbook with HSM reconnection recovery steps", status: "pending" },
+          { title: "Add HSM health check to daily ops checklist", status: "pending" },
+        ]),
+      },
+    });
+
+    // GX: low-severity monitoring incident, RCA just raised — early lifecycle stage
+    await prisma.incident.update({
+      where: { id: gxIncident.id },
+      data: {
+        rcaStatus: "raised",
+        rcaRaisedAt: new Date(incNow.getTime() - 2 * 60 * 60000),
+        rcaResponsibleId: emp["alice@ops.com"].id,
+        rcaSlaDeadline: new Date(incNow.getTime() + 5 * 24 * 60 * 60000), // 5 days for low severity
       },
     });
 
