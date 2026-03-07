@@ -526,6 +526,199 @@ export interface UsdcRampOverview {
   };
 }
 
+// ─── Staking Operations Types ───
+
+export type StakingRewardModel = "auto" | "daily" | "weekly" | "monthly" | "manual_claim" | "rebate";
+export type StakingStatus = "active" | "unstaking" | "inactive";
+export type RewardHealthStatus = "on_time" | "approaching" | "overdue" | "no_data";
+
+export interface StakingWalletEntry {
+  id: string;
+  walletAddress: string;
+  asset: string;
+  validator: string;
+  stakedAmount: number;
+  rewardModel: StakingRewardModel;
+  clientName: string;
+  isColdStaking: boolean;
+  isTestWallet: boolean;
+  stakeDate: string | null;
+  expectedFirstRewardDate: string | null;
+  actualFirstRewardDate: string | null;
+  lastRewardAt: string | null;
+  expectedNextRewardAt: string | null;
+  onChainBalance: number | null;
+  platformBalance: number | null;
+  varianceThreshold: number;
+  tags: string[];
+  notes: string;
+  status: StakingStatus;
+  rewardHealth: RewardHealthStatus;
+  varianceFlag: boolean;
+  createdAt: string;
+}
+
+export interface StakingOverview {
+  wallets: StakingWalletEntry[];
+  summary: {
+    total: number;
+    active: number;
+    overdue: number;
+    approaching: number;
+    coldStaking: number;
+    reconciliationFlags: number;
+  };
+}
+
+// ─── Daily Ops Checks Types ───
+
+export type DailyCheckStatus = "pending" | "pass" | "issues_found" | "skipped";
+export type DailyCheckCategory =
+  | "stuck_tx"
+  | "balance_variance"
+  | "staking_rewards"
+  | "screening"
+  | "travel_rule"
+  | "pending_approvals"
+  | "scam_dust"
+  | "validator_health"
+  | "external_provider";
+
+export interface DailyCheckItemEntry {
+  id: string;
+  name: string;
+  category: DailyCheckCategory;
+  status: DailyCheckStatus;
+  autoCheckKey: string;
+  autoResult: string;
+  notes: string;
+  operatorId: string | null;
+  completedAt: string | null;
+}
+
+export interface DailyCheckRunEntry {
+  id: string;
+  date: string;
+  operatorId: string;
+  operatorName: string;
+  completedAt: string | null;
+  jiraSummary: string;
+  items: DailyCheckItemEntry[];
+  progress: { total: number; completed: number; passed: number; issues: number };
+}
+
+// ─── Approvals Queue Types ───
+
+export type ApprovalRiskLevel = "low" | "medium" | "high";
+export type ApprovalLane = "auto_approve" | "ops_approval" | "compliance_review";
+
+export interface ApprovalQueueItem {
+  id: string;
+  type: string;
+  status: string;
+  entity: string;
+  requestedBy: string;
+  requestedAt: string;
+  expiresAt: string;
+  workspace: string;
+  organization: string;
+  account: string;
+  ageMinutes: number;
+  riskLevel: ApprovalRiskLevel;
+  lane: ApprovalLane;
+}
+
+export interface ApprovalQueueOverview {
+  items: ApprovalQueueItem[];
+  summary: {
+    total: number;
+    autoApprove: number;
+    opsApproval: number;
+    complianceReview: number;
+  };
+  configured: boolean;
+}
+
+// ─── Screening & Scam/Dust Types ───
+
+export type ScreeningStatus = "submitted" | "processing" | "completed" | "not_submitted" | "exception";
+export type ScreeningClassification = "unclassified" | "legitimate" | "dust" | "scam";
+export type AnalyticsAlertStatus = "none" | "open" | "under_review" | "resolved";
+export type ComplianceReviewStatus = "none" | "pending" | "approved" | "rejected";
+
+export interface ScreeningEntryData {
+  id: string;
+  transactionId: string;
+  txHash: string;
+  asset: string;
+  amount: number;
+  direction: string;
+  screeningStatus: ScreeningStatus;
+  classification: ScreeningClassification;
+  isKnownException: boolean;
+  exceptionReason: string;
+  analyticsAlertId: string;
+  analyticsStatus: AnalyticsAlertStatus;
+  complianceReviewStatus: ComplianceReviewStatus;
+  reclassifiedAt: string | null;
+  notes: string;
+  createdAt: string;
+}
+
+export interface ScreeningOverview {
+  entries: ScreeningEntryData[];
+  summary: {
+    total: number;
+    submitted: number;
+    processing: number;
+    notSubmitted: number;
+    dust: number;
+    scam: number;
+    openAlerts: number;
+  };
+}
+
+// ─── RCA Tracker Types ───
+
+export type RcaStatus = "none" | "raised" | "awaiting_rca" | "rca_received" | "follow_up_pending" | "closed";
+
+export interface RcaFollowUpItem {
+  title: string;
+  status: "pending" | "done";
+  assigneeId?: string;
+}
+
+export interface RcaIncidentEntry {
+  id: string;
+  title: string;
+  provider: string;
+  severity: string;
+  status: string;
+  rcaStatus: RcaStatus;
+  rcaDocumentRef: string;
+  rcaResponsibleId: string | null;
+  rcaResponsibleName: string | null;
+  rcaSlaDeadline: string | null;
+  rcaReceivedAt: string | null;
+  rcaRaisedAt: string | null;
+  rcaFollowUpItems: RcaFollowUpItem[];
+  ageDays: number;
+  slaOverdue: boolean;
+  startedAt: string;
+  createdAt: string;
+}
+
+export interface RcaOverview {
+  incidents: RcaIncidentEntry[];
+  summary: {
+    total: number;
+    awaiting: number;
+    overdue: number;
+    followUp: number;
+    closed: number;
+  };
+}
+
 // ─── API Response Types ───
 
 export interface ApiResponse<T> {
