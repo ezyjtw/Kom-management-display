@@ -13,6 +13,7 @@
  *   - knowledge (10%): monthly rubric assessment by lead (mapped from 1-10)
  */
 import type { Category, CategoryWeight, ScoringConfigData } from "@/types";
+import { prisma } from "@/lib/prisma";
 
 // Dashboard score range — 3 is the floor, 8 is the ceiling
 const CLAMP_MIN = 3;
@@ -160,6 +161,26 @@ export function mapKnowledgeScore(rubricAverage: number): number {
   // Map 1-10 → 0-1 → 3-8
   const normalized = clamp((rubricAverage - 1) / 9, 0, 1);
   return rawIndexToScore(normalized);
+}
+
+/**
+ * Load the active scoring config from the database.
+ * Falls back to the hardcoded default if no active config exists in DB.
+ */
+export async function getActiveScoringConfig(): Promise<ScoringConfigData> {
+  try {
+    const dbConfig = await prisma.scoringConfig.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (dbConfig) {
+      return JSON.parse(dbConfig.config) as ScoringConfigData;
+    }
+  } catch {
+    // DB unavailable or parse error — fall back to defaults
+  }
+  return getDefaultScoringConfig();
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Bell, Check, Eye, RefreshCw } from "lucide-react";
 import { PriorityBadge } from "@/components/shared/StatusBadge";
 import type { AlertData } from "@/types";
@@ -42,11 +42,7 @@ export default function AlertsPage() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchAlerts();
-  }, [statusFilter]);
-
-  async function fetchAlerts() {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/comms/alerts?status=${statusFilter}`);
@@ -57,7 +53,11 @@ export default function AlertsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
 
   async function handleAction(alertId: string, action: "acknowledge" | "resolve") {
     await fetch("/api/comms/alerts", {

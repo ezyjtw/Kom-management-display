@@ -502,7 +502,7 @@ export function ThreadDetail({
                 </div>
                 <span className="text-muted-foreground">by {change.changedBy.name}</span>
                 {change.handoverNote && (
-                  <p className="text-muted-foreground mt-1 italic">"{change.handoverNote}"</p>
+                  <p className="text-muted-foreground mt-1 italic">&ldquo;{change.handoverNote}&rdquo;</p>
                 )}
               </div>
             ))}

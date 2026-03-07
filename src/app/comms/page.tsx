@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ThreadList } from "@/components/comms/ThreadList";
 import { ErrorState } from "@/components/shared/ErrorState";
 import {
@@ -37,11 +37,7 @@ export default function CommsPage() {
   const [triageSuggestions, setTriageSuggestions] = useState<Record<string, { priority: string; reason: string }>>({});
   const [triaging, setTriaging] = useState(false);
 
-  useEffect(() => {
-    fetchThreads();
-  }, [activeView]);
-
-  async function fetchThreads() {
+  const fetchThreads = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -64,7 +60,11 @@ export default function CommsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeView, priorityFilter, queueFilter, sourceFilter]);
+
+  useEffect(() => {
+    fetchThreads();
+  }, [fetchThreads]);
 
   const filteredThreads = threads.filter((t) => {
     if (priorityFilter && t.priority !== priorityFilter) return false;

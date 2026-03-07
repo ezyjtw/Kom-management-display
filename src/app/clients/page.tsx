@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import {
@@ -107,11 +107,7 @@ export default function ClientsPage() {
   const [days, setDays] = useState(30);
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, [days]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -127,7 +123,11 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [days]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return (
     <div className="space-y-4 md:space-y-6">

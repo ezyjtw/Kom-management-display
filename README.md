@@ -35,27 +35,48 @@ Ops Team Management Dashboard with integrated Communications & Ownership Hub.
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
-- **Database**: SQLite via Prisma ORM (swap to PostgreSQL for production)
+- **Database**: PostgreSQL via Prisma ORM
+- **Auth**: NextAuth.js (JWT sessions, role-based access)
+- **Charts**: Recharts
 - **Icons**: Lucide React
 
 ## Getting Started
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL (local or hosted)
+
+### Setup
 
 ```bash
 # Install dependencies
 npm install
 
+# Set up environment
+cp .env.example .env
+# Edit .env and set DATABASE_URL to your PostgreSQL connection string
+
 # Generate Prisma client
 npx prisma generate
 
-# Create and seed database
-npx prisma db push
+# Run migrations and seed database
+npx prisma migrate deploy
 npx tsx prisma/seed.ts
 
 # Start development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — redirects to Team Overview dashboard.
+Open [http://localhost:3000](http://localhost:3000) — redirects to the Command Centre dashboard.
+
+### Local PostgreSQL (Docker)
+
+If you don't have PostgreSQL installed locally:
+
+```bash
+docker run -d --name kommand-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kommand -p 5432:5432 postgres:16
+# Then set DATABASE_URL="postgresql://postgres:postgres@localhost:5432/kommand"
+```
 
 ## Project Structure
 
@@ -83,7 +104,8 @@ src/
 │   ├── prisma.ts           # DB client
 │   ├── scoring.ts          # Scoring engine + formulas
 │   ├── sla.ts              # SLA computation
-│   └── auth.ts             # RBAC helpers
+│   ├── auth-options.ts     # NextAuth config
+│   └── auth-user.ts        # RBAC helpers (requireAuth, requireRole)
 └── types/                  # TypeScript type definitions
 ```
 

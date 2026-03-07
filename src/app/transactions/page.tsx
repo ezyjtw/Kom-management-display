@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { PendingTransactionsTable } from "@/components/transactions/PendingTransactionsTable";
 import { PendingRequestsTable } from "@/components/transactions/PendingRequestsTable";
@@ -17,11 +17,7 @@ export default function TransactionsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("transactions");
   const [assetFilter, setAssetFilter] = useState("");
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -38,7 +34,11 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [assetFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const assets = [...new Set(transactions.map((tx) => tx.asset))];
 
