@@ -62,18 +62,24 @@ export async function requireRole(...roles: string[]): Promise<AuthUser | NextRe
 
 /**
  * Sanitize error for client response — never expose internals.
+ * Logs full error server-side for debugging.
  */
-export function safeErrorMessage(error: unknown): string {
+export function safeErrorMessage(error: unknown, context?: string): string {
+  // Always log full error server-side
+  console.error(`[API Error]${context ? ` ${context}:` : ""}`, error);
+
   if (error instanceof Error) {
-    // Only return generic messages; strip Prisma/DB details
     if (error.message.includes("Unique constraint")) {
       return "A record with this value already exists";
     }
-    if (error.message.includes("Record to update not found")) {
+    if (error.message.includes("Record to update not found") || error.message.includes("Record to delete does not exist")) {
       return "Record not found";
     }
     if (error.message.includes("Foreign key constraint")) {
       return "Referenced record does not exist";
+    }
+    if (error.message.includes("Invalid `") || error.message.includes("Argument")) {
+      return "Invalid request data";
     }
   }
   return "An internal error occurred";

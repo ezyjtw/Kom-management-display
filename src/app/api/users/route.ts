@@ -47,15 +47,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, email, password, role, employeeId } = body;
 
-    if (!name || !email || !password) {
+    if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.includes("@") || typeof password !== "string") {
       return NextResponse.json(
-        { success: false, error: "name, email, and password are required" },
+        { success: false, error: "name (string), email (valid email), and password (string) are required" },
         { status: 400 }
       );
     }
 
     // Validate password strength
-    if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       return NextResponse.json(
         { success: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
         { status: 400 }
