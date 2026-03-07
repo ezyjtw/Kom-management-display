@@ -32,6 +32,7 @@ import {
   Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBranding } from "@/lib/use-branding";
 import { useState, useEffect } from "react";
 
 const navSections = [
@@ -92,6 +93,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const isAdmin = user?.role === "admin" || user?.role === "lead";
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { branding } = useBranding();
 
   // Close sidebar on route change
   useEffect(() => {
@@ -128,12 +130,16 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-primary/10 rounded-lg">
-                <Zap size={20} className="text-primary" />
-              </div>
+              {branding.logoData ? (
+                <img src={branding.logoData} alt={branding.appName} className="h-8 w-8 rounded-lg object-contain" />
+              ) : (
+                <div className="p-1.5 bg-primary/10 rounded-lg">
+                  <Zap size={20} className="text-primary" />
+                </div>
+              )}
               <div>
-                <h1 className="text-lg font-bold tracking-tight text-foreground">KOMmand Centre</h1>
-                <p className="text-xs text-muted-foreground">Ops Management & Comms Hub</p>
+                <h1 className="text-lg font-bold tracking-tight text-foreground">{branding.appName}</h1>
+                <p className="text-xs text-muted-foreground">{branding.subtitle}</p>
               </div>
             </div>
             <button

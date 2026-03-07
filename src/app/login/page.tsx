@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Zap, Loader2 } from "lucide-react";
+import { useBranding } from "@/lib/use-branding";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { branding } = useBranding();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,10 +40,14 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex p-3 bg-primary/10 rounded-xl mb-4">
-            <Zap size={32} className="text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">KOMmand Centre</h1>
+          {branding.logoData ? (
+            <img src={branding.logoData} alt={branding.appName} className="h-16 w-16 rounded-xl mx-auto mb-4 object-contain" />
+          ) : (
+            <div className="inline-flex p-3 bg-primary/10 rounded-xl mb-4">
+              <Zap size={32} className="text-primary" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-foreground">{branding.appName}</h1>
           <p className="text-sm text-muted-foreground mt-1">Sign in to your ops dashboard</p>
         </div>
 

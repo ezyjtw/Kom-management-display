@@ -9,7 +9,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "KOMmand Centre",
+  title: process.env.NEXT_PUBLIC_APP_NAME || "KOMmand Centre",
   description: "Ops team performance management and communications hub",
 };
 

@@ -653,6 +653,16 @@ model UsdcRampRequest {
   @@index([ticketRef])
 }
 
+// ─── Branding / White-Label ───
+
+model BrandingConfig {
+  id          String   @id @default("singleton")
+  appName     String   @default("KOMmand Centre")
+  subtitle    String   @default("Ops Management & Comms Hub")
+  logoData    String   @default("") // base64 data URL for logo image
+  updatedAt   DateTime @updatedAt
+}
+
 // ─── Audit ───
 
 model AuditLog {
