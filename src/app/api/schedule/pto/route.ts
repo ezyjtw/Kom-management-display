@@ -73,6 +73,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const validTypes = ["annual_leave", "sick", "wfh", "other"];
+    if (type && !validTypes.includes(type)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid type. Must be one of: ${validTypes.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const validStatuses = ["pending", "approved", "rejected"];
+    if (status && !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const record = await prisma.ptoRecord.create({
       data: {
         employeeId,

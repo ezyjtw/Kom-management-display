@@ -136,7 +136,9 @@ model EmployeeNote {
   authorId   String
   createdAt  DateTime @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
 }
 
 // ─── Comms & Ownership Module ───

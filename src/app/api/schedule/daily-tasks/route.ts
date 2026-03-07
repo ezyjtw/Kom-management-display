@@ -85,6 +85,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const validPriorities = ["urgent", "high", "normal", "low"];
+    if (priority && !validPriorities.includes(priority)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid priority. Must be one of: ${validPriorities.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const validCategories = ["operational", "compliance", "client", "administrative"];
+    if (category && !validCategories.includes(category)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid category. Must be one of: ${validCategories.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const createdById = auth.employeeId || auth.id;
 
     const task = await prisma.dailyTask.create({
@@ -138,6 +154,22 @@ export async function PATCH(request: NextRequest) {
     if (!id) {
       return NextResponse.json(
         { success: false, error: "Missing task id" },
+        { status: 400 }
+      );
+    }
+
+    const validStatuses = ["pending", "in_progress", "completed", "skipped"];
+    if (status !== undefined && !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const validPriorities = ["urgent", "high", "normal", "low"];
+    if (priority !== undefined && !validPriorities.includes(priority)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid priority. Must be one of: ${validPriorities.join(", ")}` },
         { status: 400 }
       );
     }

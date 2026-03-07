@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import { isKomainuConfigured, fetchPendingRequests } from "@/lib/integrations/komainu";
@@ -77,7 +77,7 @@ export async function GET() {
  * Perform an action on a pending request: approve, escalate, or flag_stuck.
  * Body: { requestId, action, notes? }
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
   }

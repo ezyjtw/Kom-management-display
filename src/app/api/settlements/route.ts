@@ -77,8 +77,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { settlements: enriched, summary } });
   } catch (error) {
-    console.error("Settlements GET error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements GET") }, { status: 500 });
   }
 }
 
@@ -131,8 +130,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: settlement }, { status: 201 });
   } catch (error) {
-    console.error("Settlements POST error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements POST") }, { status: 500 });
   }
 }
 
@@ -224,7 +222,6 @@ export async function PATCH(request: NextRequest) {
     const settlement = await prisma.oesSettlement.update({ where: { id }, data });
     return NextResponse.json({ success: true, data: settlement });
   } catch (error) {
-    console.error("Settlements PATCH error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements PATCH") }, { status: 500 });
   }
 }

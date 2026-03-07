@@ -71,8 +71,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { tickets: enriched, summary } });
   } catch (error) {
-    console.error("USDC ramp GET error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp GET") }, { status: 500 });
   }
 }
 
@@ -106,6 +105,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (isNaN(parseFloat(amount))) {
+      return NextResponse.json(
+        { success: false, error: "amount must be a valid number" },
+        { status: 400 },
+      );
+    }
+
+    if (fiatAmount && isNaN(parseFloat(fiatAmount))) {
+      return NextResponse.json(
+        { success: false, error: "fiatAmount must be a valid number" },
+        { status: 400 },
+      );
+    }
+
     const ticket = await prisma.usdcRampRequest.create({
       data: {
         clientName,
@@ -127,8 +140,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: ticket }, { status: 201 });
   } catch (error) {
-    console.error("USDC ramp POST error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp POST") }, { status: 500 });
   }
 }
 
@@ -235,7 +247,6 @@ export async function PATCH(request: NextRequest) {
     const ticket = await prisma.usdcRampRequest.update({ where: { id }, data });
     return NextResponse.json({ success: true, data: ticket });
   } catch (error) {
-    console.error("USDC ramp PATCH error:", error);
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp PATCH") }, { status: 500 });
   }
 }
