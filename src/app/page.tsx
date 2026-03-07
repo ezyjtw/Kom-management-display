@@ -22,6 +22,7 @@ import {
   ClipboardCheck,
   ScanSearch,
   FileSearch,
+  Coins,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -141,6 +142,13 @@ interface CommandCenterData {
     awaiting: number;
     overdue: number;
     followUp: number;
+  };
+  tokens: {
+    total: number;
+    pipeline: number;
+    complianceReview: number;
+    live: number;
+    highDemand: number;
   };
 }
 
@@ -440,6 +448,20 @@ export default function CommandCenterPage() {
             {data.rca.overdue > 0 && <span className="text-red-400 ml-2">{data.rca.overdue} overdue</span>}
             {data.rca.followUp > 0 && <span className="text-orange-400 ml-2">{data.rca.followUp} follow-up</span>}
             {data.rca.total === 0 && "no active RCAs"}
+          </p>
+        </Link>
+
+        <Link href="/tokens" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <Coins size={14} />
+            Token Review
+          </div>
+          <p className="text-2xl font-bold text-foreground">{data.tokens.pipeline}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            in pipeline
+            {data.tokens.complianceReview > 0 && <span className="text-amber-400 ml-2">{data.tokens.complianceReview} compliance</span>}
+            {data.tokens.highDemand > 0 && <span className="text-emerald-400 ml-2">{data.tokens.highDemand} high demand</span>}
+            {data.tokens.live > 0 && <span className="text-purple-400 ml-2">{data.tokens.live} live</span>}
           </p>
         </Link>
       </div>

@@ -8,6 +8,8 @@ import {
   draftIncidentImpact,
   analyseClientPattern,
   draftTravelRuleEmail,
+  researchToken,
+  suggestTokensToOnboard,
 } from "@/lib/ai";
 
 /**
@@ -78,6 +80,14 @@ export async function POST(request: NextRequest) {
 
       case "draft_travel_email":
         suggestion = await draftTravelRuleEmail(data);
+        break;
+
+      case "research_token":
+        suggestion = await researchToken(data);
+        break;
+
+      case "suggest_tokens":
+        suggestion = await suggestTokensToOnboard(data);
         break;
 
       default:

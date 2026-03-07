@@ -829,7 +829,7 @@ async function main() {
       ],
     });
 
-    await prisma.incident.create({
+    const ledgerIncident = await prisma.incident.create({
       data: {
         title: "Ledger firmware update causing HSM reconnection issues",
         provider: "Ledger",
@@ -846,7 +846,7 @@ async function main() {
       },
     });
 
-    await prisma.incident.create({
+    const gxIncident = await prisma.incident.create({
       data: {
         title: "GX exchange API intermittent latency spikes",
         provider: "GX",
@@ -861,7 +861,10 @@ async function main() {
       },
     });
 
-    // Add RCA tracking to Fireblocks incident
+    // ─── RCA tracking across all 3 provider incidents ───
+
+    // Fireblocks: active incident, awaiting RCA from provider — SLA set to 48h
+    // Linked to their Jira board ticket; ticket still open on their side
     await prisma.incident.update({
       where: { id: fireblocksIncident.id },
       data: {
@@ -869,6 +872,158 @@ async function main() {
         rcaRaisedAt: new Date(incNow.getTime() - 1 * 60 * 60000),
         rcaResponsibleId: emp["carol@ops.com"].id,
         rcaSlaDeadline: new Date(incNow.getTime() + 48 * 60 * 60000), // 48h from now
+        externalTicketRef: "FB-4521",
+        externalTicketUrl: "https://fireblocks.atlassian.net/browse/FB-4521",
+        externalTicketStatus: "In Progress",
+      },
+    });
+    // Ticket event: linked, then Fireblocks changed status
+    await prisma.externalTicketEvent.createMany({
+      data: [
+        {
+          incidentId: fireblocksIncident.id,
+          event: "status_changed",
+          toStatus: "linked",
+          performedBy: emp["carol@ops.com"].id,
+          reason: "Linked external ticket FB-4521",
+          createdAt: new Date(incNow.getTime() - 55 * 60000),
+        },
+        {
+          incidentId: fireblocksIncident.id,
+          event: "status_changed",
+          fromStatus: "Open",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 30 * 60000),
+        },
+      ],
+    });
+
+    // Ledger: resolved incident, RCA received with follow-up remediation items
+    // Provider tried to close their ticket prematurely — we disputed and they reopened,
+    // then closed again — we disputed again. Classic provider behaviour.
+    await prisma.incident.update({
+      where: { id: ledgerIncident.id },
+      data: {
+        rcaStatus: "follow_up_pending",
+        rcaRaisedAt: new Date(incNow.getTime() - 24 * 60 * 60000), // raised yesterday
+        rcaReceivedAt: new Date(incNow.getTime() - 12 * 60 * 60000), // received 12h ago
+        rcaResponsibleId: emp["grace@ops.com"].id,
+        rcaSlaDeadline: new Date(incNow.getTime() - 6 * 60 * 60000), // SLA already passed (met on time)
+        rcaDocumentRef: "https://confluence.internal/ledger-hsm-rca-2026-03",
+        rcaFollowUpItems: JSON.stringify([
+          { title: "Schedule monthly HSM firmware check window with Ledger", status: "done" },
+          { title: "Update runbook with HSM reconnection recovery steps", status: "pending" },
+          { title: "Add HSM health check to daily ops checklist", status: "pending" },
+        ]),
+        externalTicketRef: "LEDGER-2891",
+        externalTicketUrl: "https://ledger-enterprise.atlassian.net/browse/LEDGER-2891",
+        externalTicketStatus: "Closed",
+        externalTicketDisputed: true,
+        externalTicketDisputeReason: "2 follow-up remediation items still outstanding — runbook update and daily check integration not complete",
+      },
+    });
+    // Full dispute lifecycle: linked → provider closed → we disputed → they reopened → they closed AGAIN
+    await prisma.externalTicketEvent.createMany({
+      data: [
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          toStatus: "linked",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Linked external ticket LEDGER-2891",
+          createdAt: new Date(incNow.getTime() - 23 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          fromStatus: "Open",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 20 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "provider_closed",
+          fromStatus: "In Progress",
+          toStatus: "Resolved",
+          performedBy: "jira_sync",
+          reason: "Provider closed ticket while RCA status is \"awaiting_rca\"",
+          createdAt: new Date(incNow.getTime() - 18 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "disputed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "RCA not yet received — incident resolved but root cause analysis outstanding",
+          jiraComment: "Hi Ledger team, we cannot accept closure on this ticket. We are still awaiting the formal RCA document for the HSM reconnection issue. Please reopen.",
+          createdAt: new Date(incNow.getTime() - 17 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "reopen_requested",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Requested Ledger to reopen — RCA not received",
+          jiraComment: "Reopening as per our internal SLA requirements. We need the full RCA before we can close this from our side.",
+          createdAt: new Date(incNow.getTime() - 17 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "reopen_confirmed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Ledger reopened ticket and provided RCA",
+          createdAt: new Date(incNow.getTime() - 14 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          fromStatus: "Resolved",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 14 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "provider_closed",
+          fromStatus: "In Progress",
+          toStatus: "Closed",
+          performedBy: "jira_sync",
+          reason: "Provider closed ticket while RCA status is \"follow_up_pending\"",
+          createdAt: new Date(incNow.getTime() - 3 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "disputed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "2 follow-up remediation items still outstanding — runbook update and daily check integration not complete",
+          jiraComment: "Please do not close this ticket. We have 2 outstanding remediation items that require your input: (1) runbook update for HSM recovery steps, (2) integration of HSM health check into our daily monitoring. We need these completed before closure.",
+          createdAt: new Date(incNow.getTime() - 2 * 60 * 60000),
+        },
+      ],
+    });
+
+    // GX: low-severity monitoring incident, RCA just raised — early lifecycle stage
+    // Ticket linked but no drama yet
+    await prisma.incident.update({
+      where: { id: gxIncident.id },
+      data: {
+        rcaStatus: "raised",
+        rcaRaisedAt: new Date(incNow.getTime() - 2 * 60 * 60000),
+        rcaResponsibleId: emp["alice@ops.com"].id,
+        rcaSlaDeadline: new Date(incNow.getTime() + 5 * 24 * 60 * 60000), // 5 days for low severity
+        externalTicketRef: "GX-1103",
+        externalTicketUrl: "https://gx-support.atlassian.net/browse/GX-1103",
+        externalTicketStatus: "Open",
+      },
+    });
+    await prisma.externalTicketEvent.create({
+      data: {
+        incidentId: gxIncident.id,
+        event: "status_changed",
+        toStatus: "linked",
+        performedBy: emp["alice@ops.com"].id,
+        reason: "Linked external ticket GX-1103",
+        createdAt: new Date(incNow.getTime() - 1.5 * 60 * 60000),
       },
     });
 
@@ -1089,6 +1244,153 @@ async function main() {
       ],
     });
     console.log("Created approval audit entry seed data");
+  }
+
+  // ─── Token Review Registry ───
+  const existingTokens = await prisma.tokenReview.count();
+  if (existingTokens === 0) {
+    // Pre-populate with popular institutional tokens at various pipeline stages
+    const btc = await prisma.tokenReview.create({
+      data: {
+        symbol: "BTC", name: "Bitcoin", network: "Bitcoin", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: false, demandScore: 100,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+        notes: "Core institutional asset — highest client demand",
+      },
+    });
+    const eth = await prisma.tokenReview.create({
+      data: {
+        symbol: "ETH", name: "Ethereum", network: "Ethereum", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: true, demandScore: 95,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+        notes: "Core institutional asset — staking available via Lido, Rocket Pool, Figment",
+      },
+    });
+    const sol = await prisma.tokenReview.create({
+      data: {
+        symbol: "SOL", name: "Solana", network: "Solana", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks"]),
+        stakingAvailable: true, demandScore: 80,
+        proposedById: emp["alice@ops.com"].id,
+        approvedAt: new Date("2025-03-01"), liveAt: new Date("2025-03-15"),
+      },
+    });
+    const dot = await prisma.tokenReview.create({
+      data: {
+        symbol: "DOT", name: "Polkadot", network: "Polkadot", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: true, demandScore: 60,
+        proposedById: emp["grace@ops.com"].id,
+        approvedAt: new Date("2025-04-01"), liveAt: new Date("2025-04-15"),
+      },
+    });
+    const usdc = await prisma.tokenReview.create({
+      data: {
+        symbol: "USDC", name: "USD Coin", network: "Ethereum", tokenType: "erc20",
+        contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: false, demandScore: 90,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+      },
+    });
+    // Tokens in review pipeline
+    const avax = await prisma.tokenReview.create({
+      data: {
+        symbol: "AVAX", name: "Avalanche", network: "Avalanche", tokenType: "native",
+        status: "compliance_review", riskLevel: "medium", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: false,
+        custodianSupport: JSON.stringify(["Fireblocks"]),
+        stakingAvailable: true, demandScore: 55,
+        proposedById: emp["kenji@ops.com"].id,
+        reviewedById: emp["grace@ops.com"].id,
+        reviewedAt: new Date("2026-02-20"),
+        complianceById: emp["carol@ops.com"].id,
+        complianceAt: new Date("2026-03-01"),
+        notes: "Multiple client enquiries — waiting on compliance AML assessment",
+      },
+    });
+    const sui = await prisma.tokenReview.create({
+      data: {
+        symbol: "SUI", name: "Sui", network: "Sui", tokenType: "native",
+        status: "under_review", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        custodianSupport: JSON.stringify([]),
+        stakingAvailable: true, demandScore: 45,
+        proposedById: emp["alice@ops.com"].id,
+        reviewedById: emp["grace@ops.com"].id,
+        reviewedAt: new Date("2026-03-05"),
+        notes: "Growing institutional interest — need to confirm Fireblocks support timeline",
+      },
+    });
+    const apt = await prisma.tokenReview.create({
+      data: {
+        symbol: "APT", name: "Aptos", network: "Aptos", tokenType: "native",
+        status: "proposed", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 30,
+        proposedById: emp["kenji@ops.com"].id,
+        notes: "Client Delta expressed interest — competitor already supports it",
+      },
+    });
+    const near = await prisma.tokenReview.create({
+      data: {
+        symbol: "NEAR", name: "NEAR Protocol", network: "NEAR", tokenType: "native",
+        status: "proposed", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 25,
+        proposedById: emp["tom@ops.com"].id,
+      },
+    });
+    const ondo = await prisma.tokenReview.create({
+      data: {
+        symbol: "ONDO", name: "Ondo Finance", network: "Ethereum", tokenType: "erc20",
+        contractAddress: "0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3",
+        status: "proposed", riskLevel: "high", marketCapTier: "small",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 35,
+        proposedById: emp["carol@ops.com"].id,
+        riskNotes: "Tokenized RWA protocol — higher regulatory scrutiny expected",
+        regulatoryNotes: "May be classified as a security in some jurisdictions",
+        notes: "Multiple institutional clients interested in RWA exposure",
+      },
+    });
+
+    // Demand signals
+    const demandSignals = [
+      { tokenReviewId: btc.id, signalType: "client_request", source: "Client Alpha", description: "Core custody requirement", weight: 5 },
+      { tokenReviewId: btc.id, signalType: "client_request", source: "Client Beta", description: "Primary holding", weight: 5 },
+      { tokenReviewId: eth.id, signalType: "client_request", source: "Client Alpha", description: "Staking + custody", weight: 5 },
+      { tokenReviewId: eth.id, signalType: "client_request", source: "Client Gamma", description: "Staking via Figment", weight: 4 },
+      { tokenReviewId: sol.id, signalType: "client_request", source: "Client Delta", description: "SOL staking allocation", weight: 4 },
+      { tokenReviewId: sol.id, signalType: "market_trend", source: "CoinGecko report", description: "Top 5 by institutional inflows Q4 2025", weight: 3 },
+      { tokenReviewId: avax.id, signalType: "client_request", source: "Client Gamma", description: "Avalanche DeFi exposure", weight: 3 },
+      { tokenReviewId: avax.id, signalType: "competitor_listed", source: "Anchorage Digital", description: "Already supported by competitor custodian", weight: 2 },
+      { tokenReviewId: sui.id, signalType: "client_request", source: "Client Alpha", description: "Interested in SUI staking", weight: 3 },
+      { tokenReviewId: sui.id, signalType: "market_trend", source: "Messari", description: "Rising TVL and developer activity", weight: 2 },
+      { tokenReviewId: apt.id, signalType: "client_request", source: "Client Delta", description: "Move ecosystem exposure", weight: 2 },
+      { tokenReviewId: apt.id, signalType: "competitor_listed", source: "BitGo", description: "Competitor added APT support", weight: 1 },
+      { tokenReviewId: ondo.id, signalType: "client_request", source: "Client Beta", description: "RWA token custody", weight: 3 },
+      { tokenReviewId: ondo.id, signalType: "internal_proposal", source: "Carol Davies", description: "Proactive onboarding — growing RWA market", weight: 2 },
+    ];
+    await prisma.tokenDemandSignal.createMany({
+      data: demandSignals.map(s => ({ ...s, recordedById: emp["carol@ops.com"].id })),
+    });
+    console.log("Created token review seed data");
   }
 
   console.log("Seed complete!");

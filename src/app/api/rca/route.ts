@@ -5,6 +5,7 @@ import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 /**
  * GET /api/rca
  * List incidents with RCA tracking (rcaStatus != 'none').
+ * Includes external ticket status and dispute history.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -23,6 +24,8 @@ export async function GET(request: NextRequest) {
       include: {
         reportedBy: { select: { id: true, name: true } },
         rcaResponsible: { select: { id: true, name: true } },
+        updates: { orderBy: { createdAt: "desc" }, take: 5 },
+        ticketEvents: { orderBy: { createdAt: "desc" }, take: 20 },
       },
       orderBy: { updatedAt: "desc" },
     });
@@ -36,12 +39,18 @@ export async function GET(request: NextRequest) {
       const ageDays = Math.round((now.getTime() - rcaRaisedAt.getTime()) / 86400000);
       const slaOverdue = inc.rcaSlaDeadline ? now > inc.rcaSlaDeadline : false;
 
+      // Count premature closures from ticket events
+      const prematureClosures = inc.ticketEvents.filter((e) => e.event === "provider_closed").length;
+      const disputeCount = inc.ticketEvents.filter((e) => e.event === "disputed" || e.event === "reopen_requested").length;
+
       return {
         id: inc.id,
         title: inc.title,
         provider: inc.provider,
         severity: inc.severity,
         status: inc.status,
+        description: inc.description,
+        impact: inc.impact,
         rcaStatus: inc.rcaStatus,
         rcaDocumentRef: inc.rcaDocumentRef,
         rcaResponsibleId: inc.rcaResponsibleId,
@@ -53,7 +62,28 @@ export async function GET(request: NextRequest) {
         ageDays,
         slaOverdue,
         startedAt: inc.startedAt,
+        resolvedAt: inc.resolvedAt,
         createdAt: inc.createdAt,
+        reportedByName: inc.reportedBy?.name || null,
+        updatesCount: inc.updates.length,
+        // External ticket tracking
+        externalTicketRef: inc.externalTicketRef,
+        externalTicketUrl: inc.externalTicketUrl,
+        externalTicketStatus: inc.externalTicketStatus,
+        externalTicketLastSyncAt: inc.externalTicketLastSyncAt,
+        externalTicketDisputed: inc.externalTicketDisputed,
+        externalTicketDisputeReason: inc.externalTicketDisputeReason,
+        ticketEvents: inc.ticketEvents.map((e) => ({
+          id: e.id,
+          event: e.event,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          performedBy: e.performedBy,
+          reason: e.reason,
+          createdAt: e.createdAt,
+        })),
+        prematureClosures,
+        disputeCount,
       };
     });
 
@@ -63,6 +93,7 @@ export async function GET(request: NextRequest) {
       overdue: data.filter((d) => d.slaOverdue && d.rcaStatus === "awaiting_rca").length,
       followUp: data.filter((d) => d.rcaStatus === "follow_up_pending").length,
       closed: data.filter((d) => d.rcaStatus === "closed").length,
+      disputed: data.filter((d) => d.externalTicketDisputed).length,
     };
 
     return NextResponse.json({ success: true, data: { incidents: data, summary } });

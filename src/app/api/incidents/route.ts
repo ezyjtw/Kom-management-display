@@ -164,7 +164,8 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, status, severity, impact, update, updateType, linkedThreadIds, linkedTransactionIds, linkAlertIds,
-      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline, rcaReceivedAt, rcaFollowUpItems, rcaRaisedAt } = body;
+      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline, rcaReceivedAt, rcaFollowUpItems, rcaRaisedAt,
+      externalTicketRef, externalTicketUrl, externalTicketStatus, externalTicketDisputed, externalTicketDisputeReason } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -191,6 +192,13 @@ export async function PATCH(request: NextRequest) {
     if (rcaReceivedAt !== undefined) updateData.rcaReceivedAt = rcaReceivedAt ? new Date(rcaReceivedAt) : null;
     if (rcaFollowUpItems !== undefined) updateData.rcaFollowUpItems = JSON.stringify(rcaFollowUpItems);
     if (rcaRaisedAt !== undefined) updateData.rcaRaisedAt = rcaRaisedAt ? new Date(rcaRaisedAt) : null;
+
+    // External ticket fields
+    if (externalTicketRef !== undefined) updateData.externalTicketRef = externalTicketRef;
+    if (externalTicketUrl !== undefined) updateData.externalTicketUrl = externalTicketUrl;
+    if (externalTicketStatus !== undefined) updateData.externalTicketStatus = externalTicketStatus;
+    if (externalTicketDisputed !== undefined) updateData.externalTicketDisputed = externalTicketDisputed;
+    if (externalTicketDisputeReason !== undefined) updateData.externalTicketDisputeReason = externalTicketDisputeReason;
 
     // Auto-set resolvedAt and resolvedById when resolving
     if (status === "resolved") {

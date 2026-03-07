@@ -29,6 +29,7 @@ import {
   UserCheck,
   ScanSearch,
   FileSearch,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -52,6 +53,7 @@ const navSections = [
       { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
       { href: "/approvals", label: "Approvals Queue", icon: UserCheck },
       { href: "/screening", label: "Screening", icon: ScanSearch },
+      { href: "/tokens", label: "Token Review", icon: Coins },
       { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
       { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
       { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign },

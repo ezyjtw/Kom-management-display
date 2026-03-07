@@ -268,3 +268,145 @@ Return ONLY the email body text (no subject line, no headers).`,
     maxTokens: 512,
   });
 }
+
+/**
+ * Research a token for custody onboarding review.
+ * Analyses the token from multiple angles and returns a structured assessment
+ * that an operator can review, then approve or reject.
+ *
+ * Returns JSON: { summary, riskAssessment, regulatoryConsiderations,
+ *   custodyFeasibility, institutionalDemand, stakingInfo, recommendation }
+ */
+export async function researchToken(token: {
+  symbol: string;
+  name: string;
+  network: string;
+  tokenType: string;
+  contractAddress?: string;
+  marketCapTier?: string;
+  existingNotes?: string;
+  demandSignals?: Array<{ signalType: string; source: string; description: string }>;
+}): Promise<Record<string, unknown> | null> {
+  const text = await complete({
+    system: `You are a digital asset research analyst for Komainu, an institutional-grade custody firm.
+Your job is to perform due diligence on tokens being considered for custody onboarding.
+
+Analyse the token and provide a structured assessment covering:
+
+1. **summary**: 2-3 sentence overview of what this token/project does, its position in the market, and relevance to institutional investors.
+
+2. **riskAssessment**: Key risks — smart contract risk (if applicable), centralization concerns, liquidity risk, team/governance risks. Rate overall as "low", "medium", "high", or "critical".
+
+3. **regulatoryConsiderations**: An object with per-jurisdiction analysis. Structure it as:
+   {
+     "overall": "Brief overall regulatory risk summary",
+     "jurisdictions": {
+       "US": "SEC/CFTC classification risk, Howey test analysis, any enforcement actions",
+       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), compliance status",
+       "UK": "FCA classification, financial promotion rules, whether it's a specified investment",
+       "Switzerland": "FINMA token classification (payment, utility, asset), Swiss DLT framework status",
+       "Singapore": "MAS classification under Payment Services Act, Digital Payment Token status",
+       "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status",
+       "UAE": "VARA/ADGM classification and licensing requirements",
+       "Hong_Kong": "SFC classification, whether it's a virtual asset under the new regime"
+     },
+     "sanctionsExposure": "Any sanctions-related concerns (OFAC, EU sanctions lists)",
+     "keyRisks": ["risk1", "risk2"]
+   }
+
+4. **custodyFeasibility**: Technical considerations for custody — key management complexity, multi-sig support, hardware wallet compatibility (Ledger, Fireblocks), transaction signing requirements, any chain-specific quirks.
+
+5. **institutionalDemand**: Assessment of institutional interest — ETF/ETP products tracking this asset, institutional fund allocations, OTC market depth, competitor custodian support.
+
+6. **stakingInfo**: If staking is available — validator ecosystem maturity, expected yields, lock-up periods, slashing risks, delegation mechanics. If not applicable, state "Not applicable".
+
+7. **chainAnalysis**: Chain/network-level considerations — network maturity and uptime history, finality time, transaction throughput, gas/fee model, reorg risk, bridge dependencies (if L2 or cross-chain), node infrastructure availability, chain-specific operational risks (e.g. account model quirks, memo requirements, minimum balances, dust limits), and any known chain incidents or vulnerabilities.
+
+8. **securityHistory**: An object covering the token/project/chain's history of hacks, exploits, and security incidents. Structure it as:
+   {
+     "incidents": [
+       {
+         "date": "YYYY-MM or approximate",
+         "type": "hack|exploit|rug_pull|bridge_exploit|flash_loan|governance_attack|smart_contract_bug|51%_attack|other",
+         "description": "Brief description of the incident",
+         "fundsLost": "Estimated USD value lost, or 'N/A'",
+         "recovered": "Whether funds were recovered, partially recovered, or not",
+         "rootCause": "Brief root cause explanation"
+       }
+     ],
+     "auditHistory": "Summary of smart contract audits — who audited, when, findings severity",
+     "bugBountyProgram": "Whether a bug bounty program exists, platform (Immunefi, HackerOne, etc.), max payout",
+     "overallSecurityRating": "strong|adequate|concerning|poor — based on incident history, audit coverage, and security posture",
+     "operationalRisks": "Any ongoing security concerns relevant to custody operations (e.g. bridge dependencies, admin key risks, upgrade mechanisms)"
+   }
+   If no known incidents exist, return an empty incidents array but still assess audit history and security posture.
+
+9. **recommendation**: Your overall recommendation — "approve" (low risk, strong demand), "approve_with_conditions" (manageable risks, worth supporting with safeguards), "further_review" (significant unknowns, needs deeper investigation), or "reject" (unacceptable risk or regulatory exposure). Include a 1-2 sentence rationale.
+
+Respond with ONLY valid JSON matching this structure. Be specific to institutional custody operations. Base your analysis on the token's known characteristics as of your knowledge cutoff.`,
+    userMessage: `Research this token for custody onboarding:\n\n${JSON.stringify(token, null, 2)}`,
+    maxTokens: 3072,
+  });
+
+  if (!text) return null;
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch {
+    // If JSON parsing fails, return the raw text in a structured wrapper
+    return { summary: text, riskAssessment: null, recommendation: "further_review" };
+  }
+}
+
+/**
+ * Suggest popular tokens/chain combos that institutions want but aren't
+ * yet in the custody registry. Takes the current list of supported tokens
+ * and proposes gaps worth filling.
+ *
+ * Returns JSON array of suggested tokens with rationale.
+ */
+export async function suggestTokensToOnboard(context: {
+  existingTokens: Array<{ symbol: string; network: string; status: string }>;
+  clientDemandSignals?: Array<{ source: string; description: string }>;
+}): Promise<Array<Record<string, unknown>> | null> {
+  const text = await complete({
+    system: `You are a digital asset strategy analyst for Komainu, an institutional-grade custody firm.
+Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported.
+
+Given the list of tokens already in the registry, suggest 5-8 popular token/chain combinations worth evaluating. Focus on:
+
+1. **Institutional demand**: Tokens with existing ETFs/ETPs, significant institutional fund allocations, or growing OTC markets
+2. **Chain diversity**: Major L1s, important L2s, and multi-chain deployments (e.g. USDT on Tron, stablecoins on multiple chains)
+3. **Competitor gap**: Tokens supported by competing custodians (BitGo, Anchorage, Coinbase Custody, Copper) but not yet listed
+4. **Emerging institutional assets**: RWA tokens, liquid staking derivatives, and tokenized assets gaining traction
+5. **Staking opportunities**: Tokens where custody clients would benefit from staking yield
+
+For each suggestion, provide:
+- **symbol**: Token ticker
+- **name**: Full name
+- **network**: Primary chain/network
+- **tokenType**: native, erc20, spl, substrate, other
+- **marketCapTier**: mega, large, mid, small
+- **rationale**: 1-2 sentences on why institutions want this
+- **urgency**: "high" (clients actively asking), "medium" (growing demand), "low" (proactive positioning)
+- **suggestedRiskLevel**: Initial risk assessment — low, medium, high
+- **chains**: Array of chains this token operates on (for multi-chain tokens)
+
+Do NOT suggest tokens that already appear in the existing registry.
+Respond with ONLY a valid JSON array.`,
+    userMessage: `Current token registry:\n${JSON.stringify(context.existingTokens, null, 2)}\n\n${
+      context.clientDemandSignals?.length
+        ? `Recent client demand signals:\n${JSON.stringify(context.clientDemandSignals, null, 2)}`
+        : "No specific client demand signals provided."
+    }`,
+    maxTokens: 2048,
+  });
+
+  if (!text) return null;
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch {
+    return null;
+  }
+}

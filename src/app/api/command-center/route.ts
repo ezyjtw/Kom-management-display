@@ -21,7 +21,7 @@ export async function GET() {
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents, stakingHeartbeat, dailyCheckStatus, screeningHealth, rcaStatus] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents, stakingHeartbeat, dailyCheckStatus, screeningHealth, rcaStatus, tokenPipeline] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -142,6 +142,20 @@ export async function GET() {
         return { notSubmitted, dust: dustCount, scam: scamCount, openAlerts };
       }, { notSubmitted: 0, dust: 0, scam: 0, openAlerts: 0 }),
 
+      // Token review pipeline
+      safeQuery(async () => {
+        const tokens = await prisma.tokenReview.findMany({
+          select: { id: true, status: true, riskLevel: true, demandScore: true },
+        });
+        return {
+          total: tokens.length,
+          pipeline: tokens.filter(t => ["proposed", "under_review", "compliance_review"].includes(t.status)).length,
+          complianceReview: tokens.filter(t => t.status === "compliance_review").length,
+          live: tokens.filter(t => t.status === "live").length,
+          highDemand: tokens.filter(t => t.demandScore >= 50 && t.status !== "live" && t.status !== "rejected").length,
+        };
+      }, { total: 0, pipeline: 0, complianceReview: 0, live: 0, highDemand: 0 }),
+
       // RCA tracker
       safeQuery(async () => {
         const rcaIncidents = await prisma.incident.findMany({
@@ -259,6 +273,7 @@ export async function GET() {
         dailyChecks: dailyCheckStatus,
         screening: screeningHealth,
         rca: rcaStatus,
+        tokens: tokenPipeline,
       },
     });
   } catch (error) {

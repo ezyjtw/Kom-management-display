@@ -159,3 +159,31 @@ export function ClassificationBadge({ classification }: { classification: string
     </span>
   );
 }
+
+// ─── Token Review Status ───
+
+const tokenStatusStyles: Record<string, string> = {
+  proposed: "bg-blue-500/10 text-blue-400",
+  under_review: "bg-indigo-500/10 text-indigo-400",
+  compliance_review: "bg-amber-500/10 text-amber-400",
+  approved: "bg-emerald-500/10 text-emerald-400",
+  rejected: "bg-red-500/10 text-red-400",
+  live: "bg-purple-500/10 text-purple-400",
+};
+
+const tokenStatusLabels: Record<string, string> = {
+  proposed: "Proposed",
+  under_review: "Under Review",
+  compliance_review: "Compliance Review",
+  approved: "Approved",
+  rejected: "Rejected",
+  live: "Live",
+};
+
+export function TokenStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${tokenStatusStyles[status] || "bg-muted text-muted-foreground"}`}>
+      {tokenStatusLabels[status] || status}
+    </span>
+  );
+}

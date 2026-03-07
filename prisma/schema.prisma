@@ -470,8 +470,16 @@ model Incident {
   rcaReceivedAt     DateTime?
   rcaFollowUpItems  String   @default("[]") // JSON array: [{title, status, assigneeId}]
   rcaRaisedAt       DateTime? // when RCA was formally raised
+  // ─── External Provider Ticket Tracking ───
+  externalTicketRef   String   @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
+  externalTicketUrl   String   @default("") // full URL to provider ticket
+  externalTicketStatus String  @default("") // last known status from Jira sync
+  externalTicketLastSyncAt DateTime? // when we last polled the ticket
+  externalTicketDisputed Boolean @default(false) // true if provider closed prematurely and we dispute
+  externalTicketDisputeReason String @default("") // why we disagree with closure
   updates      IncidentUpdate[]
   alerts       Alert[]
+  ticketEvents ExternalTicketEvent[]
   reportedBy   Employee  @relation("IncidentReporter", fields: [reportedById], references: [id])
   resolvedBy   Employee? @relation("IncidentResolver", fields: [resolvedById], references: [id])
   rcaResponsible Employee? @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
@@ -481,6 +489,7 @@ model Incident {
   @@index([status])
   @@index([provider])
   @@index([rcaStatus])
+  @@index([externalTicketRef])
 }
 
 model IncidentUpdate {
@@ -492,6 +501,26 @@ model IncidentUpdate {
   createdAt  DateTime @default(now())
 
   incident Incident @relation(fields: [incidentId], references: [id])
+}
+
+// ─── External Ticket Event Log ───
+// Tracks lifecycle events for provider tickets linked to incidents.
+// Captures status changes, premature closures, disputes, and reopens.
+
+model ExternalTicketEvent {
+  id          String   @id @default(cuid())
+  incidentId  String
+  event       String   // status_changed, provider_closed, disputed, reopen_requested, reopen_confirmed, comment_added
+  fromStatus  String   @default("") // previous ticket status
+  toStatus    String   @default("") // new ticket status
+  performedBy String   @default("") // "jira_sync" for auto-detected, or employee ID for manual actions
+  reason      String   @default("") // dispute reason or comment
+  jiraComment String   @default("") // comment posted to Jira (if any)
+  createdAt   DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+
+  @@index([incidentId])
 }
 
 // ─── OES Settlements ───
@@ -717,4 +746,74 @@ model ApprovalAuditEntry {
 
   @@index([requestId])
   @@index([performedById])
+}
+
+// ─── Token Review & Onboarding ───
+
+model TokenReview {
+  id              String   @id @default(cuid())
+  symbol          String   // e.g. "BTC", "ETH", "SOL"
+  name            String   // e.g. "Bitcoin", "Ethereum"
+  network         String   @default("") // e.g. "Ethereum", "Solana", "Polkadot"
+  contractAddress String   @default("") // for ERC-20/SPL tokens
+  tokenType       String   @default("native") // native, erc20, spl, substrate, other
+  // Review pipeline
+  status          String   @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
+  proposedById    String?  // employee who proposed
+  proposedAt      DateTime @default(now())
+  reviewedById    String?  // ops reviewer
+  reviewedAt      DateTime?
+  complianceById  String?  // compliance reviewer
+  complianceAt    DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  liveAt          DateTime? // when token went live in custody
+  rejectionReason String   @default("")
+  // Risk & compliance assessment
+  riskLevel       String   @default("medium") // low, medium, high, critical
+  riskNotes       String   @default("") // free-form risk assessment
+  regulatoryNotes String   @default("") // regulatory considerations
+  sanctionsCheck  Boolean  @default(false) // sanctions screening completed
+  amlRiskAssessed Boolean  @default(false) // AML risk assessed
+  // Custody support details
+  custodianSupport String  @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
+  stakingAvailable Boolean @default(false)
+  // Third-party vendor support tracking
+  chainalysisSupport String @default("unknown") // supported, partial, not_supported, unknown
+  notabeneSupport    String @default("unknown") // supported, partial, not_supported, unknown
+  fireblocksSupport  String @default("unknown") // supported, partial, not_supported, unknown
+  ledgerSupport      String @default("unknown") // supported, partial, not_supported, unknown
+  vendorNotes        String @default("") // JSON: per-vendor notes/caveats
+  // Institutional demand
+  demandScore     Int      @default(0) // 0-100 computed from demand signals
+  demandSignals   TokenDemandSignal[]
+  // AI research persistence
+  aiResearchResult String   @default("") // JSON: full AI research output
+  aiResearchedAt   DateTime? // when AI research was last run
+  aiRecommendation String   @default("") // approve, approve_with_conditions, further_review, reject
+  // Metadata
+  marketCapTier   String   @default("unknown") // mega, large, mid, small, micro, unknown
+  notes           String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([symbol, network])
+  @@index([status])
+  @@index([riskLevel])
+  @@index([demandScore])
+}
+
+model TokenDemandSignal {
+  id            String   @id @default(cuid())
+  tokenReviewId String
+  signalType    String   // client_request, market_trend, competitor_listed, internal_proposal
+  source        String   @default("") // client name, market report, etc.
+  description   String   @default("")
+  weight        Int      @default(1) // 1-5 strength of signal
+  recordedById  String?
+  createdAt     DateTime @default(now())
+
+  tokenReview TokenReview @relation(fields: [tokenReviewId], references: [id])
+
+  @@index([tokenReviewId])
 }
