@@ -747,3 +747,63 @@ model ApprovalAuditEntry {
   @@index([requestId])
   @@index([performedById])
 }
+
+// ─── Token Review & Onboarding ───
+
+model TokenReview {
+  id              String   @id @default(cuid())
+  symbol          String   // e.g. "BTC", "ETH", "SOL"
+  name            String   // e.g. "Bitcoin", "Ethereum"
+  network         String   @default("") // e.g. "Ethereum", "Solana", "Polkadot"
+  contractAddress String   @default("") // for ERC-20/SPL tokens
+  tokenType       String   @default("native") // native, erc20, spl, substrate, other
+  // Review pipeline
+  status          String   @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
+  proposedById    String?  // employee who proposed
+  proposedAt      DateTime @default(now())
+  reviewedById    String?  // ops reviewer
+  reviewedAt      DateTime?
+  complianceById  String?  // compliance reviewer
+  complianceAt    DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  liveAt          DateTime? // when token went live in custody
+  rejectionReason String   @default("")
+  // Risk & compliance assessment
+  riskLevel       String   @default("medium") // low, medium, high, critical
+  riskNotes       String   @default("") // free-form risk assessment
+  regulatoryNotes String   @default("") // regulatory considerations
+  sanctionsCheck  Boolean  @default(false) // sanctions screening completed
+  amlRiskAssessed Boolean  @default(false) // AML risk assessed
+  // Custody support details
+  custodianSupport String  @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
+  stakingAvailable Boolean @default(false)
+  // Institutional demand
+  demandScore     Int      @default(0) // 0-100 computed from demand signals
+  demandSignals   TokenDemandSignal[]
+  // Metadata
+  marketCapTier   String   @default("unknown") // mega, large, mid, small, micro, unknown
+  notes           String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([symbol, network])
+  @@index([status])
+  @@index([riskLevel])
+  @@index([demandScore])
+}
+
+model TokenDemandSignal {
+  id            String   @id @default(cuid())
+  tokenReviewId String
+  signalType    String   // client_request, market_trend, competitor_listed, internal_proposal
+  source        String   @default("") // client name, market report, etc.
+  description   String   @default("")
+  weight        Int      @default(1) // 1-5 strength of signal
+  recordedById  String?
+  createdAt     DateTime @default(now())
+
+  tokenReview TokenReview @relation(fields: [tokenReviewId], references: [id])
+
+  @@index([tokenReviewId])
+}

@@ -1246,6 +1246,153 @@ async function main() {
     console.log("Created approval audit entry seed data");
   }
 
+  // ─── Token Review Registry ───
+  const existingTokens = await prisma.tokenReview.count();
+  if (existingTokens === 0) {
+    // Pre-populate with popular institutional tokens at various pipeline stages
+    const btc = await prisma.tokenReview.create({
+      data: {
+        symbol: "BTC", name: "Bitcoin", network: "Bitcoin", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: false, demandScore: 100,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+        notes: "Core institutional asset — highest client demand",
+      },
+    });
+    const eth = await prisma.tokenReview.create({
+      data: {
+        symbol: "ETH", name: "Ethereum", network: "Ethereum", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: true, demandScore: 95,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+        notes: "Core institutional asset — staking available via Lido, Rocket Pool, Figment",
+      },
+    });
+    const sol = await prisma.tokenReview.create({
+      data: {
+        symbol: "SOL", name: "Solana", network: "Solana", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks"]),
+        stakingAvailable: true, demandScore: 80,
+        proposedById: emp["alice@ops.com"].id,
+        approvedAt: new Date("2025-03-01"), liveAt: new Date("2025-03-15"),
+      },
+    });
+    const dot = await prisma.tokenReview.create({
+      data: {
+        symbol: "DOT", name: "Polkadot", network: "Polkadot", tokenType: "native",
+        status: "live", riskLevel: "low", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: true, demandScore: 60,
+        proposedById: emp["grace@ops.com"].id,
+        approvedAt: new Date("2025-04-01"), liveAt: new Date("2025-04-15"),
+      },
+    });
+    const usdc = await prisma.tokenReview.create({
+      data: {
+        symbol: "USDC", name: "USD Coin", network: "Ethereum", tokenType: "erc20",
+        contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        status: "live", riskLevel: "low", marketCapTier: "mega",
+        sanctionsCheck: true, amlRiskAssessed: true,
+        custodianSupport: JSON.stringify(["Fireblocks", "Ledger"]),
+        stakingAvailable: false, demandScore: 90,
+        proposedById: emp["carol@ops.com"].id,
+        approvedAt: new Date("2025-01-15"), liveAt: new Date("2025-02-01"),
+      },
+    });
+    // Tokens in review pipeline
+    const avax = await prisma.tokenReview.create({
+      data: {
+        symbol: "AVAX", name: "Avalanche", network: "Avalanche", tokenType: "native",
+        status: "compliance_review", riskLevel: "medium", marketCapTier: "large",
+        sanctionsCheck: true, amlRiskAssessed: false,
+        custodianSupport: JSON.stringify(["Fireblocks"]),
+        stakingAvailable: true, demandScore: 55,
+        proposedById: emp["kenji@ops.com"].id,
+        reviewedById: emp["grace@ops.com"].id,
+        reviewedAt: new Date("2026-02-20"),
+        complianceById: emp["carol@ops.com"].id,
+        complianceAt: new Date("2026-03-01"),
+        notes: "Multiple client enquiries — waiting on compliance AML assessment",
+      },
+    });
+    const sui = await prisma.tokenReview.create({
+      data: {
+        symbol: "SUI", name: "Sui", network: "Sui", tokenType: "native",
+        status: "under_review", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        custodianSupport: JSON.stringify([]),
+        stakingAvailable: true, demandScore: 45,
+        proposedById: emp["alice@ops.com"].id,
+        reviewedById: emp["grace@ops.com"].id,
+        reviewedAt: new Date("2026-03-05"),
+        notes: "Growing institutional interest — need to confirm Fireblocks support timeline",
+      },
+    });
+    const apt = await prisma.tokenReview.create({
+      data: {
+        symbol: "APT", name: "Aptos", network: "Aptos", tokenType: "native",
+        status: "proposed", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 30,
+        proposedById: emp["kenji@ops.com"].id,
+        notes: "Client Delta expressed interest — competitor already supports it",
+      },
+    });
+    const near = await prisma.tokenReview.create({
+      data: {
+        symbol: "NEAR", name: "NEAR Protocol", network: "NEAR", tokenType: "native",
+        status: "proposed", riskLevel: "medium", marketCapTier: "mid",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 25,
+        proposedById: emp["tom@ops.com"].id,
+      },
+    });
+    const ondo = await prisma.tokenReview.create({
+      data: {
+        symbol: "ONDO", name: "Ondo Finance", network: "Ethereum", tokenType: "erc20",
+        contractAddress: "0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3",
+        status: "proposed", riskLevel: "high", marketCapTier: "small",
+        sanctionsCheck: false, amlRiskAssessed: false,
+        demandScore: 35,
+        proposedById: emp["carol@ops.com"].id,
+        riskNotes: "Tokenized RWA protocol — higher regulatory scrutiny expected",
+        regulatoryNotes: "May be classified as a security in some jurisdictions",
+        notes: "Multiple institutional clients interested in RWA exposure",
+      },
+    });
+
+    // Demand signals
+    const demandSignals = [
+      { tokenReviewId: btc.id, signalType: "client_request", source: "Client Alpha", description: "Core custody requirement", weight: 5 },
+      { tokenReviewId: btc.id, signalType: "client_request", source: "Client Beta", description: "Primary holding", weight: 5 },
+      { tokenReviewId: eth.id, signalType: "client_request", source: "Client Alpha", description: "Staking + custody", weight: 5 },
+      { tokenReviewId: eth.id, signalType: "client_request", source: "Client Gamma", description: "Staking via Figment", weight: 4 },
+      { tokenReviewId: sol.id, signalType: "client_request", source: "Client Delta", description: "SOL staking allocation", weight: 4 },
+      { tokenReviewId: sol.id, signalType: "market_trend", source: "CoinGecko report", description: "Top 5 by institutional inflows Q4 2025", weight: 3 },
+      { tokenReviewId: avax.id, signalType: "client_request", source: "Client Gamma", description: "Avalanche DeFi exposure", weight: 3 },
+      { tokenReviewId: avax.id, signalType: "competitor_listed", source: "Anchorage Digital", description: "Already supported by competitor custodian", weight: 2 },
+      { tokenReviewId: sui.id, signalType: "client_request", source: "Client Alpha", description: "Interested in SUI staking", weight: 3 },
+      { tokenReviewId: sui.id, signalType: "market_trend", source: "Messari", description: "Rising TVL and developer activity", weight: 2 },
+      { tokenReviewId: apt.id, signalType: "client_request", source: "Client Delta", description: "Move ecosystem exposure", weight: 2 },
+      { tokenReviewId: apt.id, signalType: "competitor_listed", source: "BitGo", description: "Competitor added APT support", weight: 1 },
+      { tokenReviewId: ondo.id, signalType: "client_request", source: "Client Beta", description: "RWA token custody", weight: 3 },
+      { tokenReviewId: ondo.id, signalType: "internal_proposal", source: "Carol Davies", description: "Proactive onboarding — growing RWA market", weight: 2 },
+    ];
+    await prisma.tokenDemandSignal.createMany({
+      data: demandSignals.map(s => ({ ...s, recordedById: emp["carol@ops.com"].id })),
+    });
+    console.log("Created token review seed data");
+  }
+
   console.log("Seed complete!");
 }
 
