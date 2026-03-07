@@ -102,6 +102,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const validSeverities = ["low", "medium", "high", "critical"];
+    if (severity && !validSeverities.includes(severity)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}` },
+        { status: 400 },
+      );
+    }
+
+    if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
+      return NextResponse.json(
+        { success: false, error: "linkedThreadIds must be an array" },
+        { status: 400 },
+      );
+    }
+
+    if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
+      return NextResponse.json(
+        { success: false, error: "linkedTransactionIds must be an array" },
+        { status: 400 },
+      );
+    }
+
     const actorId = auth.employeeId || auth.id;
 
     const incident = await prisma.incident.create({
@@ -175,6 +197,45 @@ export async function PATCH(request: NextRequest) {
     }
 
     const actorId = auth.employeeId || auth.id;
+
+    // Validate enum fields
+    const validStatuses = ["active", "monitoring", "resolved"];
+    if (status && !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        { status: 400 },
+      );
+    }
+
+    const validSeverities = ["low", "medium", "high", "critical"];
+    if (severity && !validSeverities.includes(severity)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}` },
+        { status: 400 },
+      );
+    }
+
+    const validRcaStatuses = ["not_required", "raised", "awaiting_rca", "rca_received", "follow_up_pending", "closed"];
+    if (rcaStatus !== undefined && !validRcaStatuses.includes(rcaStatus)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid rcaStatus. Must be one of: ${validRcaStatuses.join(", ")}` },
+        { status: 400 },
+      );
+    }
+
+    if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
+      return NextResponse.json(
+        { success: false, error: "linkedThreadIds must be an array" },
+        { status: 400 },
+      );
+    }
+
+    if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
+      return NextResponse.json(
+        { success: false, error: "linkedTransactionIds must be an array" },
+        { status: 400 },
+      );
+    }
 
     // Build update payload
     const updateData: Record<string, unknown> = {};
