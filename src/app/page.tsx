@@ -18,6 +18,10 @@ import {
   FolderKanban,
   Eye,
   LogOut,
+  Layers,
+  ClipboardCheck,
+  ScanSearch,
+  FileSearch,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -112,6 +116,31 @@ interface CommandCenterData {
       status: string;
       startedAt: string;
     }>;
+  };
+  staking: {
+    total: number;
+    overdue: number;
+    approaching: number;
+    onTime: number;
+  };
+  dailyChecks: {
+    exists: boolean;
+    total: number;
+    passed: number;
+    issues: number;
+    pending: number;
+  };
+  screening: {
+    notSubmitted: number;
+    dust: number;
+    scam: number;
+    openAlerts: number;
+  };
+  rca: {
+    total: number;
+    awaiting: number;
+    overdue: number;
+    followUp: number;
   };
 }
 
@@ -346,6 +375,71 @@ export default function CommandCenterPage() {
             {data.coverage.onQueues > 0 && <span className="text-purple-400">{data.coverage.onQueues} on queues</span>}
             {data.coverage.onBreak > 0 && <span className="text-amber-400 ml-2">{data.coverage.onBreak} on break</span>}
             {data.coverage.total === 0 && "no data"}
+          </p>
+        </Link>
+
+        <Link href="/staking" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <Layers size={14} />
+            Staking Ops
+          </div>
+          <p className="text-2xl font-bold text-foreground">{data.staking.total}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.staking.overdue > 0 && <span className="text-red-400">{data.staking.overdue} overdue</span>}
+            {data.staking.approaching > 0 && <span className="text-amber-400 ml-2">{data.staking.approaching} approaching</span>}
+            {data.staking.overdue === 0 && data.staking.approaching === 0 && "all on time"}
+          </p>
+        </Link>
+
+        <Link href="/daily-checks" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <ClipboardCheck size={14} />
+            Daily Checks
+          </div>
+          {data.dailyChecks.exists ? (
+            <>
+              <p className="text-2xl font-bold text-foreground">{data.dailyChecks.passed}/{data.dailyChecks.total}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {data.dailyChecks.issues > 0 && <span className="text-red-400">{data.dailyChecks.issues} issues</span>}
+                {data.dailyChecks.pending > 0 && <span className="text-amber-400 ml-2">{data.dailyChecks.pending} pending</span>}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-2xl font-bold text-muted-foreground">—</p>
+              <p className="text-xs text-amber-400 mt-1">not started today</p>
+            </>
+          )}
+        </Link>
+
+        <Link href="/screening" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <ScanSearch size={14} />
+            Screening
+          </div>
+          <p className={`text-2xl font-bold ${data.screening.notSubmitted > 0 ? "text-amber-400" : "text-foreground"}`}>
+            {data.screening.notSubmitted}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            not submitted
+            {data.screening.scam > 0 && <span className="text-red-400 ml-2">{data.screening.scam} scam</span>}
+            {data.screening.openAlerts > 0 && <span className="text-amber-400 ml-2">{data.screening.openAlerts} alerts</span>}
+          </p>
+        </Link>
+
+        <Link href="/rca" className="bg-card rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <FileSearch size={14} />
+            RCA Tracker
+          </div>
+          <p className={`text-2xl font-bold ${data.rca.overdue > 0 ? "text-red-400" : "text-foreground"}`}>
+            {data.rca.total}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.rca.awaiting > 0 && <span className="text-amber-400">{data.rca.awaiting} awaiting</span>}
+            {data.rca.overdue > 0 && <span className="text-red-400 ml-2">{data.rca.overdue} overdue</span>}
+            {data.rca.followUp > 0 && <span className="text-orange-400 ml-2">{data.rca.followUp} follow-up</span>}
+            {data.rca.total === 0 && "no active RCAs"}
           </p>
         </Link>
       </div>

@@ -861,7 +861,234 @@ async function main() {
       },
     });
 
+    // Add RCA tracking to Fireblocks incident
+    await prisma.incident.update({
+      where: { id: fireblocksIncident.id },
+      data: {
+        rcaStatus: "awaiting_rca",
+        rcaRaisedAt: new Date(incNow.getTime() - 1 * 60 * 60000),
+        rcaResponsibleId: emp["carol@ops.com"].id,
+        rcaSlaDeadline: new Date(incNow.getTime() + 48 * 60 * 60000), // 48h from now
+      },
+    });
+
     console.log("Created incident seed data");
+  }
+
+  // ─── Staking Wallets ───
+  const existingStaking = await prisma.stakingWallet.count();
+  if (existingStaking === 0) {
+    const sNow = new Date();
+    await prisma.stakingWallet.createMany({
+      data: [
+        {
+          walletAddress: "0xStakeETH001",
+          asset: "ETH",
+          validator: "Lido",
+          stakedAmount: 32.0,
+          rewardModel: "daily",
+          clientName: "Client Alpha",
+          lastRewardAt: new Date(sNow.getTime() - 20 * 60 * 60000),
+          expectedNextRewardAt: new Date(sNow.getTime() - 4 * 60 * 60000), // overdue
+          onChainBalance: 32.15,
+          platformBalance: 32.15,
+          tags: JSON.stringify(["production"]),
+          status: "active",
+        },
+        {
+          walletAddress: "0xStakeETH002",
+          asset: "ETH",
+          validator: "Rocket Pool",
+          stakedAmount: 16.0,
+          rewardModel: "daily",
+          clientName: "Client Beta",
+          lastRewardAt: new Date(sNow.getTime() - 22 * 60 * 60000),
+          expectedNextRewardAt: new Date(sNow.getTime() + 2 * 60 * 60000), // approaching
+          onChainBalance: 16.08,
+          platformBalance: 16.08,
+          tags: JSON.stringify(["production"]),
+          status: "active",
+        },
+        {
+          walletAddress: "0xStakeETH003",
+          asset: "ETH",
+          validator: "Figment",
+          stakedAmount: 64.0,
+          rewardModel: "daily",
+          clientName: "Client Gamma",
+          lastRewardAt: new Date(sNow.getTime() - 12 * 60 * 60000),
+          expectedNextRewardAt: new Date(sNow.getTime() + 12 * 60 * 60000), // on time
+          onChainBalance: 64.32,
+          platformBalance: 64.30, // small variance, within threshold
+          tags: JSON.stringify(["production"]),
+          status: "active",
+        },
+        {
+          walletAddress: "solStake001",
+          asset: "SOL",
+          validator: "Marinade",
+          stakedAmount: 500.0,
+          rewardModel: "auto",
+          clientName: "Client Alpha",
+          lastRewardAt: new Date(sNow.getTime() - 48 * 60 * 60000),
+          expectedNextRewardAt: new Date(sNow.getTime() + 6 * 60 * 60000),
+          onChainBalance: 503.2,
+          platformBalance: 503.2,
+          tags: JSON.stringify(["production"]),
+          status: "active",
+        },
+        {
+          walletAddress: "solStake002",
+          asset: "SOL",
+          validator: "Jito",
+          stakedAmount: 200.0,
+          rewardModel: "auto",
+          clientName: "Client Delta",
+          onChainBalance: 201.5,
+          platformBalance: 201.5,
+          tags: JSON.stringify(["production"]),
+          status: "active",
+        },
+        {
+          walletAddress: "dotStake001",
+          asset: "DOT",
+          validator: "P2P Validator",
+          stakedAmount: 10000.0,
+          rewardModel: "monthly",
+          clientName: "Client Beta",
+          isColdStaking: true,
+          lastRewardAt: new Date(sNow.getTime() - 25 * 24 * 60 * 60000),
+          expectedNextRewardAt: new Date(sNow.getTime() + 5 * 24 * 60 * 60000),
+          onChainBalance: 10050.0,
+          platformBalance: 10050.0,
+          tags: JSON.stringify(["cold_storage"]),
+          status: "active",
+        },
+        {
+          walletAddress: "atomStake001",
+          asset: "ATOM",
+          validator: "Chorus One",
+          stakedAmount: 1000.0,
+          rewardModel: "weekly",
+          clientName: "Client Gamma",
+          isTestWallet: true,
+          tags: JSON.stringify(["test"]),
+          status: "active",
+        },
+        {
+          walletAddress: "adaStake001",
+          asset: "ADA",
+          validator: "Komainu Pool",
+          stakedAmount: 50000.0,
+          rewardModel: "rebate",
+          clientName: "Client Alpha",
+          stakeDate: new Date(sNow.getTime() - 3 * 24 * 60 * 60000),
+          expectedFirstRewardDate: new Date(sNow.getTime() + 12 * 24 * 60 * 60000),
+          onChainBalance: 50000.0,
+          platformBalance: 50005.0, // variance above threshold
+          varianceThreshold: 1.0,
+          tags: JSON.stringify(["newly_staked"]),
+          status: "active",
+        },
+      ],
+    });
+    console.log("Created staking wallet seed data");
+  }
+
+  // ─── Daily Check Runs ───
+  const existingChecks = await prisma.dailyCheckRun.count();
+  if (existingChecks === 0) {
+    const checkNow = new Date();
+    const yesterday = new Date(checkNow.getFullYear(), checkNow.getMonth(), checkNow.getDate() - 1);
+    const today = new Date(checkNow.getFullYear(), checkNow.getMonth(), checkNow.getDate());
+
+    // Yesterday's run — fully completed
+    const yesterdayRun = await prisma.dailyCheckRun.create({
+      data: {
+        date: yesterday,
+        operatorId: emp["carol@ops.com"].id,
+        completedAt: new Date(yesterday.getTime() + 10 * 60 * 60000), // 10am
+        jiraSummary: "(/) All checks passed except stuck transactions",
+      },
+    });
+    const checkCategories = [
+      { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count", status: "issues_found", notes: "3 stuck BTC transactions >2h" },
+      { name: "Balance Variance", category: "balance_variance", autoCheckKey: "balance_variance", status: "pass" },
+      { name: "Staking Rewards", category: "staking_rewards", autoCheckKey: "staking_overdue", status: "pass" },
+      { name: "Screening Queue", category: "screening", autoCheckKey: "screening_pending", status: "pass" },
+      { name: "Travel Rule Cases", category: "travel_rule", autoCheckKey: "travel_rule_open", status: "pass" },
+      { name: "Pending Approvals", category: "pending_approvals", autoCheckKey: "pending_approvals", status: "pass" },
+      { name: "Scam / Dust Review", category: "scam_dust", autoCheckKey: "scam_dust_pending", status: "pass" },
+      { name: "Validator Health", category: "validator_health", autoCheckKey: "", status: "pass" },
+      { name: "External Provider Status", category: "external_provider", autoCheckKey: "active_incidents", status: "pass" },
+    ];
+    await prisma.dailyCheckItem.createMany({
+      data: checkCategories.map((c) => ({
+        runId: yesterdayRun.id,
+        name: c.name,
+        category: c.category,
+        autoCheckKey: c.autoCheckKey,
+        status: c.status,
+        notes: c.notes || "",
+        operatorId: emp["carol@ops.com"].id,
+        completedAt: new Date(yesterday.getTime() + 10 * 60 * 60000),
+      })),
+    });
+
+    // Today's run — partially completed
+    const todayRun = await prisma.dailyCheckRun.create({
+      data: {
+        date: today,
+        operatorId: emp["carol@ops.com"].id,
+      },
+    });
+    const todayChecks = checkCategories.map((c, idx) => ({
+      runId: todayRun.id,
+      name: c.name,
+      category: c.category,
+      autoCheckKey: c.autoCheckKey,
+      status: idx < 4 ? "pass" : "pending",
+      notes: "",
+      operatorId: idx < 4 ? emp["carol@ops.com"].id : null,
+      completedAt: idx < 4 ? new Date(today.getTime() + 9 * 60 * 60000) : null,
+    }));
+    await prisma.dailyCheckItem.createMany({ data: todayChecks });
+    console.log("Created daily check run seed data");
+  }
+
+  // ─── Screening Entries ───
+  const existingScreening = await prisma.screeningEntry.count();
+  if (existingScreening === 0) {
+    await prisma.screeningEntry.createMany({
+      data: [
+        { transactionId: "tx-screen-001", txHash: "0xabc001", asset: "ETH", amount: 5.2, direction: "IN", screeningStatus: "completed", classification: "legitimate" },
+        { transactionId: "tx-screen-002", txHash: "0xabc002", asset: "BTC", amount: 0.5, direction: "IN", screeningStatus: "completed", classification: "legitimate" },
+        { transactionId: "tx-screen-003", txHash: "0xabc003", asset: "ETH", amount: 1.0, direction: "OUT", screeningStatus: "completed", classification: "legitimate" },
+        { transactionId: "tx-screen-004", txHash: "0xabc004", asset: "USDC", amount: 10000, direction: "IN", screeningStatus: "completed", classification: "legitimate" },
+        { transactionId: "tx-screen-005", txHash: "0xabc005", asset: "ETH", amount: 0.0001, direction: "IN", screeningStatus: "completed", classification: "dust", notes: "Dust transaction — negligible value" },
+        { transactionId: "tx-screen-006", txHash: "0xabc006", asset: "BTC", amount: 0.00005, direction: "IN", screeningStatus: "completed", classification: "dust", notes: "Sub-threshold BTC amount" },
+        { transactionId: "tx-screen-007", txHash: "0xabc007", asset: "ETH", amount: 0.5, direction: "IN", screeningStatus: "completed", classification: "scam", notes: "Known mixer address", analyticsAlertId: "CA-2026-001", analyticsStatus: "resolved" },
+        { transactionId: "tx-screen-008", txHash: "0xabc008", asset: "ETH", amount: 2.0, direction: "IN", screeningStatus: "completed", classification: "scam", notes: "OFAC sanctioned source", analyticsAlertId: "CA-2026-002", analyticsStatus: "resolved" },
+        { transactionId: "tx-screen-009", txHash: "0xabc009", asset: "SOL", amount: 50, direction: "IN", screeningStatus: "not_submitted", isKnownException: true, exceptionReason: "Internal transfer between segregated wallets" },
+        { transactionId: "tx-screen-010", txHash: "0xabc010", asset: "ETH", amount: 3.0, direction: "IN", screeningStatus: "submitted", analyticsAlertId: "CA-2026-003", analyticsStatus: "open", complianceReviewStatus: "pending", notes: "Under compliance review" },
+      ],
+    });
+    console.log("Created screening entry seed data");
+  }
+
+  // ─── Approval Audit Entries ───
+  const existingApprovalAudit = await prisma.approvalAuditEntry.count();
+  if (existingApprovalAudit === 0) {
+    await prisma.approvalAuditEntry.createMany({
+      data: [
+        { requestId: "req-001", action: "approved", performedById: emp["carol@ops.com"].id, riskLevel: "low" },
+        { requestId: "req-002", action: "approved", performedById: emp["grace@ops.com"].id, riskLevel: "medium" },
+        { requestId: "req-003", action: "escalated", performedById: emp["carol@ops.com"].id, riskLevel: "high", notes: "Large collateral operation — needs compliance sign-off" },
+        { requestId: "req-004", action: "flagged_stuck", performedById: emp["alice@ops.com"].id, riskLevel: "medium", notes: "Request pending > 2 hours" },
+        { requestId: "req-005", action: "approved", performedById: emp["kenji@ops.com"].id, riskLevel: "low" },
+      ],
+    });
+    console.log("Created approval audit entry seed data");
   }
 
   console.log("Seed complete!");

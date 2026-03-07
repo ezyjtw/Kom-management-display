@@ -21,7 +21,7 @@ export async function GET() {
   }
 
   try {
-    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents] = await Promise.all([
+    const [openCases, activeThreads, activeAlerts, recentAudit, todaysTasks, activityCoverage, activeProjects, activeIncidents, stakingHeartbeat, dailyCheckStatus, screeningHealth, rcaStatus] = await Promise.all([
       safeQuery(() => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         orderBy: { createdAt: "asc" },
@@ -95,6 +95,65 @@ export async function GET() {
         select: { id: true, title: true, provider: true, severity: true, status: true, startedAt: true },
         orderBy: { startedAt: "desc" },
       }), []),
+
+      // Staking heartbeat summary
+      safeQuery(async () => {
+        const wallets = await prisma.stakingWallet.findMany({
+          where: { status: "active" },
+          select: { id: true, asset: true, rewardModel: true, expectedNextRewardAt: true, lastRewardAt: true },
+        });
+        const now = new Date();
+        const overdue = wallets.filter(w => w.expectedNextRewardAt && w.expectedNextRewardAt < now).length;
+        const approaching = wallets.filter(w => {
+          if (!w.expectedNextRewardAt) return false;
+          const hoursUntil = (w.expectedNextRewardAt.getTime() - now.getTime()) / 3600000;
+          return hoursUntil > 0 && hoursUntil < 4;
+        }).length;
+        return { total: wallets.length, overdue, approaching, onTime: wallets.length - overdue - approaching };
+      }, { total: 0, overdue: 0, approaching: 0, onTime: 0 }),
+
+      // Today's daily check run
+      safeQuery(async () => {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(start.getTime() + 86400000);
+        const run = await prisma.dailyCheckRun.findFirst({
+          where: { date: { gte: start, lt: end } },
+          include: { items: { select: { status: true } } },
+        });
+        if (!run) return { exists: false, total: 0, passed: 0, issues: 0, pending: 0 };
+        return {
+          exists: true,
+          total: run.items.length,
+          passed: run.items.filter(i => i.status === "pass").length,
+          issues: run.items.filter(i => i.status === "issues_found").length,
+          pending: run.items.filter(i => i.status === "pending").length,
+        };
+      }, { exists: false, total: 0, passed: 0, issues: 0, pending: 0 }),
+
+      // Screening health
+      safeQuery(async () => {
+        const [notSubmitted, dustCount, scamCount, openAlerts] = await Promise.all([
+          prisma.screeningEntry.count({ where: { screeningStatus: "not_submitted", isKnownException: false } }),
+          prisma.screeningEntry.count({ where: { classification: "dust" } }),
+          prisma.screeningEntry.count({ where: { classification: "scam" } }),
+          prisma.screeningEntry.count({ where: { analyticsStatus: { in: ["open", "under_review"] } } }),
+        ]);
+        return { notSubmitted, dust: dustCount, scam: scamCount, openAlerts };
+      }, { notSubmitted: 0, dust: 0, scam: 0, openAlerts: 0 }),
+
+      // RCA tracker
+      safeQuery(async () => {
+        const rcaIncidents = await prisma.incident.findMany({
+          where: { rcaStatus: { not: "none" } },
+          select: { id: true, rcaStatus: true, rcaSlaDeadline: true },
+        });
+        const now = new Date();
+        const awaitingCount = rcaIncidents.filter(i => i.rcaStatus === "awaiting_rca").length;
+        const overdueCount = rcaIncidents.filter(i => i.rcaStatus === "awaiting_rca" && i.rcaSlaDeadline && i.rcaSlaDeadline < now).length;
+        const followUpCount = rcaIncidents.filter(i => i.rcaStatus === "follow_up_pending").length;
+        return { total: rcaIncidents.length, awaiting: awaitingCount, overdue: overdueCount, followUp: followUpCount };
+      }, { total: 0, awaiting: 0, overdue: 0, followUp: 0 }),
     ]);
 
     // Travel rule aging: green (<24h), amber (24-48h), red (>48h since creation)
@@ -196,6 +255,10 @@ export async function GET() {
           criticalCount: activeIncidents.filter((i) => i.severity === "critical" && i.status === "active").length,
           items: activeIncidents,
         },
+        staking: stakingHeartbeat,
+        dailyChecks: dailyCheckStatus,
+        screening: screeningHealth,
+        rca: rcaStatus,
       },
     });
   } catch (error) {

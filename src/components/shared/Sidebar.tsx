@@ -24,31 +24,58 @@ import {
   Sparkles,
   ArrowDownUp,
   DollarSign,
+  Layers,
+  ClipboardCheck,
+  UserCheck,
+  ScanSearch,
+  FileSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
-const navItems = [
-  { href: "/", label: "Command Centre", icon: Zap },
-  { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard },
-  { href: "/comms", label: "Communications", icon: MessageSquare },
-  { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
-  { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
-  { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
-  { href: "/activity", label: "Activity Tracker", icon: Activity },
-  { href: "/clients", label: "Client Issues", icon: Users },
-  { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
-  { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign },
-  { href: "/incidents", label: "Incidents", icon: AlertTriangle },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/briefing", label: "AI Briefing", icon: Sparkles },
-  { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
-];
-
-const secondaryItems = [
-  { href: "/admin/alerts", label: "Alerts", icon: Bell },
-  { href: "/admin/audit", label: "Audit Log", icon: Shield, adminOnly: true },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+const navSections = [
+  {
+    label: "Core",
+    items: [
+      { href: "/", label: "Command Centre", icon: Zap },
+      { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard },
+      { href: "/comms", label: "Communications", icon: MessageSquare },
+      { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
+      { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
+      { href: "/activity", label: "Activity Tracker", icon: Activity },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/staking", label: "Staking Ops", icon: Layers },
+      { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
+      { href: "/approvals", label: "Approvals Queue", icon: UserCheck },
+      { href: "/screening", label: "Screening", icon: ScanSearch },
+      { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
+      { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
+      { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign },
+    ],
+  },
+  {
+    label: "Tracking",
+    items: [
+      { href: "/incidents", label: "Incidents", icon: AlertTriangle },
+      { href: "/rca", label: "RCA Tracker", icon: FileSearch },
+      { href: "/clients", label: "Client Issues", icon: Users },
+      { href: "/projects", label: "Projects", icon: FolderKanban },
+      { href: "/briefing", label: "AI Briefing", icon: Sparkles },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
+      { href: "/admin/alerts", label: "Alerts", icon: Bell },
+      { href: "/admin/audit", label: "Audit Log", icon: Shield, adminOnly: true },
+      { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -117,61 +144,38 @@ export function Sidebar({ user }: SidebarProps) {
           </div>
         </div>
 
-        {/* Primary Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Main
-          </p>
-          {navItems
-            .filter((item) => !item.adminOnly || isAdmin)
-            .map((item) => {
-              const Icon = item.icon;
-              const isActive = item.href === "/"
-                ? pathname === "/"
-                : pathname?.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <Icon size={18} />
-                  {item.label}
-                </Link>
-              );
-            })}
-
-          <div className="pt-6">
-            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Operations
-            </p>
-            {secondaryItems
-              .filter((item) => !item.adminOnly || isAdmin)
-              .map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname?.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    )}
-                  >
-                    <Icon size={18} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-          </div>
+        {/* Nav Sections */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {navSections.map((section, sIdx) => (
+            <div key={section.label} className={sIdx > 0 ? "pt-4" : ""}>
+              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                {section.label}
+              </p>
+              {section.items
+                .filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin)
+                .map((item) => {
+                  const Icon = item.icon;
+                  const isActive = item.href === "/"
+                    ? pathname === "/"
+                    : pathname?.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <Icon size={18} />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+            </div>
+          ))}
         </nav>
 
         {/* User / Footer */}

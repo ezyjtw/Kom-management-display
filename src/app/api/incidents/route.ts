@@ -163,7 +163,8 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, status, severity, impact, update, updateType, linkedThreadIds, linkedTransactionIds, linkAlertIds } = body;
+    const { id, status, severity, impact, update, updateType, linkedThreadIds, linkedTransactionIds, linkAlertIds,
+      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline, rcaReceivedAt, rcaFollowUpItems, rcaRaisedAt } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -181,6 +182,15 @@ export async function PATCH(request: NextRequest) {
     if (impact !== undefined) updateData.impact = impact;
     if (linkedThreadIds) updateData.linkedThreadIds = JSON.stringify(linkedThreadIds);
     if (linkedTransactionIds) updateData.linkedTransactionIds = JSON.stringify(linkedTransactionIds);
+
+    // RCA tracker fields
+    if (rcaStatus !== undefined) updateData.rcaStatus = rcaStatus;
+    if (rcaDocumentRef !== undefined) updateData.rcaDocumentRef = rcaDocumentRef;
+    if (rcaResponsibleId !== undefined) updateData.rcaResponsibleId = rcaResponsibleId || null;
+    if (rcaSlaDeadline !== undefined) updateData.rcaSlaDeadline = rcaSlaDeadline ? new Date(rcaSlaDeadline) : null;
+    if (rcaReceivedAt !== undefined) updateData.rcaReceivedAt = rcaReceivedAt ? new Date(rcaReceivedAt) : null;
+    if (rcaFollowUpItems !== undefined) updateData.rcaFollowUpItems = JSON.stringify(rcaFollowUpItems);
+    if (rcaRaisedAt !== undefined) updateData.rcaRaisedAt = rcaRaisedAt ? new Date(rcaRaisedAt) : null;
 
     // Auto-set resolvedAt and resolvedById when resolving
     if (status === "resolved") {

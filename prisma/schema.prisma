@@ -45,6 +45,7 @@ model Employee {
   activityStatuses     ActivityStatus[]
   reportedIncidents    Incident[]      @relation("IncidentReporter")
   resolvedIncidents    Incident[]      @relation("IncidentResolver")
+  rcaResponsibleIncidents Incident[]   @relation("RcaResponsible")
 }
 
 // ─── User / Auth ───
@@ -461,15 +462,25 @@ model Incident {
   resolvedById String?
   linkedThreadIds    String @default("[]") // JSON array of commsThread IDs
   linkedTransactionIds String @default("[]") // JSON array of transaction IDs (Komainu)
+  // ─── RCA Tracker Fields ───
+  rcaStatus         String   @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
+  rcaDocumentRef    String   @default("") // link to RCA document
+  rcaResponsibleId  String?  // person responsible for chasing RCA
+  rcaSlaDeadline    DateTime? // SLA for receiving RCA
+  rcaReceivedAt     DateTime?
+  rcaFollowUpItems  String   @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaRaisedAt       DateTime? // when RCA was formally raised
   updates      IncidentUpdate[]
   alerts       Alert[]
   reportedBy   Employee  @relation("IncidentReporter", fields: [reportedById], references: [id])
   resolvedBy   Employee? @relation("IncidentResolver", fields: [resolvedById], references: [id])
+  rcaResponsible Employee? @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@index([status])
   @@index([provider])
+  @@index([rcaStatus])
 }
 
 model IncidentUpdate {
@@ -487,56 +498,102 @@ model IncidentUpdate {
 
 model OesSettlement {
   id                String   @id @default(cuid())
-  settlementRef     String   @unique // Komainu settlement reference
+  settlementRef     String   @unique // settlement reference / cycle ID
+  venue             String   @default("okx") // okx, fireblocks
   clientName        String
   clientAccount     String   @default("")
-  asset             String   // BTC, ETH, USDC, etc.
+  asset             String   // BTC, ETH, USDC, SOL, etc.
   amount            Float
-  direction         String   // IN, OUT
-  counterparty      String   @default("") // OES venue or counterparty name
-  expectedSettleAt  DateTime // when settlement was expected
-  actualSettleAt    DateTime? // when it actually settled (null = pending)
-  mappingStatus     String   @default("pending") // pending, mapped, mismatch, failed
-  mappingNote       String   @default("") // reason for mismatch or manual note
-  komainuTxId       String   @default("") // Komainu transaction ID if mapped
-  oesTradeId        String   @default("") // OES trade reference
-  status            String   @default("pending") // pending, completed, failed, cancelled
-  reviewedById      String?  // employee who reviewed/confirmed
-  reviewedAt        DateTime?
+  direction         String   // custody_to_exchange, exchange_to_custody
+  settlementCycle   String   @default("") // e.g. "2026-03-07T09:00Z"
+  // Matching: exchange instruction ↔ on-chain tx
+  exchangeInstructionId String @default("") // exchange-side settlement instruction ID
+  onChainTxHash     String   @default("") // confirmed on-chain transaction hash
+  collateralWallet  String   @default("") // source/dest collateral wallet
+  custodyWallet     String   @default("") // source/dest custody wallet
+  matchStatus       String   @default("pending") // pending, matched, mismatch, missing_tx, flagged
+  matchNote         String   @default("") // mismatch reason or exchange escalation note
+  // Delegation (OKX specific)
+  delegationStatus  String   @default("n/a") // n/a, delegated, undelegated, pending_delegation
+  delegatedAmount   Float    @default(0)
+  // Maker/Checker
+  status            String   @default("pending") // pending, confirmed, escalated, failed, completed
+  makerById         String?  // maker who checked
+  makerAt           DateTime?
+  checkerById       String?  // checker who approved
+  checkerAt         DateTime?
+  escalationNote    String   @default("") // if flagged to exchange
+  // Fireblocks OES specific
+  fireblockssTxId   String   @default("") // Fireblocks transaction ID
+  oesSignerGroup    String   @default("") // approver group used
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([status])
-  @@index([mappingStatus])
+  @@index([matchStatus])
   @@index([clientName])
+  @@index([venue])
+  @@index([settlementCycle])
 }
 
 // ─── USDC On/Off Ramp Requests ───
 
 model UsdcRampRequest {
-  id              String   @id @default(cuid())
-  clientName      String
-  clientAccount   String   @default("")
-  direction       String   // onramp (fiat→USDC), offramp (USDC→fiat)
-  amount          Float    // amount in USDC
-  fiatCurrency    String   @default("USD") // USD, EUR, GBP, etc.
-  fiatAmount      Float?   // equivalent fiat amount
-  bankReference   String   @default("") // bank wire reference
-  walletAddress   String   @default("") // destination USDC wallet
-  status          String   @default("pending") // pending, awaiting_funds, processing, completed, rejected, cancelled
-  priority        String   @default("normal") // low, normal, high, urgent
-  requestedAt     DateTime @default(now())
-  completedAt     DateTime?
-  assignedToId    String?  // ops team member handling
-  notes           String   @default("")
-  rejectionReason String   @default("")
-  txHash          String   @default("") // on-chain tx hash once minted/redeemed
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  ticketRef           String   @unique @default(cuid()) // ops ticket reference
+  clientName          String
+  clientAccount       String   @default("")
+  direction           String   // onramp (USD→USDC), offramp (USDC→USD)
+  amount              Float    // USDC amount
+  fiatCurrency        String   @default("USD")
+  fiatAmount          Float?   // fiat equivalent
+  // Workflow status — tracks the full ops pipeline
+  status              String   @default("instruction_received")
+  // Onramp: instruction_received → usd_received → usd_receipt_confirmed → usd_sent_to_issuer → usdc_minted → usdc_delivered → completed
+  // Offramp: instruction_received → instruction_accepted → usdc_received → usd_conversion_pending → usd_sent → completed
+  // Bank & wire
+  bankReference       String   @default("") // SWIFT/payment reference
+  instructionRef      String   @default("") // client instruction reference
+  ssiVerified         Boolean  @default(false) // bank SSI matches file
+  ssiDetails          String   @default("") // SSI summary/bank details
+  // Wallets
+  custodyWalletId     String   @default("") // client's segregated USDC wallet
+  holdingWalletId     String   @default("") // internal issuer-linked holding wallet
+  // On-chain
+  onChainTxHash       String   @default("") // USDC transfer tx hash
+  gasWalletOk         Boolean  @default(true) // ETH gas wallet has sufficient balance
+  // Issuer
+  issuerConfirmation  String   @default("") // issuer receipt/mint confirmation ref
+  expressEnabled      Boolean  @default(true) // issuer express conversion enabled
+  // Fee buffer
+  feesFromBuffer      Boolean  @default(true) // fees covered from proprietary buffer
+  feeBufferLow        Boolean  @default(false) // buffer running low — needs top-up
+  // Maker / Checker
+  makerById           String?
+  makerAt             DateTime?
+  makerNote           String   @default("")
+  checkerById         String?
+  checkerAt           DateTime?
+  checkerNote         String   @default("")
+  // Checks completed
+  kycAmlOk            Boolean  @default(false)
+  walletWhitelisted   Boolean  @default(false)
+  // Evidence & notes
+  evidence            String   @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
+  notes               String   @default("")
+  rejectionReason     String   @default("")
+  // Dates
+  requestedAt         DateTime @default(now())
+  completedAt         DateTime?
+  clientNotifiedAt    DateTime?
+  priority            String   @default("normal") // low, normal, high, urgent
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([status])
   @@index([clientName])
   @@index([direction])
+  @@index([ticketRef])
 }
 
 // ─── Audit ───
@@ -551,4 +608,113 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   user Employee @relation(fields: [userId], references: [id])
+}
+
+// ─── Staking Operations ───
+
+model StakingWallet {
+  id              String   @id @default(cuid())
+  walletAddress   String   @unique
+  asset           String   // BTC, ETH, SOL, DOT, etc.
+  validator       String   @default("")
+  stakedAmount    Float    @default(0)
+  rewardModel     String   // auto, daily, weekly, monthly, manual_claim, rebate
+  clientName      String   @default("")
+  isColdStaking   Boolean  @default(false)
+  isTestWallet    Boolean  @default(false)
+  stakeDate       DateTime?
+  expectedFirstRewardDate DateTime?
+  actualFirstRewardDate   DateTime?
+  lastRewardAt    DateTime?
+  expectedNextRewardAt    DateTime?
+  onChainBalance  Float?   // for reconciliation
+  platformBalance Float?   // internal representation
+  varianceThreshold Float  @default(0.01) // flag if variance > this
+  tags            String   @default("[]") // JSON: test wallet, known deviations, minimum threshold
+  notes           String   @default("")
+  status          String   @default("active") // active, unstaking, inactive
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([asset])
+  @@index([rewardModel])
+  @@index([status])
+}
+
+// ─── Daily Ops Checks ───
+
+model DailyCheckRun {
+  id          String   @id @default(cuid())
+  date        DateTime @unique // one run per day
+  operatorId  String   // employee running the checks
+  completedAt DateTime?
+  jiraSummary String   @default("") // generated summary text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       DailyCheckItem[]
+
+  @@index([date])
+}
+
+model DailyCheckItem {
+  id          String   @id @default(cuid())
+  runId       String
+  name        String   // e.g. "Stuck Transactions"
+  category    String   // stuck_tx, balance_variance, staking_rewards, screening, travel_rule, pending_approvals, scam_dust, validator_health, external_provider
+  status      String   @default("pending") // pending, pass, issues_found, skipped
+  autoCheckKey String  @default("") // key for auto-pass logic
+  autoResult  String   @default("") // JSON result from auto-check
+  notes       String   @default("")
+  operatorId  String?  // who completed this item
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  run         DailyCheckRun @relation(fields: [runId], references: [id])
+
+  @@index([runId])
+  @@index([category])
+}
+
+// ─── Screening & Scam/Dust ───
+
+model ScreeningEntry {
+  id                String   @id @default(cuid())
+  transactionId     String   @unique // Komainu transaction ID
+  txHash            String   @default("")
+  asset             String
+  amount            Float    @default(0)
+  direction         String   @default("IN") // IN, OUT
+  screeningStatus   String   @default("not_submitted") // submitted, processing, completed, not_submitted, exception
+  classification    String   @default("unclassified") // unclassified, legitimate, dust, scam
+  isKnownException  Boolean  @default(false)
+  exceptionReason   String   @default("")
+  analyticsAlertId  String   @default("") // chain analytics alert ref
+  analyticsStatus   String   @default("none") // none, open, under_review, resolved
+  complianceReviewStatus String @default("none") // none, pending, approved, rejected
+  reclassifiedAt    DateTime?
+  reclassifiedById  String?
+  notes             String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([screeningStatus])
+  @@index([classification])
+  @@index([asset])
+}
+
+// ─── Approval Audit Trail ───
+
+model ApprovalAuditEntry {
+  id            String   @id @default(cuid())
+  requestId     String   // Komainu request ID
+  action        String   // approved, escalated, flagged_stuck
+  performedById String
+  riskLevel     String   @default("medium") // low, medium, high
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([requestId])
+  @@index([performedById])
 }
