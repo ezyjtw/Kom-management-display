@@ -470,8 +470,16 @@ model Incident {
   rcaReceivedAt     DateTime?
   rcaFollowUpItems  String   @default("[]") // JSON array: [{title, status, assigneeId}]
   rcaRaisedAt       DateTime? // when RCA was formally raised
+  // ─── External Provider Ticket Tracking ───
+  externalTicketRef   String   @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
+  externalTicketUrl   String   @default("") // full URL to provider ticket
+  externalTicketStatus String  @default("") // last known status from Jira sync
+  externalTicketLastSyncAt DateTime? // when we last polled the ticket
+  externalTicketDisputed Boolean @default(false) // true if provider closed prematurely and we dispute
+  externalTicketDisputeReason String @default("") // why we disagree with closure
   updates      IncidentUpdate[]
   alerts       Alert[]
+  ticketEvents ExternalTicketEvent[]
   reportedBy   Employee  @relation("IncidentReporter", fields: [reportedById], references: [id])
   resolvedBy   Employee? @relation("IncidentResolver", fields: [resolvedById], references: [id])
   rcaResponsible Employee? @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
@@ -481,6 +489,7 @@ model Incident {
   @@index([status])
   @@index([provider])
   @@index([rcaStatus])
+  @@index([externalTicketRef])
 }
 
 model IncidentUpdate {
@@ -492,6 +501,26 @@ model IncidentUpdate {
   createdAt  DateTime @default(now())
 
   incident Incident @relation(fields: [incidentId], references: [id])
+}
+
+// ─── External Ticket Event Log ───
+// Tracks lifecycle events for provider tickets linked to incidents.
+// Captures status changes, premature closures, disputes, and reopens.
+
+model ExternalTicketEvent {
+  id          String   @id @default(cuid())
+  incidentId  String
+  event       String   // status_changed, provider_closed, disputed, reopen_requested, reopen_confirmed, comment_added
+  fromStatus  String   @default("") // previous ticket status
+  toStatus    String   @default("") // new ticket status
+  performedBy String   @default("") // "jira_sync" for auto-detected, or employee ID for manual actions
+  reason      String   @default("") // dispute reason or comment
+  jiraComment String   @default("") // comment posted to Jira (if any)
+  createdAt   DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+
+  @@index([incidentId])
 }
 
 // ─── OES Settlements ───

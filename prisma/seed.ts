@@ -864,6 +864,7 @@ async function main() {
     // ─── RCA tracking across all 3 provider incidents ───
 
     // Fireblocks: active incident, awaiting RCA from provider — SLA set to 48h
+    // Linked to their Jira board ticket; ticket still open on their side
     await prisma.incident.update({
       where: { id: fireblocksIncident.id },
       data: {
@@ -871,10 +872,36 @@ async function main() {
         rcaRaisedAt: new Date(incNow.getTime() - 1 * 60 * 60000),
         rcaResponsibleId: emp["carol@ops.com"].id,
         rcaSlaDeadline: new Date(incNow.getTime() + 48 * 60 * 60000), // 48h from now
+        externalTicketRef: "FB-4521",
+        externalTicketUrl: "https://fireblocks.atlassian.net/browse/FB-4521",
+        externalTicketStatus: "In Progress",
       },
+    });
+    // Ticket event: linked, then Fireblocks changed status
+    await prisma.externalTicketEvent.createMany({
+      data: [
+        {
+          incidentId: fireblocksIncident.id,
+          event: "status_changed",
+          toStatus: "linked",
+          performedBy: emp["carol@ops.com"].id,
+          reason: "Linked external ticket FB-4521",
+          createdAt: new Date(incNow.getTime() - 55 * 60000),
+        },
+        {
+          incidentId: fireblocksIncident.id,
+          event: "status_changed",
+          fromStatus: "Open",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 30 * 60000),
+        },
+      ],
     });
 
     // Ledger: resolved incident, RCA received with follow-up remediation items
+    // Provider tried to close their ticket prematurely — we disputed and they reopened,
+    // then closed again — we disputed again. Classic provider behaviour.
     await prisma.incident.update({
       where: { id: ledgerIncident.id },
       data: {
@@ -889,10 +916,94 @@ async function main() {
           { title: "Update runbook with HSM reconnection recovery steps", status: "pending" },
           { title: "Add HSM health check to daily ops checklist", status: "pending" },
         ]),
+        externalTicketRef: "LEDGER-2891",
+        externalTicketUrl: "https://ledger-enterprise.atlassian.net/browse/LEDGER-2891",
+        externalTicketStatus: "Closed",
+        externalTicketDisputed: true,
+        externalTicketDisputeReason: "2 follow-up remediation items still outstanding — runbook update and daily check integration not complete",
       },
+    });
+    // Full dispute lifecycle: linked → provider closed → we disputed → they reopened → they closed AGAIN
+    await prisma.externalTicketEvent.createMany({
+      data: [
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          toStatus: "linked",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Linked external ticket LEDGER-2891",
+          createdAt: new Date(incNow.getTime() - 23 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          fromStatus: "Open",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 20 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "provider_closed",
+          fromStatus: "In Progress",
+          toStatus: "Resolved",
+          performedBy: "jira_sync",
+          reason: "Provider closed ticket while RCA status is \"awaiting_rca\"",
+          createdAt: new Date(incNow.getTime() - 18 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "disputed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "RCA not yet received — incident resolved but root cause analysis outstanding",
+          jiraComment: "Hi Ledger team, we cannot accept closure on this ticket. We are still awaiting the formal RCA document for the HSM reconnection issue. Please reopen.",
+          createdAt: new Date(incNow.getTime() - 17 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "reopen_requested",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Requested Ledger to reopen — RCA not received",
+          jiraComment: "Reopening as per our internal SLA requirements. We need the full RCA before we can close this from our side.",
+          createdAt: new Date(incNow.getTime() - 17 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "reopen_confirmed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "Ledger reopened ticket and provided RCA",
+          createdAt: new Date(incNow.getTime() - 14 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "status_changed",
+          fromStatus: "Resolved",
+          toStatus: "In Progress",
+          performedBy: "jira_sync",
+          createdAt: new Date(incNow.getTime() - 14 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "provider_closed",
+          fromStatus: "In Progress",
+          toStatus: "Closed",
+          performedBy: "jira_sync",
+          reason: "Provider closed ticket while RCA status is \"follow_up_pending\"",
+          createdAt: new Date(incNow.getTime() - 3 * 60 * 60000),
+        },
+        {
+          incidentId: ledgerIncident.id,
+          event: "disputed",
+          performedBy: emp["grace@ops.com"].id,
+          reason: "2 follow-up remediation items still outstanding — runbook update and daily check integration not complete",
+          jiraComment: "Please do not close this ticket. We have 2 outstanding remediation items that require your input: (1) runbook update for HSM recovery steps, (2) integration of HSM health check into our daily monitoring. We need these completed before closure.",
+          createdAt: new Date(incNow.getTime() - 2 * 60 * 60000),
+        },
+      ],
     });
 
     // GX: low-severity monitoring incident, RCA just raised — early lifecycle stage
+    // Ticket linked but no drama yet
     await prisma.incident.update({
       where: { id: gxIncident.id },
       data: {
@@ -900,6 +1011,19 @@ async function main() {
         rcaRaisedAt: new Date(incNow.getTime() - 2 * 60 * 60000),
         rcaResponsibleId: emp["alice@ops.com"].id,
         rcaSlaDeadline: new Date(incNow.getTime() + 5 * 24 * 60 * 60000), // 5 days for low severity
+        externalTicketRef: "GX-1103",
+        externalTicketUrl: "https://gx-support.atlassian.net/browse/GX-1103",
+        externalTicketStatus: "Open",
+      },
+    });
+    await prisma.externalTicketEvent.create({
+      data: {
+        incidentId: gxIncident.id,
+        event: "status_changed",
+        toStatus: "linked",
+        performedBy: emp["alice@ops.com"].id,
+        reason: "Linked external ticket GX-1103",
+        createdAt: new Date(incNow.getTime() - 1.5 * 60 * 60000),
       },
     });
 
