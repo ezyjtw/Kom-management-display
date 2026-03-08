@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rawIndexToScore, computeOverallScore, getActiveScoringConfig, getDefaultScoringConfig } from "@/lib/scoring";
 import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { createScoreSchema, validateBody } from "@/lib/validation";
 import type { Category } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -15,8 +16,22 @@ export async function GET(request: NextRequest) {
     const periodType = searchParams.get("periodType") || "month";
 
     const where: Record<string, unknown> = {};
-    if (employeeId) where.employeeId = employeeId;
+    if (employeeId) {
+      // Employees can only view their own scores
+      if (auth.role === "employee" && auth.employeeId && employeeId !== auth.employeeId) {
+        return NextResponse.json({ success: false, error: "Insufficient permissions" }, { status: 403 });
+      }
+      where.employeeId = employeeId;
+    }
     if (periodId) where.periodId = periodId;
+
+    // Team-based scoping: leads see their team, employees see their own
+    if (auth.role === "employee" && auth.employeeId) {
+      where.employeeId = auth.employeeId;
+    } else if (auth.role === "lead" && auth.team) {
+      where.employee = { team: auth.team };
+    }
+    // Admin: unrestricted
 
     const scores = await prisma.categoryScore.findMany({
       where,
@@ -167,14 +182,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { employeeId, periodId, category, rawIndex, evidence, metadata } = body;
-
-    if (!employeeId || !periodId || !category || rawIndex === undefined) {
+    const validated = validateBody(createScoreSchema, body);
+    if (!validated.success) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields" },
+        { success: false, error: validated.error },
         { status: 400 }
       );
     }
+    const { employeeId, periodId, category, rawIndex, evidence, metadata } = validated.data;
 
     const config = await getActiveScoringConfig();
     const score = rawIndexToScore(rawIndex);
