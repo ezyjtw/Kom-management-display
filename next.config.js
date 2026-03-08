@@ -34,8 +34,8 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              // Next.js requires unsafe-inline for script hydration in production builds.
-              // unsafe-eval is NOT allowed. When Next.js nonce support matures, replace unsafe-inline with nonces.
+              // Next.js requires 'unsafe-inline' for script hydration in production builds.
+              // eval() is strictly prohibited. When Next.js nonce support matures, replace inline with nonces.
               "script-src 'self' 'unsafe-inline'",
               // Tailwind/Radix use runtime style injection. This is the minimum viable CSP for the stack.
               "style-src 'self' 'unsafe-inline'",
