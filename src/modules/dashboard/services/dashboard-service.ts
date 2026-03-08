@@ -95,35 +95,37 @@ async function loadEmployeeScores(
     );
   }
 
-  const [periodScores, previousPeriod] = await Promise.all([
+  const [employees, periodScores, previousPeriod, config] = await Promise.all([
+    prisma.employee.findMany({ where: employeeWhere }),
     prisma.categoryScore.findMany({
       where: { periodId: latestPeriod.id, employee: employeeWhere },
-      include: { employee: true },
     }),
     prisma.timePeriod.findFirst({
       where: { type: periodType as never, startDate: { lt: latestPeriod.startDate } },
       orderBy: { startDate: "desc" },
     }),
+    getActiveScoringConfig(),
   ]);
 
   const prevScores = previousPeriod
     ? await prisma.categoryScore.findMany({ where: { periodId: previousPeriod.id } })
     : [];
 
-  const config = await getActiveScoringConfig();
-
-  // Group scores by employee
+  // Group scores by employee, starting from all active employees
   const employeeMap = new Map<string, {
-    employee: typeof periodScores[0]["employee"];
+    employee: { id: string; name: string; role: string; team: string; region: string };
     current: Record<string, number>;
     previous: Record<string, number>;
   }>();
 
+  for (const emp of employees) {
+    employeeMap.set(emp.id, { employee: emp, current: {}, previous: {} });
+  }
+
   for (const s of periodScores) {
-    if (!employeeMap.has(s.employeeId)) {
-      employeeMap.set(s.employeeId, { employee: s.employee, current: {}, previous: {} });
+    if (employeeMap.has(s.employeeId)) {
+      employeeMap.get(s.employeeId)!.current[s.category] = s.score;
     }
-    employeeMap.get(s.employeeId)!.current[s.category] = s.score;
   }
 
   for (const s of prevScores) {
