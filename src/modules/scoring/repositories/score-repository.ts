@@ -50,7 +50,7 @@ export interface ScoreRecord {
   metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
-  employee?: { id: string; name: string; role: string; team: string };
+  employee?: { id: string; name: string; role: string; team: string; region?: string };
   period?: { id: string; type: string; label: string; startDate: Date; endDate: Date };
 }
 
@@ -81,7 +81,7 @@ export const scoreRepository = {
       prisma.categoryScore.findMany({
         where,
         include: {
-          employee: { select: { id: true, name: true, role: true, team: true } },
+          employee: { select: { id: true, name: true, role: true, team: true, region: true } },
           period: true,
         },
         skip,
@@ -154,7 +154,7 @@ export const scoreRepository = {
         metadata: data.metadata ?? undefined,
       },
       include: {
-        employee: { select: { id: true, name: true, role: true, team: true } },
+        employee: { select: { id: true, name: true, role: true, team: true, region: true } },
         period: true,
       },
     });
@@ -230,7 +230,7 @@ export const scoreRepository = {
         },
       },
       include: {
-        employee: { select: { id: true, name: true, role: true, team: true } },
+        employee: { select: { id: true, name: true, role: true, team: true, region: true } },
         period: true,
       },
     });
@@ -251,7 +251,7 @@ export const scoreRepository = {
         periodId,
       },
       include: {
-        employee: { select: { id: true, name: true, role: true, team: true } },
+        employee: { select: { id: true, name: true, role: true, team: true, region: true } },
         period: true,
       },
       orderBy: [{ employeeId: "asc" }, { category: "asc" }],
