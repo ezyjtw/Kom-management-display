@@ -2,6 +2,8 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { checkLoginRateLimit, resetLoginRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 async function logLoginAudit(userId: string, email: string, success: boolean) {
   try {
@@ -36,31 +38,39 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.log("[AUTH] Missing email or password");
+          logger.warn("Login attempt with missing credentials");
           return null;
         }
 
-        console.log(`[AUTH] Login attempt for: ${credentials.email}`);
+        // Rate limiting: prevent brute-force attacks
+        const rateCheck = checkLoginRateLimit(credentials.email);
+        if (!rateCheck.allowed) {
+          logger.security("Login rate limited", {
+            email: credentials.email,
+            retryAfterMs: rateCheck.retryAfterMs,
+          });
+          throw new Error("Too many login attempts. Please try again later.");
+        }
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
 
         if (!user) {
-          console.log(`[AUTH] No user found with email: ${credentials.email}`);
+          logger.info("Login attempt for unknown email", { email: credentials.email });
           return null;
         }
 
-        console.log(`[AUTH] User found: ${user.email}, role: ${user.role}`);
-
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) {
-          console.log(`[AUTH] Invalid password for: ${credentials.email}`);
+          logger.security("Failed login attempt", { email: credentials.email, remainingAttempts: rateCheck.remainingAttempts });
           await logLoginAudit(user.id, credentials.email, false);
           return null;
         }
 
-        console.log(`[AUTH] Login successful for: ${credentials.email}`);
+        // Successful login — reset rate limit counter
+        resetLoginRateLimit(credentials.email);
+        logger.info("Login successful", { email: credentials.email, role: user.role });
         await logLoginAudit(user.id, credentials.email, true);
 
         // Look up employee team for role-based queue scoping
