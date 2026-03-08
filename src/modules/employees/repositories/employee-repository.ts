@@ -163,7 +163,7 @@ export const employeeRepository = {
         email: data.email,
         role: data.role as never,
         team: data.team as never,
-        region: data.region ?? "Global",
+        region: (data.region as never) ?? "Global",
       },
     });
 
