@@ -5,10 +5,11 @@ import type { EmployeeOverview } from "@/types";
 
 interface StatsCardsProps {
   employees: EmployeeOverview[];
+  teamSizeOverride?: number;
 }
 
-export function StatsCards({ employees }: StatsCardsProps) {
-  const totalEmployees = employees.length;
+export function StatsCards({ employees, teamSizeOverride }: StatsCardsProps) {
+  const totalEmployees = teamSizeOverride ?? employees.length;
   const avgScore =
     totalEmployees > 0
       ? employees.reduce((sum, e) => sum + e.overallScore, 0) / totalEmployees
