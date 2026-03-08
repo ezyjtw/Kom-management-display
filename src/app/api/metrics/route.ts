@@ -5,6 +5,8 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { metrics } from "@/lib/metrics";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/metrics
  *
