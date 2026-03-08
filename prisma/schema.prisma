@@ -1216,3 +1216,113 @@ model SessionMetadata {
   @@index([userId])
   @@index([expiresAt])
 }
+
+// ─── Transaction Confirmation Flow ───
+
+enum TransactionRiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum ConfirmationStatus {
+  pending
+  acknowledged
+  signed_off
+  escalated
+  expired
+}
+
+model TransactionConfirmation {
+  id                String             @id @default(cuid())
+  transactionId     String // Komainu transaction ID
+  requestId         String? // Komainu request ID (if applicable)
+  riskLevel         TransactionRiskLevel @default(medium)
+  asset             String
+  amount            Float
+  direction         String // IN, OUT
+  account           String             @default("")
+  workspace         String             @default("")
+  // Confirmation tracking
+  status            ConfirmationStatus @default(pending)
+  acknowledgedById  String?
+  acknowledgedAt    DateTime?
+  signedOffById     String?
+  signedOffAt       DateTime?
+  escalatedById     String?
+  escalatedAt       DateTime?
+  escalationReason  String             @default("")
+  // Notification tracking
+  slackNotifiedAt   DateTime?
+  slackChannel      String             @default("")
+  slackMessageTs    String             @default("") // Slack message timestamp for threading
+  emailNotifiedAt   DateTime?
+  emailSentTo       String             @default("") // comma-separated emails
+  // Metadata
+  expiresAt         DateTime? // auto-expire unacknowledged confirmations
+  notes             String             @default("")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([transactionId])
+  @@index([status])
+  @@index([riskLevel])
+  @@index([riskLevel, status])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+// ─── Feature Flags ───
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "background_jobs", "sse_notifications"
+  name        String // Human-readable name
+  description String   @default("")
+  enabled     Boolean  @default(false)
+  // Targeting
+  roles       String   @default("[]") // JSON array of roles that can see this feature
+  teams       String   @default("[]") // JSON array of teams
+  percentage  Int      @default(100) // rollout percentage 0-100
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([enabled])
+}
+
+// ─── Background Job Queue ───
+
+enum JobStatus {
+  pending
+  running
+  completed
+  failed
+  retrying
+}
+
+model BackgroundJob {
+  id          String    @id @default(cuid())
+  type        String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_komainu
+  status      JobStatus @default(pending)
+  payload     Json      @default("{}") // job-specific configuration
+  result      Json?     // job output
+  error       String    @default("")
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  nextRunAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  // Schedule
+  cronExpression String @default("") // e.g. "*/5 * * * *" for every 5 mins
+  isRecurring Boolean   @default(false)
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([type])
+  @@index([isRecurring, status])
+}
