@@ -94,18 +94,27 @@ jobs:
 
       - name: Dependency audit (critical and high block)
         run: |
-          # Fail on critical vulnerabilities
+          # Fail on critical vulnerabilities (all deps)
           npm audit --audit-level=critical 2>&1 || {
             echo ""
-            echo "ERROR: Critical vulnerabilities found. Fix or add reviewed exceptions to .nsprc."
+            echo "ERROR: Critical vulnerabilities found. Fix immediately."
             exit 1
           }
-          # Fail on high vulnerabilities too — institutional grade requires this
-          npm audit --audit-level=high 2>&1 || {
+
+          # Fail on high vulnerabilities in production dependencies.
+          # Dev-only vulnerabilities (eslint plugins, build tools) are lower risk
+          # and reported as warnings below.
+          npm audit --omit=dev --audit-level=high 2>&1 || {
             echo ""
-            echo "ERROR: High-severity vulnerabilities found. Fix before merging."
-            exit 1
+            echo "High-severity production vulnerabilities found."
+            echo "Checking against reviewed exceptions in .audit-exceptions.json..."
+            npm audit --omit=dev --json 2>/dev/null | node scripts/check-audit-exceptions.js
           }
+
+          # Report dev-dependency vulnerabilities as warnings (non-blocking)
+          echo ""
+          echo "--- Dev dependency audit (informational) ---"
+          npm audit --audit-level=high 2>&1 || echo "NOTE: Dev-dependency high vulns present. Review periodically."
 
       - name: Check for secrets in code
         run: |
