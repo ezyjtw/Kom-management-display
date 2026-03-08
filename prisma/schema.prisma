@@ -108,18 +108,47 @@ enum ScoringConfigStatus {
   archived
 }
 
+enum EmployeeRole {
+  Analyst
+  Senior
+  Lead
+  Manager
+}
+
+enum TeamName {
+  TransactionOperations
+  AdminOperations
+  DataOperations
+  StakingOps
+  Settlements
+}
+
+enum TimePeriodType {
+  week
+  month
+  quarter
+}
+
+enum ScoreCategory {
+  daily_tasks
+  projects
+  asset_actions
+  quality
+  knowledge
+}
+
 // ─── Core Employee & Org Models ───
 
 model Employee {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   name      String
-  email     String   @unique
-  role      String // Analyst, Senior, Lead
-  team      String // Ops, Settlements, Staking Ops, etc.
-  region    String   @default("Global")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  email     String       @unique
+  role      EmployeeRole // Analyst, Senior, Lead, Manager
+  team      TeamName // TransactionOperations, AdminOperations, DataOperations, StakingOps, Settlements
+  region    String       @default("Global")
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   // Relations
   scores                  CategoryScore[]
@@ -163,19 +192,22 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee       Employee?       @relation(fields: [employeeId], references: [id])
-  workflowEvents WorkflowEvent[] @relation("WorkflowPerformedBy")
+  employee               Employee?       @relation(fields: [employeeId], references: [id])
+  workflowEvents         WorkflowEvent[] @relation("WorkflowPerformedBy")
+  createdScoringConfigs  ScoringConfig[] @relation("ScoringConfigCreatedBy")
+  reviewedScoringConfigs ScoringConfig[] @relation("ScoringConfigReviewedBy")
+  approvedScoringConfigs ScoringConfig[] @relation("ScoringConfigApprovedBy")
 }
 
 // ─── Scoring System ───
 
 model TimePeriod {
-  id        String   @id @default(cuid())
-  type      String // week, month, quarter
+  id        String         @id @default(cuid())
+  type      TimePeriodType // week, month, quarter
   startDate DateTime
   endDate   DateTime
   label     String // e.g. "2026-W09", "2026-02"
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   scores          CategoryScore[]
   knowledgeScores KnowledgeScore[]
@@ -184,17 +216,17 @@ model TimePeriod {
 }
 
 model CategoryScore {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   employeeId    String
   periodId      String
-  category      String // daily_tasks, projects, asset_actions, quality, knowledge
+  category      ScoreCategory // daily_tasks, projects, asset_actions, quality, knowledge
   rawIndex      Float // 0-1 raw performance index
   score         Float // 3-8 clamped score
   configVersion String // scoring config version used
-  evidence      String   @default("[]") // JSON array of evidence links (kept for backward compat)
-  metadata      String   @default("{}") // JSON object with detailed metrics
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  evidence      Json          @default("[]") // JSON array of evidence links (kept for backward compat with ScoreEvidence)
+  metadata      Json          @default("{}") // JSON object with detailed metrics
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   employee      Employee        @relation(fields: [employeeId], references: [id])
   period        TimePeriod      @relation(fields: [periodId], references: [id])
@@ -224,20 +256,27 @@ model KnowledgeScore {
   @@unique([employeeId, periodId])
 }
 
+// NOTE: Only one ScoringConfig should be active at a time (active=true).
+// Prisma does not support partial unique indexes, so this constraint
+// must be enforced at the application level.
 model ScoringConfig {
-  id          String              @id @default(cuid())
-  version     String              @unique
-  config      String // JSON: weights, targets, clamp rules, definitions
-  active      Boolean             @default(false)
-  status      ScoringConfigStatus @default(draft)
-  createdBy   String
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  approvedBy  String?
-  approvedAt  DateTime?
-  activatedAt DateTime?
-  createdAt   DateTime            @default(now())
-  notes       String              @default("")
+  id           String              @id @default(cuid())
+  version      String              @unique
+  config       String // JSON: weights, targets, clamp rules, definitions
+  active       Boolean             @default(false)
+  status       ScoringConfigStatus @default(draft)
+  createdById  String
+  reviewedById String?
+  reviewedAt   DateTime?
+  approvedById String?
+  approvedAt   DateTime?
+  activatedAt  DateTime?
+  createdAt    DateTime            @default(now())
+  notes        String              @default("")
+
+  createdByUser  User  @relation("ScoringConfigCreatedBy", fields: [createdById], references: [id])
+  reviewedByUser User? @relation("ScoringConfigReviewedBy", fields: [reviewedById], references: [id])
+  approvedByUser User? @relation("ScoringConfigApprovedBy", fields: [approvedById], references: [id])
 }
 
 model EmployeeNote {
@@ -260,13 +299,13 @@ model CommsThread {
   id                 String         @id @default(cuid())
   source             CommsSource    @default(email)
   sourceThreadRef    String // gmail thread id / slack channel+ts / jira issue key
-  participants       String         @default("[]") // JSON array (kept for backward compat)
+  participants       Json           @default("[]") // JSON array (kept for backward compat with ThreadParticipant)
   clientOrPartnerTag String         @default("")
   subject            String
   priority           ThreadPriority @default(P2)
   status             ThreadStatus   @default(Unassigned) // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, PendingHandover, Done, Closed
   ownerUserId        String?
-  secondaryOwnerIds  String         @default("[]") // JSON array of employee IDs (watchers / collaborators)
+  secondaryOwnerIds  Json           @default("[]") // JSON array of employee IDs (watchers / collaborators)
   queue              String         @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
   createdAt          DateTime       @default(now())
   lastMessageAt      DateTime       @default(now())
@@ -274,7 +313,7 @@ model CommsThread {
   ttoDeadline        DateTime? // Time-to-Ownership deadline
   ttfaDeadline       DateTime? // Time-to-First-Action deadline
   tslaDeadline       DateTime? // Time-since-last-action deadline
-  linkedRecords      String         @default("[]") // JSON: Jira tickets, Confluence, transaction IDs (kept for backward compat)
+  linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs (kept for backward compat with ThreadLinkedRecord)
 
   owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
   messages            CommsMessage[]
@@ -292,6 +331,7 @@ model CommsThread {
   @@index([status, queue])
   @@index([ownerUserId, status])
   @@index([priority, ttoDeadline])
+  @@index([lastMessageAt])
 }
 
 model CommsMessage {
@@ -303,7 +343,7 @@ model CommsMessage {
   authorType  String // external, internal
   bodySnippet String
   bodyLink    String   @default("") // link to full content
-  attachments String   @default("[]") // JSON: [{name, size, type}] (kept for backward compat)
+  attachments Json     @default("[]") // JSON: [{name, size, type}] (kept for backward compat with MessageAttachment)
 
   thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   messageAttachments MessageAttachment[]
@@ -451,6 +491,7 @@ model TravelRuleCase {
   @@index([status])
   @@index([createdAt])
   @@index([status, ownerUserId])
+  @@index([slaDeadline])
 }
 
 model VaspContact {
@@ -586,7 +627,7 @@ model Project {
   targetDate  DateTime?
   completedAt DateTime?
   progress    Int           @default(0) // 0-100 percentage
-  tags        String        @default("[]") // JSON array of tags (kept for backward compat)
+  tags        Json          @default("[]") // JSON array of tags (kept for backward compat with ProjectTag)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -669,6 +710,7 @@ model Alert {
   @@index([status])
   @@index([type])
   @@index([type, status])
+  @@index([severity, status])
 }
 
 // ─── 3rd Party Incidents ───
@@ -685,15 +727,15 @@ model Incident {
   resolvedAt                  DateTime?
   reportedById                String // employee who raised it
   resolvedById                String?
-  linkedThreadIds             String                @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds        String                @default("[]") // JSON array of transaction IDs (Komainu)
+  linkedThreadIds             Json                  @default("[]") // JSON array of commsThread IDs
+  linkedTransactionIds        Json                  @default("[]") // JSON array of transaction IDs (Komainu)
   // ─── RCA Tracker Fields ───
   rcaStatus                   String                @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
   rcaDocumentRef              String                @default("") // link to RCA document
   rcaResponsibleId            String? // person responsible for chasing RCA
   rcaSlaDeadline              DateTime? // SLA for receiving RCA
   rcaReceivedAt               DateTime?
-  rcaFollowUpItems            String                @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaFollowUpItems            Json                  @default("[]") // JSON array: [{title, status, assigneeId}]
   rcaRaisedAt                 DateTime? // when RCA was formally raised
   // ─── External Provider Ticket Tracking ───
   externalTicketRef           String                @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
@@ -715,6 +757,7 @@ model Incident {
   @@index([provider])
   @@index([rcaStatus])
   @@index([externalTicketRef])
+  @@index([severity, status])
 }
 
 model IncidentUpdate {
@@ -835,7 +878,7 @@ model UsdcRampRequest {
   kycAmlOk           Boolean   @default(false)
   walletWhitelisted  Boolean   @default(false)
   // Evidence & notes
-  evidence           String    @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
+  evidence           Json      @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
   notes              String    @default("")
   rejectionReason    String    @default("")
   // Dates
@@ -865,18 +908,19 @@ model BrandingConfig {
 // ─── Audit ───
 
 model AuditLog {
-  id         String      @id @default(cuid())
+  id         String   @id @default(cuid())
   action     String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
   entityType String // scoring_config, employee, thread, knowledge_score
   entityId   String
   userId     String
-  details    String      @default("{}") // JSON
-  createdAt  DateTime    @default(now())
+  details    Json     @default("{}") // JSON
+  createdAt  DateTime @default(now())
 
   user Employee @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+  @@index([entityType, entityId])
 }
 
 // ─── Staking Operations ───
@@ -899,7 +943,7 @@ model StakingWallet {
   onChainBalance          Float? // for reconciliation
   platformBalance         Float? // internal representation
   varianceThreshold       Float     @default(0.01) // flag if variance > this
-  tags                    String    @default("[]") // JSON: test wallet, known deviations, minimum threshold (kept for backward compat)
+  tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold (kept for backward compat with WalletTag)
   notes                   String    @default("")
   status                  String    @default("active") // active, unstaking, inactive
   createdAt               DateTime  @default(now())
@@ -1078,4 +1122,55 @@ model WorkflowEvent {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+// ─── Data Retention ───
+
+model DataRetentionPolicy {
+  id             String   @id @default(cuid())
+  entityType     String   @unique // audit_log, thread_note, alert, export, incident, etc.
+  retentionDays  Int // how many days to retain
+  archiveEnabled Boolean  @default(false)
+  purgeEnabled   Boolean  @default(false)
+  description    String   @default("")
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}
+
+// ─── Webhook Events (replay safety / deduplication) ───
+
+model WebhookEvent {
+  id            String    @id @default(cuid())
+  source        String // slack, jira, fireblocks, etc.
+  eventId       String // source-system event ID for dedup
+  eventType     String // event type from source
+  payload       Json // raw webhook payload
+  signature     String    @default("") // webhook signature for verification
+  status        String    @default("received") // received, processing, processed, failed, rejected_duplicate
+  processedAt   DateTime?
+  failureReason String    @default("")
+  createdAt     DateTime  @default(now())
+
+  @@unique([source, eventId])
+  @@index([source, status])
+  @@index([createdAt])
+}
+
+// ─── Session Metadata (session hardening) ───
+
+model SessionMetadata {
+  id           String    @id @default(cuid())
+  userId       String
+  sessionToken String    @unique
+  ipAddress    String    @default("")
+  userAgent    String    @default("")
+  lastActiveAt DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokeReason String    @default("")
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

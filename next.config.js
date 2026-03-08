@@ -34,15 +34,21 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'", // TODO: replace with nonces once Next.js nonce support is configured
-              "style-src 'self' 'unsafe-inline'",  // Required by Tailwind/Radix runtime styles
-              "img-src 'self' data:",               // Tightened: removed https: wildcard
-              "font-src 'self' data:",
+              // Next.js requires unsafe-inline for script hydration in production builds.
+              // unsafe-eval is NOT allowed. When Next.js nonce support matures, replace unsafe-inline with nonces.
+              "script-src 'self' 'unsafe-inline'",
+              // Tailwind/Radix use runtime style injection. This is the minimum viable CSP for the stack.
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data:",
+              "font-src 'self'",
               "connect-src 'self'",
               "frame-ancestors 'none'",
+              "frame-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
               "object-src 'none'",
+              "worker-src 'self'",
+              "manifest-src 'self'",
               "upgrade-insecure-requests",
             ].join("; "),
           },

@@ -125,6 +125,74 @@ export const createSettlementSchema = z.object({
   custodyWallet: z.string().max(500).default(""),
 });
 
+// ─── Alert Schemas ───
+
+export const updateAlertSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["active", "acknowledged", "resolved"]).optional(),
+  destination: z.enum(["slack", "email", "in_app"]).optional(),
+});
+
+// ─── Scoring Config Schemas ───
+
+export const createScoringConfigSchema = z.object({
+  version: z.string().min(1).max(50),
+  config: z.record(z.string(), z.unknown()),
+  notes: z.string().max(2000).default(""),
+});
+
+export const transitionScoringConfigSchema = z.object({
+  id: z.string().min(1),
+  targetStatus: z.enum(["draft", "review", "approved", "active", "archived"]),
+  notes: z.string().max(2000).default(""),
+});
+
+// ─── USDC Ramp Schemas ───
+
+export const createUsdcRampSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  clientAccount: z.string().max(200).default(""),
+  direction: z.enum(["onramp", "offramp"]),
+  amount: z.number().min(0),
+  fiatCurrency: z.string().max(10).default("USD"),
+  fiatAmount: z.number().min(0).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
+});
+
+// ─── Project Schemas ───
+
+export const createProjectSchema = z.object({
+  name: z.string().min(1).max(300),
+  description: z.string().max(5000).default(""),
+  team: z.string().min(1).max(100),
+  leadId: z.string().min(1),
+  priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  startDate: z.string().datetime().optional(),
+  targetDate: z.string().datetime().optional(),
+});
+
+// ─── Daily Check Schemas ───
+
+export const updateDailyCheckItemSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["pending", "pass", "issues_found", "skipped"]),
+  notes: z.string().max(2000).default(""),
+});
+
+// ─── Query Parameter Schemas ───
+
+export const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().max(50).optional(),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export const dateRangeSchema = z.object({
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+});
+
 // ─── Helper ───
 
 /**
@@ -143,4 +211,18 @@ export function validateBody<T>(
     .map((i) => `${i.path.join(".")}: ${i.message}`)
     .join("; ");
   return { success: false, error: message, status: 400 };
+}
+
+/**
+ * Validate URL search params against a Zod schema.
+ */
+export function validateQuery<T>(
+  schema: z.ZodSchema<T>,
+  searchParams: URLSearchParams,
+): { success: true; data: T } | { success: false; error: string; status: 400 } {
+  const params: Record<string, string> = {};
+  searchParams.forEach((value, key) => {
+    params[key] = value;
+  });
+  return validateBody(schema, params);
 }
