@@ -36,8 +36,7 @@ export default function SchedulePage() {
 
   // ─── Data fetching ───
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fetchJson = useCallback(async (url: string, onSuccess: (data: any) => void, showLoading = true) => {
+  const fetchJson = useCallback(async (url: string, onSuccess: (data: any) => void, showLoading = true) => { // eslint-disable-line
     if (showLoading) setLoading(true);
     try { const json = await (await fetch(url)).json(); if (json.success) onSuccess(json.data); } catch { /* ignore */ }
     if (showLoading) setLoading(false);

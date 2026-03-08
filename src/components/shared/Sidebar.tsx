@@ -141,6 +141,7 @@ export function Sidebar({ user }: SidebarProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {branding.logoData ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={branding.logoData} alt={branding.appName} className="h-8 w-8 rounded-lg object-contain" />
               ) : (
                 <div className="p-1.5 bg-primary/10 rounded-lg">

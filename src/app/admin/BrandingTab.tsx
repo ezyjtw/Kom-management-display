@@ -103,6 +103,7 @@ export default function BrandingTab() {
             <div className="flex items-start gap-4">
               <div className="w-20 h-20 rounded-xl border border-border bg-muted/50 flex items-center justify-center overflow-hidden flex-shrink-0">
                 {brandingForm.logoData ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={brandingForm.logoData} alt="Logo preview" className="w-full h-full object-contain p-1" />
                 ) : (
                   <span className="text-xs text-muted-foreground">No logo</span>
@@ -144,6 +145,7 @@ export default function BrandingTab() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Preview</p>
           <div className="flex items-center gap-3 p-3 bg-card rounded-lg border border-border w-fit">
             {brandingForm.logoData ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={brandingForm.logoData} alt="Preview" className="h-8 w-8 rounded-lg object-contain" />
             ) : (
               <div className="p-1.5 bg-primary/10 rounded-lg">
