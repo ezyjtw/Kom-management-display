@@ -7,6 +7,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
+import { computeTravelRuleAging } from "@/lib/sla";
 import type { Category, CategoryWeight, EmployeeOverview } from "@/types";
 
 // ─── Types ───
@@ -211,22 +212,34 @@ function generateFlags(
 }
 
 async function loadOpsData(): Promise<OpsData | null> {
+  // Wraps each query so one failure doesn't break the whole dashboard
+  async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+    try { return await fn(); } catch { return fallback; }
+  }
+
   try {
     const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 86400000);
 
     const [
       activeThreadCount,
       breachedThreads,
       unassignedThreads,
-      openTravelRule,
+      openTravelRuleCases,
       activeAlerts,
       activeIncidents,
       criticalIncidents,
+      monitoringIncidents,
       totalEmployees,
       activeEmployees,
+      stakingWallets,
+      dailyCheckRun,
+      screeningData,
+      rcaData,
     ] = await Promise.all([
-      prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }),
-      prisma.commsThread.count({
+      safeQuery(() => prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }), 0),
+      safeQuery(() => prisma.commsThread.count({
         where: {
           status: { notIn: ["Done", "Closed"] },
           OR: [
@@ -235,24 +248,79 @@ async function loadOpsData(): Promise<OpsData | null> {
             { tslaDeadline: { lt: now } },
           ],
         },
-      }),
-      prisma.commsThread.count({ where: { status: "Unassigned" } }),
-      prisma.travelRuleCase.count({ where: { status: { notIn: ["Resolved"] } } }),
-      prisma.alert.count({ where: { status: "active" } }),
-      prisma.incident.count({ where: { status: "active" } }),
-      prisma.incident.count({ where: { status: "active", severity: "critical" } }),
-      prisma.employee.count(),
-      prisma.employee.count({ where: { active: true } }),
+      }), 0),
+      safeQuery(() => prisma.commsThread.count({ where: { status: "Unassigned" } }), 0),
+      safeQuery(() => prisma.travelRuleCase.findMany({
+        where: { status: { not: "Resolved" } },
+        select: { createdAt: true },
+      }), []),
+      safeQuery(() => prisma.alert.count({ where: { status: "active" } }), 0),
+      safeQuery(() => prisma.incident.count({ where: { status: "active" } }), 0),
+      safeQuery(() => prisma.incident.count({ where: { status: "active", severity: "critical" } }), 0),
+      safeQuery(() => prisma.incident.count({ where: { status: "monitoring" } }), 0),
+      safeQuery(() => prisma.employee.count(), 0),
+      safeQuery(() => prisma.employee.count({ where: { active: true } }), 0),
+      safeQuery(() => prisma.stakingWallet.findMany({
+        where: { status: "active" },
+        select: { expectedNextRewardAt: true },
+      }), []),
+      safeQuery(async () => {
+        const run = await prisma.dailyCheckRun.findFirst({
+          where: { date: { gte: todayStart, lt: todayEnd } },
+          include: { items: { select: { status: true } } },
+        });
+        if (!run) return { exists: false, total: 0, passed: 0, issues: 0, pending: 0 };
+        return {
+          exists: true,
+          total: run.items.length,
+          passed: run.items.filter(i => i.status === "pass").length,
+          issues: run.items.filter(i => i.status === "issues_found").length,
+          pending: run.items.filter(i => i.status === "pending").length,
+        };
+      }, { exists: false, total: 0, passed: 0, issues: 0, pending: 0 }),
+      safeQuery(async () => {
+        const [notSubmitted, openAlerts] = await Promise.all([
+          prisma.screeningEntry.count({ where: { screeningStatus: "not_submitted", isKnownException: false } }),
+          prisma.screeningEntry.count({ where: { analyticsStatus: { in: ["open", "under_review"] } } }),
+        ]);
+        return { notSubmitted, openAlerts };
+      }, { notSubmitted: 0, openAlerts: 0 }),
+      safeQuery(async () => {
+        const rcaIncidents = await prisma.incident.findMany({
+          where: { rcaStatus: { not: "none" } },
+          select: { rcaStatus: true, rcaSlaDeadline: true },
+        });
+        return {
+          awaiting: rcaIncidents.filter(i => i.rcaStatus === "awaiting_rca").length,
+          overdue: rcaIncidents.filter(i => i.rcaStatus === "awaiting_rca" && i.rcaSlaDeadline && i.rcaSlaDeadline < now).length,
+          followUp: rcaIncidents.filter(i => i.rcaStatus === "follow_up_pending").length,
+        };
+      }, { awaiting: 0, overdue: 0, followUp: 0 }),
     ]);
+
+    // Compute travel rule aging
+    const casesWithAging = openTravelRuleCases.map(c => computeTravelRuleAging(c.createdAt));
+    const redCount = casesWithAging.filter(c => c.agingStatus === "red").length;
+    const amberCount = casesWithAging.filter(c => c.agingStatus === "amber").length;
+
+    // Compute staking overdue/approaching
+    const stakingOverdue = stakingWallets.filter(w => w.expectedNextRewardAt && w.expectedNextRewardAt < now).length;
+    const stakingApproaching = stakingWallets.filter(w => {
+      if (!w.expectedNextRewardAt) return false;
+      const hoursUntil = (w.expectedNextRewardAt.getTime() - now.getTime()) / 3600000;
+      return hoursUntil > 0 && hoursUntil < 4;
+    }).length;
 
     return {
       comms: { totalActive: activeThreadCount, breachedCount: breachedThreads, unassignedCount: unassignedThreads },
-      travelRule: { openCount: openTravelRule, redCount: 0, amberCount: 0 },
+      travelRule: { openCount: openTravelRuleCases.length, redCount, amberCount },
       alerts: { activeCount: activeAlerts },
-      incidents: { activeCount: activeIncidents, criticalCount: criticalIncidents, monitoringCount: 0 },
-      dailyChecks: { exists: false, total: 0, passed: 0, issues: 0, pending: 0 },
-      staking: { overdue: 0, approaching: 0 },
+      incidents: { activeCount: activeIncidents, criticalCount: criticalIncidents, monitoringCount: monitoringIncidents },
+      dailyChecks: dailyCheckRun,
+      staking: { overdue: stakingOverdue, approaching: stakingApproaching },
       coverage: { total: totalEmployees, active: activeEmployees, onQueues: 0, onBreak: 0 },
+      rca: rcaData,
+      screening: screeningData,
     };
   } catch {
     return null;
