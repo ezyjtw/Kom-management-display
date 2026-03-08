@@ -22,6 +22,7 @@ export interface OpsData {
   coverage: { total: number; active: number; onQueues: number; onBreak: number };
   rca?: { awaiting: number; overdue: number; followUp: number };
   screening?: { notSubmitted: number; openAlerts: number };
+  _errors?: string[];
 }
 
 export interface DashboardData {
@@ -212,12 +213,36 @@ function generateFlags(
 }
 
 async function loadOpsData(): Promise<OpsData | null> {
+  const errors: string[] = [];
+
   // Wraps each query so one failure doesn't break the whole dashboard
-  async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-    try { return await fn(); } catch { return fallback; }
+  async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+    try { return await fn(); } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[ops] ${label} query failed:`, msg);
+      errors.push(label);
+      return fallback;
+    }
   }
 
   try {
+    // Quick DB connectivity check — if this fails, everything will be zeros
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (err) {
+      console.error("[ops] Database unreachable:", err instanceof Error ? err.message : err);
+      return {
+        comms: { totalActive: 0, breachedCount: 0, unassignedCount: 0 },
+        travelRule: { openCount: 0, redCount: 0, amberCount: 0 },
+        alerts: { activeCount: 0 },
+        incidents: { activeCount: 0, criticalCount: 0, monitoringCount: 0 },
+        dailyChecks: { exists: false, total: 0, passed: 0, issues: 0, pending: 0 },
+        staking: { overdue: 0, approaching: 0 },
+        coverage: { total: 0, active: 0, onQueues: 0, onBreak: 0 },
+        _errors: ["Database unreachable — all metrics may be stale or zero"],
+      };
+    }
+
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(todayStart.getTime() + 86400000);
@@ -238,8 +263,8 @@ async function loadOpsData(): Promise<OpsData | null> {
       screeningData,
       rcaData,
     ] = await Promise.all([
-      safeQuery(() => prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }), 0),
-      safeQuery(() => prisma.commsThread.count({
+      safeQuery("comms.active", () => prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }), 0),
+      safeQuery("comms.breached", () => prisma.commsThread.count({
         where: {
           status: { notIn: ["Done", "Closed"] },
           OR: [
@@ -249,22 +274,22 @@ async function loadOpsData(): Promise<OpsData | null> {
           ],
         },
       }), 0),
-      safeQuery(() => prisma.commsThread.count({ where: { status: "Unassigned" } }), 0),
-      safeQuery(() => prisma.travelRuleCase.findMany({
+      safeQuery("comms.unassigned", () => prisma.commsThread.count({ where: { status: "Unassigned" } }), 0),
+      safeQuery("travelRule", () => prisma.travelRuleCase.findMany({
         where: { status: { not: "Resolved" } },
         select: { createdAt: true },
       }), []),
-      safeQuery(() => prisma.alert.count({ where: { status: "active" } }), 0),
-      safeQuery(() => prisma.incident.count({ where: { status: "active" } }), 0),
-      safeQuery(() => prisma.incident.count({ where: { status: "active", severity: "critical" } }), 0),
-      safeQuery(() => prisma.incident.count({ where: { status: "monitoring" } }), 0),
-      safeQuery(() => prisma.employee.count(), 0),
-      safeQuery(() => prisma.employee.count({ where: { active: true } }), 0),
-      safeQuery(() => prisma.stakingWallet.findMany({
+      safeQuery("alerts", () => prisma.alert.count({ where: { status: "active" } }), 0),
+      safeQuery("incidents.active", () => prisma.incident.count({ where: { status: "active" } }), 0),
+      safeQuery("incidents.critical", () => prisma.incident.count({ where: { status: "active", severity: "critical" } }), 0),
+      safeQuery("incidents.monitoring", () => prisma.incident.count({ where: { status: "monitoring" } }), 0),
+      safeQuery("coverage.total", () => prisma.employee.count(), 0),
+      safeQuery("coverage.active", () => prisma.employee.count({ where: { active: true } }), 0),
+      safeQuery("staking", () => prisma.stakingWallet.findMany({
         where: { status: "active" },
         select: { expectedNextRewardAt: true },
       }), []),
-      safeQuery(async () => {
+      safeQuery("dailyChecks", async () => {
         const run = await prisma.dailyCheckRun.findFirst({
           where: { date: { gte: todayStart, lt: todayEnd } },
           include: { items: { select: { status: true } } },
@@ -278,14 +303,14 @@ async function loadOpsData(): Promise<OpsData | null> {
           pending: run.items.filter(i => i.status === "pending").length,
         };
       }, { exists: false, total: 0, passed: 0, issues: 0, pending: 0 }),
-      safeQuery(async () => {
+      safeQuery("screening", async () => {
         const [notSubmitted, openAlerts] = await Promise.all([
           prisma.screeningEntry.count({ where: { screeningStatus: "not_submitted", isKnownException: false } }),
           prisma.screeningEntry.count({ where: { analyticsStatus: { in: ["open", "under_review"] } } }),
         ]);
         return { notSubmitted, openAlerts };
       }, { notSubmitted: 0, openAlerts: 0 }),
-      safeQuery(async () => {
+      safeQuery("rca", async () => {
         const rcaIncidents = await prisma.incident.findMany({
           where: { rcaStatus: { not: "none" } },
           select: { rcaStatus: true, rcaSlaDeadline: true },
@@ -321,8 +346,10 @@ async function loadOpsData(): Promise<OpsData | null> {
       coverage: { total: totalEmployees, active: activeEmployees, onQueues: 0, onBreak: 0 },
       rca: rcaData,
       screening: screeningData,
+      _errors: errors.length > 0 ? errors : undefined,
     };
-  } catch {
+  } catch (err) {
+    console.error("[ops] loadOpsData failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }

@@ -18,6 +18,7 @@ interface OpsData {
   coverage: { total: number; active: number; onQueues: number; onBreak: number };
   rca?: { awaiting: number; overdue: number; followUp: number };
   screening?: { notSubmitted: number; openAlerts: number };
+  _errors?: string[];
 }
 
 interface DashboardClientProps {
@@ -215,6 +216,18 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
       </div>
 
       {error && <ErrorState message={error} onRetry={fetchData} />}
+
+      {opsData?._errors && opsData._errors.length > 0 && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-400">
+          <div className="flex items-center gap-2 font-medium mb-1">
+            <AlertTriangle size={14} />
+            Data may be incomplete
+          </div>
+          <p className="text-xs opacity-80">
+            Some queries failed: {opsData._errors.join(", ")}. Metrics showing 0 may not reflect actual counts.
+          </p>
+        </div>
+      )}
 
       {/* Action Queue */}
       {actionItems.length > 0 && (

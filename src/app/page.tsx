@@ -47,6 +47,7 @@ import {
 // ─── Types ───
 
 interface CommandCenterData {
+  _errors?: string[];
   travelRule: {
     openCount: number;
     redCount: number;
@@ -390,6 +391,19 @@ export default function CommandCenterPage() {
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
+
+      {/* ── DB Error Banner ── */}
+      {data._errors && data._errors.length > 0 && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-400">
+          <div className="flex items-center gap-2 font-semibold mb-0.5">
+            <AlertTriangle size={14} />
+            Data may be incomplete
+          </div>
+          <p className="text-[11px] opacity-80">
+            Some queries failed: {data._errors.join(", ")}. Metrics showing 0 may not reflect actual counts.
+          </p>
+        </div>
+      )}
 
       {/* ── Market Ticker ── */}
       {market && market.prices.length > 0 && (
