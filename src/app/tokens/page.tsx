@@ -24,6 +24,7 @@ export default function TokenReviewPage() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [showRegulatory, setShowRegulatory] = useState<string | null>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); checkAi(); }, []);
   useEffect(() => {
     if (!data) return;

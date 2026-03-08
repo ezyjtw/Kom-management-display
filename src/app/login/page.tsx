@@ -41,6 +41,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           {branding.logoData ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={branding.logoData} alt={branding.appName} className="h-16 w-16 rounded-xl mx-auto mb-4 object-contain" />
           ) : (
             <div className="inline-flex p-3 bg-primary/10 rounded-xl mb-4">

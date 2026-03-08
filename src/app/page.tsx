@@ -342,6 +342,7 @@ export default function CommandCenterPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {branding.logoData ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={branding.logoData} alt={branding.appName} className="h-6 w-6 rounded object-contain" />
           ) : (
             <Zap size={22} className="text-primary" />
