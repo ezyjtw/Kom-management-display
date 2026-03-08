@@ -66,11 +66,71 @@ export const logger = {
 
   /** Log an API request with standard fields */
   request: (method: string, path: string, userId?: string, context?: Record<string, unknown>) => {
-    log("info", `${method} ${path}`, { userId, ...context });
+    log("info", `${method} ${path}`, {
+      type: "api_request",
+      method,
+      route: path,
+      userId,
+      ...context,
+    });
+  },
+
+  /** Log an API response with latency */
+  response: (method: string, path: string, statusCode: number, durationMs: number, context?: Record<string, unknown>) => {
+    const level: LogLevel = statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : "info";
+    log(level, `${method} ${path} ${statusCode} ${durationMs}ms`, {
+      type: "api_response",
+      method,
+      route: path,
+      statusCode,
+      durationMs,
+      ...context,
+    });
   },
 
   /** Log a security-relevant event */
   security: (event: string, context?: Record<string, unknown>) => {
-    log("warn", `SECURITY: ${event}`, { securityEvent: true, ...context });
+    log("warn", `SECURITY: ${event}`, { type: "security", securityEvent: true, ...context });
+  },
+
+  /** Log a database query timing */
+  db: (operation: string, durationMs: number, context?: Record<string, unknown>) => {
+    const level: LogLevel = durationMs > 1000 ? "warn" : "debug";
+    log(level, `DB: ${operation} ${durationMs}ms`, {
+      type: "db_query",
+      operation,
+      durationMs,
+      ...context,
+    });
+  },
+
+  /** Log an integration/connector event */
+  integration: (source: string, event: string, context?: Record<string, unknown>) => {
+    log("info", `Integration[${source}]: ${event}`, {
+      type: "integration",
+      source,
+      ...context,
+    });
+  },
+
+  /** Log a job queue event */
+  job: (jobType: string, event: string, context?: Record<string, unknown>) => {
+    log("info", `Job[${jobType}]: ${event}`, {
+      type: "job",
+      jobType,
+      ...context,
+    });
+  },
+
+  /** Log an audit-relevant event */
+  audit: (action: string, entityType: string, entityId: string, userId: string, context?: Record<string, unknown>) => {
+    log("info", `Audit: ${action} ${entityType}/${entityId}`, {
+      type: "audit",
+      action,
+      entityType,
+      entityId,
+      userId,
+      ...context,
+    });
   },
 };

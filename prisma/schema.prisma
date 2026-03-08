@@ -8,133 +8,246 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ───
+
+enum ThreadStatus {
+  Unassigned
+  Assigned
+  InProgress
+  WaitingExternal
+  WaitingInternal
+  PendingHandover
+  Done
+  Closed
+}
+
+enum ThreadPriority {
+  P0
+  P1
+  P2
+  P3
+}
+
+enum AlertSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum AlertStatus {
+  active
+  acknowledged
+  resolved
+}
+
+enum TravelRuleCaseStatus {
+  Open
+  Investigating
+  PendingResponse
+  Resolved
+  Escalated
+}
+
+enum TravelRuleResolutionType {
+  info_obtained
+  email_sent
+  not_required
+  escalated
+}
+
+enum ProjectStatus {
+  planned
+  active
+  on_hold
+  completed
+  cancelled
+}
+
+enum DailyCheckStatus {
+  pending
+  pass
+  issues_found
+  skipped
+}
+
+// AuditAction uses plain String — actions are open-ended across modules
+
+enum IncidentSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum IncidentStatus {
+  active
+  monitoring
+  resolved
+}
+
+enum CommsSource {
+  email
+  slack
+  jira
+  manual
+}
+
+enum UserRole {
+  admin
+  lead
+  employee
+  auditor
+}
+
+enum ScoringConfigStatus {
+  draft
+  review
+  approved
+  active
+  archived
+}
+
 // ─── Core Employee & Org Models ───
 
 model Employee {
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
-  role      String   // Analyst, Senior, Lead
-  team      String   // Ops, Settlements, Staking Ops, etc.
+  role      String // Analyst, Senior, Lead
+  team      String // Ops, Settlements, Staking Ops, etc.
   region    String   @default("Global")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  scores            CategoryScore[]
-  knowledgeScores   KnowledgeScore[]
-  employeeNotes     EmployeeNote[]
-  ownedThreads      CommsThread[]       @relation("ThreadOwner")
-  ownershipChangesFrom OwnershipChange[] @relation("OldOwner")
-  ownershipChangesTo   OwnershipChange[] @relation("NewOwner")
-  ownershipChangesBy   OwnershipChange[] @relation("ChangedBy")
-  alerts               Alert[]
-  auditLogs            AuditLog[]
-  threadNotes          ThreadNote[]
-  caseNotes            CaseNote[]
-  onCallSchedules      OnCallSchedule[]
-  ptoRecords           PtoRecord[]
-  assignedTasks        DailyTask[]     @relation("TaskAssignee")
-  completedTasks       DailyTask[]     @relation("TaskCompleter")
-  createdTasks         DailyTask[]     @relation("TaskCreator")
-  ledProjects          Project[]       @relation("ProjectLead")
-  projectMemberships   ProjectMember[]
-  projectUpdates       ProjectUpdate[]
-  rotaAssignments      RotaAssignment[]
-  activityStatuses     ActivityStatus[]
-  reportedIncidents    Incident[]      @relation("IncidentReporter")
-  resolvedIncidents    Incident[]      @relation("IncidentResolver")
-  rcaResponsibleIncidents Incident[]   @relation("RcaResponsible")
+  scores                  CategoryScore[]
+  knowledgeScores         KnowledgeScore[]
+  employeeNotes           EmployeeNote[]
+  ownedThreads            CommsThread[]     @relation("ThreadOwner")
+  ownershipChangesFrom    OwnershipChange[] @relation("OldOwner")
+  ownershipChangesTo      OwnershipChange[] @relation("NewOwner")
+  ownershipChangesBy      OwnershipChange[] @relation("ChangedBy")
+  alerts                  Alert[]
+  auditLogs               AuditLog[]
+  threadNotes             ThreadNote[]
+  caseNotes               CaseNote[]
+  onCallSchedules         OnCallSchedule[]
+  ptoRecords              PtoRecord[]
+  assignedTasks           DailyTask[]       @relation("TaskAssignee")
+  completedTasks          DailyTask[]       @relation("TaskCompleter")
+  createdTasks            DailyTask[]       @relation("TaskCreator")
+  ledProjects             Project[]         @relation("ProjectLead")
+  projectMemberships      ProjectMember[]
+  projectUpdates          ProjectUpdate[]
+  rotaAssignments         RotaAssignment[]
+  activityStatuses        ActivityStatus[]
+  reportedIncidents       Incident[]        @relation("IncidentReporter")
+  resolvedIncidents       Incident[]        @relation("IncidentResolver")
+  rcaResponsibleIncidents Incident[]        @relation("RcaResponsible")
+  user                    User?
+
+  @@index([team, active])
 }
 
 // ─── User / Auth ───
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      String   // admin, lead, employee
-  password  String   // hashed
-  employeeId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       UserRole @default(employee)
+  password   String // hashed
+  employeeId String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee       Employee?       @relation(fields: [employeeId], references: [id])
+  workflowEvents WorkflowEvent[] @relation("WorkflowPerformedBy")
 }
 
 // ─── Scoring System ───
 
 model TimePeriod {
   id        String   @id @default(cuid())
-  type      String   // week, month, quarter
+  type      String // week, month, quarter
   startDate DateTime
   endDate   DateTime
-  label     String   // e.g. "2026-W09", "2026-02"
+  label     String // e.g. "2026-W09", "2026-02"
   createdAt DateTime @default(now())
 
-  scores         CategoryScore[]
+  scores          CategoryScore[]
   knowledgeScores KnowledgeScore[]
 
   @@unique([type, startDate])
 }
 
 model CategoryScore {
-  id           String   @id @default(cuid())
-  employeeId   String
-  periodId     String
-  category     String   // daily_tasks, projects, asset_actions, quality, knowledge
-  rawIndex     Float    // 0-1 raw performance index
-  score        Float    // 3-8 clamped score
-  configVersion String  // scoring config version used
-  evidence     String   @default("[]") // JSON array of evidence links
-  metadata     String   @default("{}") // JSON object with detailed metrics
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  employeeId    String
+  periodId      String
+  category      String // daily_tasks, projects, asset_actions, quality, knowledge
+  rawIndex      Float // 0-1 raw performance index
+  score         Float // 3-8 clamped score
+  configVersion String // scoring config version used
+  evidence      String   @default("[]") // JSON array of evidence links (kept for backward compat)
+  metadata      String   @default("{}") // JSON object with detailed metrics
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  employee   Employee   @relation(fields: [employeeId], references: [id])
-  period     TimePeriod @relation(fields: [periodId], references: [id])
+  employee      Employee        @relation(fields: [employeeId], references: [id])
+  period        TimePeriod      @relation(fields: [periodId], references: [id])
+  scoreEvidence ScoreEvidence[]
 
   @@unique([employeeId, periodId, category])
 }
 
 model KnowledgeScore {
-  id                    String   @id @default(cuid())
-  employeeId            String
-  periodId              String
-  operationalUnderstanding Float @default(0) // 1-10
-  assetKnowledge        Float    @default(0) // 1-10
-  complianceAwareness   Float    @default(0) // 1-10
-  incidentResponse      Float    @default(0) // 1-10
-  overallRaw            Float    @default(0) // 1-10 average
-  mappedScore           Float    @default(3) // 3-8 mapped
-  notes                 String   @default("")
-  scoredBy              String   // user who scored
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  employeeId               String
+  periodId                 String
+  operationalUnderstanding Float    @default(0) // 1-10
+  assetKnowledge           Float    @default(0) // 1-10
+  complianceAwareness      Float    @default(0) // 1-10
+  incidentResponse         Float    @default(0) // 1-10
+  overallRaw               Float    @default(0) // 1-10 average
+  mappedScore              Float    @default(3) // 3-8 mapped
+  notes                    String   @default("")
+  scoredBy                 String // user who scored
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  employee   Employee   @relation(fields: [employeeId], references: [id])
-  period     TimePeriod @relation(fields: [periodId], references: [id])
+  employee Employee   @relation(fields: [employeeId], references: [id])
+  period   TimePeriod @relation(fields: [periodId], references: [id])
 
   @@unique([employeeId, periodId])
 }
 
 model ScoringConfig {
-  id        String   @id @default(cuid())
-  version   String   @unique
-  config    String   // JSON: weights, targets, clamp rules, definitions
-  active    Boolean  @default(false)
-  createdBy String
-  createdAt DateTime @default(now())
-  notes     String   @default("")
+  id          String              @id @default(cuid())
+  version     String              @unique
+  config      String // JSON: weights, targets, clamp rules, definitions
+  active      Boolean             @default(false)
+  status      ScoringConfigStatus @default(draft)
+  createdBy   String
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  approvedBy  String?
+  approvedAt  DateTime?
+  activatedAt DateTime?
+  createdAt   DateTime            @default(now())
+  notes       String              @default("")
 }
 
 model EmployeeNote {
-  id         String   @id @default(cuid())
-  employeeId String
-  periodLabel String  // e.g. "2026-W09"
-  content    String
-  noteType   String   // manager, employee, context (PTO, on-call, incident)
-  authorId   String
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  employeeId  String
+  periodLabel String // e.g. "2026-W09"
+  content     String
+  noteType    String // manager, employee, context (PTO, on-call, incident)
+  authorId    String
+  createdAt   DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -144,36 +257,41 @@ model EmployeeNote {
 // ─── Comms & Ownership Module ───
 
 model CommsThread {
-  id                 String   @id @default(cuid())
-  source             String   // email, slack, jira
-  sourceThreadRef    String   // gmail thread id / slack channel+ts / jira issue key
-  participants       String   @default("[]") // JSON array
-  clientOrPartnerTag String   @default("")
+  id                 String         @id @default(cuid())
+  source             CommsSource    @default(email)
+  sourceThreadRef    String // gmail thread id / slack channel+ts / jira issue key
+  participants       String         @default("[]") // JSON array (kept for backward compat)
+  clientOrPartnerTag String         @default("")
   subject            String
-  priority           String   @default("P2") // P0, P1, P2, P3
-  status             String   @default("Unassigned") // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, Done, Closed
+  priority           ThreadPriority @default(P2)
+  status             ThreadStatus   @default(Unassigned) // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, PendingHandover, Done, Closed
   ownerUserId        String?
-  secondaryOwnerIds  String   @default("[]") // JSON array of employee IDs (watchers / collaborators)
-  queue              String   @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
-  createdAt         DateTime @default(now())
-  lastMessageAt     DateTime @default(now())
-  lastActionAt      DateTime?
-  ttoDeadline       DateTime? // Time-to-Ownership deadline
-  ttfaDeadline      DateTime? // Time-to-First-Action deadline
-  tslaDeadline      DateTime? // Time-since-last-action deadline
-  linkedRecords     String   @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
+  secondaryOwnerIds  String         @default("[]") // JSON array of employee IDs (watchers / collaborators)
+  queue              String         @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
+  createdAt          DateTime       @default(now())
+  lastMessageAt      DateTime       @default(now())
+  lastActionAt       DateTime?
+  ttoDeadline        DateTime? // Time-to-Ownership deadline
+  ttfaDeadline       DateTime? // Time-to-First-Action deadline
+  tslaDeadline       DateTime? // Time-since-last-action deadline
+  linkedRecords      String         @default("[]") // JSON: Jira tickets, Confluence, transaction IDs (kept for backward compat)
 
-  owner             Employee?         @relation("ThreadOwner", fields: [ownerUserId], references: [id])
-  messages          CommsMessage[]
-  ownershipChanges  OwnershipChange[]
-  alerts            Alert[]
-  notes             ThreadNote[]
+  owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
+  messages            CommsMessage[]
+  ownershipChanges    OwnershipChange[]
+  alerts              Alert[]
+  notes               ThreadNote[]
+  threadParticipants  ThreadParticipant[]
+  threadLinkedRecords ThreadLinkedRecord[]
 
   @@index([ownerUserId])
   @@index([status])
   @@index([queue])
   @@index([createdAt])
   @@index([source, sourceThreadRef])
+  @@index([status, queue])
+  @@index([ownerUserId, status])
+  @@index([priority, ttoDeadline])
 }
 
 model CommsMessage {
@@ -182,12 +300,13 @@ model CommsMessage {
   timestamp   DateTime @default(now())
   authorName  String
   authorEmail String   @default("")
-  authorType  String   // external, internal
+  authorType  String // external, internal
   bodySnippet String
   bodyLink    String   @default("") // link to full content
-  attachments String   @default("[]") // JSON: [{name, size, type}]
+  attachments String   @default("[]") // JSON: [{name, size, type}] (kept for backward compat)
 
-  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  messageAttachments MessageAttachment[]
 
   @@index([threadId])
 }
@@ -212,49 +331,126 @@ model OwnershipChange {
 }
 
 model ThreadNote {
-  id         String   @id @default(cuid())
-  threadId   String
-  authorId   String
-  content    String
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  threadId  String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
 
-  thread   CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  author   Employee    @relation(fields: [authorId], references: [id])
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author Employee    @relation(fields: [authorId], references: [id])
 
   @@index([threadId])
+}
+
+// ─── New Relation Models (replacing JSON-in-string fields) ───
+
+model ThreadParticipant {
+  id       String @id @default(cuid())
+  threadId String
+  name     String
+  email    String @default("")
+  role     String // sender, recipient, cc, watcher
+
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+}
+
+model ThreadLinkedRecord {
+  id         String @id @default(cuid())
+  threadId   String
+  recordType String // jira, confluence, transaction, incident
+  recordId   String
+  label      String @default("")
+  url        String @default("")
+
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+}
+
+model MessageAttachment {
+  id         String @id @default(cuid())
+  messageId  String
+  name       String
+  size       Int    @default(0)
+  mimeType   String @default("")
+  storageRef String @default("")
+
+  message CommsMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model ScoreEvidence {
+  id           String  @id @default(cuid())
+  scoreId      String
+  evidenceType String // jira_ticket, confluence_page, transaction, incident, manual_note
+  sourceRef    String  @default("")
+  label        String  @default("")
+  url          String  @default("")
+  verified     Boolean @default(false)
+
+  score CategoryScore @relation(fields: [scoreId], references: [id], onDelete: Cascade)
+
+  @@index([scoreId])
+}
+
+model ProjectTag {
+  id        String @id @default(cuid())
+  projectId String
+  tag       String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, tag])
+  @@index([projectId])
+}
+
+model WalletTag {
+  id       String @id @default(cuid())
+  walletId String
+  tag      String
+
+  wallet StakingWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([walletId, tag])
+  @@index([walletId])
 }
 
 // ─── Travel Rule Cases ───
 
 model TravelRuleCase {
-  id               String   @id @default(cuid())
-  transactionId    String   // Komainu transaction ID
-  txHash           String   @default("")
-  direction        String   // IN, OUT
-  asset            String
-  amount           Float
-  senderAddress    String   @default("")
-  receiverAddress  String   @default("")
-  matchStatus      String   // unmatched, missing_originator, missing_beneficiary
+  id                 String                    @id @default(cuid())
+  transactionId      String // Komainu transaction ID
+  txHash             String                    @default("")
+  direction          String // IN, OUT
+  asset              String
+  amount             Float
+  senderAddress      String                    @default("")
+  receiverAddress    String                    @default("")
+  matchStatus        String // unmatched, missing_originator, missing_beneficiary
   notabeneTransferId String?
-  ownerUserId      String?  // primary person responsible for resolving
-  status           String   @default("Open") // Open, Investigating, PendingResponse, Resolved
-  resolutionType   String?  // info_obtained, email_sent, not_required, escalated
-  resolutionNote   String   @default("")
-  emailSentTo      String?  // counterparty email if resolution was email
-  emailSentAt      DateTime?
-  slaDeadline      DateTime? // resolution deadline (createdAt + 48h by default)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  resolvedAt       DateTime?
+  ownerUserId        String? // primary person responsible for resolving
+  status             TravelRuleCaseStatus      @default(Open)
+  resolutionType     TravelRuleResolutionType?
+  resolutionNote     String                    @default("")
+  emailSentTo        String? // counterparty email if resolution was email
+  emailSentAt        DateTime?
+  slaDeadline        DateTime? // resolution deadline (createdAt + 48h by default)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  resolvedAt         DateTime?
 
-  notes            CaseNote[]
-  alerts           Alert[]
+  notes  CaseNote[]
+  alerts Alert[]
 
   @@unique([transactionId, matchStatus])
   @@index([ownerUserId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, ownerUserId])
 }
 
 model VaspContact {
@@ -286,7 +482,7 @@ model OnCallSchedule {
   id         String   @id @default(cuid())
   employeeId String
   date       DateTime // the calendar day
-  team       String   // Transaction Operations, Admin Operations, Data Operations
+  team       String // Transaction Operations, Admin Operations, Data Operations
   shiftType  String   @default("primary") // primary, backup
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -297,10 +493,10 @@ model OnCallSchedule {
 }
 
 model PublicHoliday {
-  id     String   @id @default(cuid())
-  date   DateTime
-  name   String
-  region String   @default("Global") // Global, EMEA, APAC, Americas
+  id        String   @id @default(cuid())
+  date      DateTime
+  name      String
+  region    String   @default("Global") // Global, EMEA, APAC, Americas
   createdAt DateTime @default(now())
 
   @@unique([date, region])
@@ -314,7 +510,7 @@ model PtoRecord {
   type       String   @default("annual_leave") // annual_leave, sick, wfh, other
   status     String   @default("approved") // pending, approved, rejected
   notes      String   @default("")
-  hibobId    String?  // external HiBob time-off ID for sync
+  hibobId    String? // external HiBob time-off ID for sync
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -322,20 +518,20 @@ model PtoRecord {
 }
 
 model DailyTask {
-  id          String   @id @default(cuid())
-  date        DateTime
-  team        String   // Transaction Operations, Admin Operations, Data Operations
-  assigneeId  String?
-  title       String
-  description String   @default("")
-  priority    String   @default("normal") // low, normal, high, urgent
-  status      String   @default("pending") // pending, in_progress, completed, skipped
-  category    String   @default("operational") // operational, compliance, client, administrative
-  completedAt DateTime?
+  id            String    @id @default(cuid())
+  date          DateTime
+  team          String // Transaction Operations, Admin Operations, Data Operations
+  assigneeId    String?
+  title         String
+  description   String    @default("")
+  priority      String    @default("normal") // low, normal, high, urgent
+  status        String    @default("pending") // pending, in_progress, completed, skipped
+  category      String    @default("operational") // operational, compliance, client, administrative
+  completedAt   DateTime?
   completedById String?
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   assignee    Employee? @relation("TaskAssignee", fields: [assigneeId], references: [id])
   completedBy Employee? @relation("TaskCompleter", fields: [completedById], references: [id])
@@ -346,7 +542,7 @@ model DailyTask {
 
 model SubTeam {
   id          String   @id @default(cuid())
-  name        String   // e.g. "Team 1", "Team 2", "Team 3"
+  name        String // e.g. "Team 1", "Team 2", "Team 3"
   parentTeam  String   @default("Transaction Operations") // which top-level team this belongs to
   description String   @default("") // what this sub-team handles
   sortOrder   Int      @default(0)
@@ -357,18 +553,18 @@ model SubTeam {
 }
 
 model RotaAssignment {
-  id          String   @id @default(cuid())
-  subTeamId   String
-  employeeId  String
-  role        String   // lead, member
-  startDate   DateTime // period start (e.g. Monday of the rotation week)
-  endDate     DateTime // period end
-  rotationCycle String @default("weekly") // weekly, monthly, bimonthly
-  shiftType   String   @default("standard") // standard, late, weekend
-  isWfh       Boolean  @default(false)
-  location    String   @default("London") // London, Hong Kong, Jersey
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  subTeamId     String
+  employeeId    String
+  role          String // lead, member
+  startDate     DateTime // period start (e.g. Monday of the rotation week)
+  endDate       DateTime // period end
+  rotationCycle String   @default("weekly") // weekly, monthly, bimonthly
+  shiftType     String   @default("standard") // standard, late, weekend
+  isWfh         Boolean  @default(false)
+  location      String   @default("London") // London, Hong Kong, Jersey
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   subTeam  SubTeam  @relation(fields: [subTeamId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
@@ -379,24 +575,25 @@ model RotaAssignment {
 // ─── Projects ───
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
-  description String   @default("")
-  team        String   // Transaction Operations, Admin Operations, Data Operations
-  leadId      String   // team lead responsible
-  status      String   @default("active") // planned, active, on_hold, completed, cancelled
-  priority    String   @default("medium") // low, medium, high, critical
+  description String        @default("")
+  team        String // Transaction Operations, Admin Operations, Data Operations
+  leadId      String // team lead responsible
+  status      ProjectStatus @default(active)
+  priority    String        @default("medium") // low, medium, high, critical
   startDate   DateTime?
   targetDate  DateTime?
   completedAt DateTime?
-  progress    Int      @default(0) // 0-100 percentage
-  tags        String   @default("[]") // JSON array of tags
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  progress    Int           @default(0) // 0-100 percentage
+  tags        String        @default("[]") // JSON array of tags (kept for backward compat)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   lead        Employee        @relation("ProjectLead", fields: [leadId], references: [id])
   updates     ProjectUpdate[]
   members     ProjectMember[]
+  projectTags ProjectTag[]
 }
 
 model ProjectMember {
@@ -418,7 +615,7 @@ model ProjectUpdate {
   authorId  String
   content   String
   type      String   @default("progress") // progress, blocker, milestone, note
-  progress  Int?     // optional progress snapshot at time of update
+  progress  Int? // optional progress snapshot at time of update
   createdAt DateTime @default(now())
 
   project Project  @relation(fields: [projectId], references: [id])
@@ -430,11 +627,11 @@ model ProjectUpdate {
 model ActivityStatus {
   id          String    @id @default(cuid())
   employeeId  String
-  activity    String    // project, bau, queue_monitoring, lunch, break, meeting, admin, training
+  activity    String // project, bau, queue_monitoring, lunch, break, meeting, admin, training
   detail      String    @default("") // free text e.g. project name, queue name
   startedAt   DateTime  @default(now())
   endedAt     DateTime? // null = currently active
-  durationMin Int?      // computed on end, in minutes
+  durationMin Int? // computed on end, in minutes
   createdAt   DateTime  @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
@@ -446,71 +643,73 @@ model ActivityStatus {
 // ─── Alerts ───
 
 model Alert {
-  id           String   @id @default(cuid())
-  threadId     String?
-  employeeId   String?
+  id               String        @id @default(cuid())
+  threadId         String?
+  employeeId       String?
   travelRuleCaseId String?
-  incidentId   String?  // link alert to a 3rd party incident
-  type         String   // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping, travel_rule_sla_breach
-  priority     String   @default("P2")
-  message      String
-  status       String   @default("active") // active, acknowledged, resolved
-  destination  String   @default("in_app") // slack, email, in_app
-  acknowledgedAt DateTime?
-  resolvedAt     DateTime?
-  createdAt    DateTime @default(now())
+  incidentId       String? // link alert to a 3rd party incident
+  type             String // tto_breach, ttfa_breach, tsla_breach, ownership_change, ownership_bounce, mistakes_rising, throughput_drop, sla_slipping, travel_rule_sla_breach
+  severity         AlertSeverity @default(medium)
+  priority         String        @default("P2")
+  message          String
+  status           AlertStatus   @default(active)
+  destination      String        @default("in_app") // slack, email, in_app
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime      @default(now())
 
-  thread          CommsThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  employee        Employee?       @relation(fields: [employeeId], references: [id])
-  travelRuleCase  TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
-  incident        Incident?       @relation(fields: [incidentId], references: [id])
+  thread         CommsThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  employee       Employee?       @relation(fields: [employeeId], references: [id])
+  travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
+  incident       Incident?       @relation(fields: [incidentId], references: [id])
 
   @@index([threadId])
   @@index([employeeId])
   @@index([travelRuleCaseId])
   @@index([status])
   @@index([type])
+  @@index([type, status])
 }
 
 // ─── 3rd Party Incidents ───
 
 model Incident {
-  id           String    @id @default(cuid())
-  title        String    // e.g. "Fireblocks signing service degraded"
-  provider     String    // Fireblocks, Ledger, GX, Komainu, Notabene, etc.
-  severity     String    @default("medium") // low, medium, high, critical
-  status       String    @default("active") // active, monitoring, resolved
-  description  String    @default("")
-  impact       String    @default("") // what ops impact this causes
-  startedAt    DateTime  @default(now())
-  resolvedAt   DateTime?
-  reportedById String    // employee who raised it
-  resolvedById String?
-  linkedThreadIds    String @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds String @default("[]") // JSON array of transaction IDs (Komainu)
+  id                          String                @id @default(cuid())
+  title                       String // e.g. "Fireblocks signing service degraded"
+  provider                    String // Fireblocks, Ledger, GX, Komainu, Notabene, etc.
+  severity                    IncidentSeverity      @default(medium)
+  status                      IncidentStatus        @default(active)
+  description                 String                @default("")
+  impact                      String                @default("") // what ops impact this causes
+  startedAt                   DateTime              @default(now())
+  resolvedAt                  DateTime?
+  reportedById                String // employee who raised it
+  resolvedById                String?
+  linkedThreadIds             String                @default("[]") // JSON array of commsThread IDs
+  linkedTransactionIds        String                @default("[]") // JSON array of transaction IDs (Komainu)
   // ─── RCA Tracker Fields ───
-  rcaStatus         String   @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
-  rcaDocumentRef    String   @default("") // link to RCA document
-  rcaResponsibleId  String?  // person responsible for chasing RCA
-  rcaSlaDeadline    DateTime? // SLA for receiving RCA
-  rcaReceivedAt     DateTime?
-  rcaFollowUpItems  String   @default("[]") // JSON array: [{title, status, assigneeId}]
-  rcaRaisedAt       DateTime? // when RCA was formally raised
+  rcaStatus                   String                @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
+  rcaDocumentRef              String                @default("") // link to RCA document
+  rcaResponsibleId            String? // person responsible for chasing RCA
+  rcaSlaDeadline              DateTime? // SLA for receiving RCA
+  rcaReceivedAt               DateTime?
+  rcaFollowUpItems            String                @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaRaisedAt                 DateTime? // when RCA was formally raised
   // ─── External Provider Ticket Tracking ───
-  externalTicketRef   String   @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
-  externalTicketUrl   String   @default("") // full URL to provider ticket
-  externalTicketStatus String  @default("") // last known status from Jira sync
-  externalTicketLastSyncAt DateTime? // when we last polled the ticket
-  externalTicketDisputed Boolean @default(false) // true if provider closed prematurely and we dispute
-  externalTicketDisputeReason String @default("") // why we disagree with closure
-  updates      IncidentUpdate[]
-  alerts       Alert[]
-  ticketEvents ExternalTicketEvent[]
-  reportedBy   Employee  @relation("IncidentReporter", fields: [reportedById], references: [id])
-  resolvedBy   Employee? @relation("IncidentResolver", fields: [resolvedById], references: [id])
-  rcaResponsible Employee? @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  externalTicketRef           String                @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
+  externalTicketUrl           String                @default("") // full URL to provider ticket
+  externalTicketStatus        String                @default("") // last known status from Jira sync
+  externalTicketLastSyncAt    DateTime? // when we last polled the ticket
+  externalTicketDisputed      Boolean               @default(false) // true if provider closed prematurely and we dispute
+  externalTicketDisputeReason String                @default("") // why we disagree with closure
+  updates                     IncidentUpdate[]
+  alerts                      Alert[]
+  ticketEvents                ExternalTicketEvent[]
+  reportedBy                  Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
+  resolvedBy                  Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
+  rcaResponsible              Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
 
   @@index([status])
   @@index([provider])
@@ -538,7 +737,7 @@ model IncidentUpdate {
 model ExternalTicketEvent {
   id          String   @id @default(cuid())
   incidentId  String
-  event       String   // status_changed, provider_closed, disputed, reopen_requested, reopen_confirmed, comment_added
+  event       String // status_changed, provider_closed, disputed, reopen_requested, reopen_confirmed, comment_added
   fromStatus  String   @default("") // previous ticket status
   toStatus    String   @default("") // new ticket status
   performedBy String   @default("") // "jira_sync" for auto-detected, or employee ID for manual actions
@@ -554,37 +753,37 @@ model ExternalTicketEvent {
 // ─── OES Settlements ───
 
 model OesSettlement {
-  id                String   @id @default(cuid())
-  settlementRef     String   @unique // settlement reference / cycle ID
-  venue             String   @default("okx") // okx, fireblocks
-  clientName        String
-  clientAccount     String   @default("")
-  asset             String   // BTC, ETH, USDC, SOL, etc.
-  amount            Float
-  direction         String   // custody_to_exchange, exchange_to_custody
-  settlementCycle   String   @default("") // e.g. "2026-03-07T09:00Z"
+  id                    String    @id @default(cuid())
+  settlementRef         String    @unique // settlement reference / cycle ID
+  venue                 String    @default("okx") // okx, fireblocks
+  clientName            String
+  clientAccount         String    @default("")
+  asset                 String // BTC, ETH, USDC, SOL, etc.
+  amount                Float
+  direction             String // custody_to_exchange, exchange_to_custody
+  settlementCycle       String    @default("") // e.g. "2026-03-07T09:00Z"
   // Matching: exchange instruction ↔ on-chain tx
-  exchangeInstructionId String @default("") // exchange-side settlement instruction ID
-  onChainTxHash     String   @default("") // confirmed on-chain transaction hash
-  collateralWallet  String   @default("") // source/dest collateral wallet
-  custodyWallet     String   @default("") // source/dest custody wallet
-  matchStatus       String   @default("pending") // pending, matched, mismatch, missing_tx, flagged
-  matchNote         String   @default("") // mismatch reason or exchange escalation note
+  exchangeInstructionId String    @default("") // exchange-side settlement instruction ID
+  onChainTxHash         String    @default("") // confirmed on-chain transaction hash
+  collateralWallet      String    @default("") // source/dest collateral wallet
+  custodyWallet         String    @default("") // source/dest custody wallet
+  matchStatus           String    @default("pending") // pending, matched, mismatch, missing_tx, flagged
+  matchNote             String    @default("") // mismatch reason or exchange escalation note
   // Delegation (OKX specific)
-  delegationStatus  String   @default("n/a") // n/a, delegated, undelegated, pending_delegation
-  delegatedAmount   Float    @default(0)
+  delegationStatus      String    @default("n/a") // n/a, delegated, undelegated, pending_delegation
+  delegatedAmount       Float     @default(0)
   // Maker/Checker
-  status            String   @default("pending") // pending, confirmed, escalated, failed, completed
-  makerById         String?  // maker who checked
-  makerAt           DateTime?
-  checkerById       String?  // checker who approved
-  checkerAt         DateTime?
-  escalationNote    String   @default("") // if flagged to exchange
+  status                String    @default("pending") // pending, confirmed, escalated, failed, completed
+  makerById             String? // maker who checked
+  makerAt               DateTime?
+  checkerById           String? // checker who approved
+  checkerAt             DateTime?
+  escalationNote        String    @default("") // if flagged to exchange
   // Fireblocks OES specific
-  fireblockssTxId   String   @default("") // Fireblocks transaction ID
-  oesSignerGroup    String   @default("") // approver group used
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  fireblockssTxId       String    @default("") // Fireblocks transaction ID
+  oesSignerGroup        String    @default("") // approver group used
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@index([status])
   @@index([matchStatus])
@@ -596,56 +795,56 @@ model OesSettlement {
 // ─── USDC On/Off Ramp Requests ───
 
 model UsdcRampRequest {
-  id                  String   @id @default(cuid())
-  ticketRef           String   @unique @default(cuid()) // ops ticket reference
-  clientName          String
-  clientAccount       String   @default("")
-  direction           String   // onramp (USD→USDC), offramp (USDC→USD)
-  amount              Float    // USDC amount
-  fiatCurrency        String   @default("USD")
-  fiatAmount          Float?   // fiat equivalent
+  id                 String    @id @default(cuid())
+  ticketRef          String    @unique @default(cuid()) // ops ticket reference
+  clientName         String
+  clientAccount      String    @default("")
+  direction          String // onramp (USD→USDC), offramp (USDC→USD)
+  amount             Float // USDC amount
+  fiatCurrency       String    @default("USD")
+  fiatAmount         Float? // fiat equivalent
   // Workflow status — tracks the full ops pipeline
-  status              String   @default("instruction_received")
+  status             String    @default("instruction_received")
   // Onramp: instruction_received → usd_received → usd_receipt_confirmed → usd_sent_to_issuer → usdc_minted → usdc_delivered → completed
   // Offramp: instruction_received → instruction_accepted → usdc_received → usd_conversion_pending → usd_sent → completed
   // Bank & wire
-  bankReference       String   @default("") // SWIFT/payment reference
-  instructionRef      String   @default("") // client instruction reference
-  ssiVerified         Boolean  @default(false) // bank SSI matches file
-  ssiDetails          String   @default("") // SSI summary/bank details
+  bankReference      String    @default("") // SWIFT/payment reference
+  instructionRef     String    @default("") // client instruction reference
+  ssiVerified        Boolean   @default(false) // bank SSI matches file
+  ssiDetails         String    @default("") // SSI summary/bank details
   // Wallets
-  custodyWalletId     String   @default("") // client's segregated USDC wallet
-  holdingWalletId     String   @default("") // internal issuer-linked holding wallet
+  custodyWalletId    String    @default("") // client's segregated USDC wallet
+  holdingWalletId    String    @default("") // internal issuer-linked holding wallet
   // On-chain
-  onChainTxHash       String   @default("") // USDC transfer tx hash
-  gasWalletOk         Boolean  @default(true) // ETH gas wallet has sufficient balance
+  onChainTxHash      String    @default("") // USDC transfer tx hash
+  gasWalletOk        Boolean   @default(true) // ETH gas wallet has sufficient balance
   // Issuer
-  issuerConfirmation  String   @default("") // issuer receipt/mint confirmation ref
-  expressEnabled      Boolean  @default(true) // issuer express conversion enabled
+  issuerConfirmation String    @default("") // issuer receipt/mint confirmation ref
+  expressEnabled     Boolean   @default(true) // issuer express conversion enabled
   // Fee buffer
-  feesFromBuffer      Boolean  @default(true) // fees covered from proprietary buffer
-  feeBufferLow        Boolean  @default(false) // buffer running low — needs top-up
+  feesFromBuffer     Boolean   @default(true) // fees covered from proprietary buffer
+  feeBufferLow       Boolean   @default(false) // buffer running low — needs top-up
   // Maker / Checker
-  makerById           String?
-  makerAt             DateTime?
-  makerNote           String   @default("")
-  checkerById         String?
-  checkerAt           DateTime?
-  checkerNote         String   @default("")
+  makerById          String?
+  makerAt            DateTime?
+  makerNote          String    @default("")
+  checkerById        String?
+  checkerAt          DateTime?
+  checkerNote        String    @default("")
   // Checks completed
-  kycAmlOk            Boolean  @default(false)
-  walletWhitelisted   Boolean  @default(false)
+  kycAmlOk           Boolean   @default(false)
+  walletWhitelisted  Boolean   @default(false)
   // Evidence & notes
-  evidence            String   @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
-  notes               String   @default("")
-  rejectionReason     String   @default("")
+  evidence           String    @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
+  notes              String    @default("")
+  rejectionReason    String    @default("")
   // Dates
-  requestedAt         DateTime @default(now())
-  completedAt         DateTime?
-  clientNotifiedAt    DateTime?
-  priority            String   @default("normal") // low, normal, high, urgent
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  requestedAt        DateTime  @default(now())
+  completedAt        DateTime?
+  clientNotifiedAt   DateTime?
+  priority           String    @default("normal") // low, normal, high, urgent
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([status])
   @@index([clientName])
@@ -656,52 +855,57 @@ model UsdcRampRequest {
 // ─── Branding / White-Label ───
 
 model BrandingConfig {
-  id          String   @id @default("singleton")
-  appName     String   @default("KOMmand Centre")
-  subtitle    String   @default("Ops Management & Comms Hub")
-  logoData    String   @default("") // base64 data URL for logo image
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default("singleton")
+  appName   String   @default("KOMmand Centre")
+  subtitle  String   @default("Ops Management & Comms Hub")
+  logoData  String   @default("") // base64 data URL for logo image
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Audit ───
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  action     String   // config_change, manual_score, ownership_change, status_change, export, login
-  entityType String   // scoring_config, employee, thread, knowledge_score
+  id         String      @id @default(cuid())
+  action     String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
+  entityType String // scoring_config, employee, thread, knowledge_score
   entityId   String
   userId     String
-  details    String   @default("{}") // JSON
-  createdAt  DateTime @default(now())
+  details    String      @default("{}") // JSON
+  createdAt  DateTime    @default(now())
 
   user Employee @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
 }
 
 // ─── Staking Operations ───
 
 model StakingWallet {
-  id              String   @id @default(cuid())
-  walletAddress   String   @unique
-  asset           String   // BTC, ETH, SOL, DOT, etc.
-  validator       String   @default("")
-  stakedAmount    Float    @default(0)
-  rewardModel     String   // auto, daily, weekly, monthly, manual_claim, rebate
-  clientName      String   @default("")
-  isColdStaking   Boolean  @default(false)
-  isTestWallet    Boolean  @default(false)
-  stakeDate       DateTime?
+  id                      String    @id @default(cuid())
+  walletAddress           String    @unique
+  asset                   String // BTC, ETH, SOL, DOT, etc.
+  validator               String    @default("")
+  stakedAmount            Float     @default(0)
+  rewardModel             String // auto, daily, weekly, monthly, manual_claim, rebate
+  clientName              String    @default("")
+  isColdStaking           Boolean   @default(false)
+  isTestWallet            Boolean   @default(false)
+  stakeDate               DateTime?
   expectedFirstRewardDate DateTime?
   actualFirstRewardDate   DateTime?
-  lastRewardAt    DateTime?
+  lastRewardAt            DateTime?
   expectedNextRewardAt    DateTime?
-  onChainBalance  Float?   // for reconciliation
-  platformBalance Float?   // internal representation
-  varianceThreshold Float  @default(0.01) // flag if variance > this
-  tags            String   @default("[]") // JSON: test wallet, known deviations, minimum threshold
-  notes           String   @default("")
-  status          String   @default("active") // active, unstaking, inactive
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  onChainBalance          Float? // for reconciliation
+  platformBalance         Float? // internal representation
+  varianceThreshold       Float     @default(0.01) // flag if variance > this
+  tags                    String    @default("[]") // JSON: test wallet, known deviations, minimum threshold (kept for backward compat)
+  notes                   String    @default("")
+  status                  String    @default("active") // active, unstaking, inactive
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  walletTags WalletTag[]
 
   @@index([asset])
   @@index([rewardModel])
@@ -711,34 +915,34 @@ model StakingWallet {
 // ─── Daily Ops Checks ───
 
 model DailyCheckRun {
-  id          String   @id @default(cuid())
-  date        DateTime @unique // one run per day
-  operatorId  String   // employee running the checks
+  id          String    @id @default(cuid())
+  date        DateTime  @unique // one run per day
+  operatorId  String // employee running the checks
   completedAt DateTime?
-  jiraSummary String   @default("") // generated summary text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  jiraSummary String    @default("") // generated summary text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  items       DailyCheckItem[]
+  items DailyCheckItem[]
 
   @@index([date])
 }
 
 model DailyCheckItem {
-  id          String   @id @default(cuid())
-  runId       String
-  name        String   // e.g. "Stuck Transactions"
-  category    String   // stuck_tx, balance_variance, staking_rewards, screening, travel_rule, pending_approvals, scam_dust, validator_health, external_provider
-  status      String   @default("pending") // pending, pass, issues_found, skipped
-  autoCheckKey String  @default("") // key for auto-pass logic
-  autoResult  String   @default("") // JSON result from auto-check
-  notes       String   @default("")
-  operatorId  String?  // who completed this item
-  completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String           @id @default(cuid())
+  runId        String
+  name         String // e.g. "Stuck Transactions"
+  category     String // stuck_tx, balance_variance, staking_rewards, screening, travel_rule, pending_approvals, scam_dust, validator_health, external_provider
+  status       DailyCheckStatus @default(pending)
+  autoCheckKey String           @default("") // key for auto-pass logic
+  autoResult   String           @default("") // JSON result from auto-check
+  notes        String           @default("")
+  operatorId   String? // who completed this item
+  completedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
-  run         DailyCheckRun @relation(fields: [runId], references: [id])
+  run DailyCheckRun @relation(fields: [runId], references: [id])
 
   @@index([runId])
   @@index([category])
@@ -747,24 +951,24 @@ model DailyCheckItem {
 // ─── Screening & Scam/Dust ───
 
 model ScreeningEntry {
-  id                String   @id @default(cuid())
-  transactionId     String   @unique // Komainu transaction ID
-  txHash            String   @default("")
-  asset             String
-  amount            Float    @default(0)
-  direction         String   @default("IN") // IN, OUT
-  screeningStatus   String   @default("not_submitted") // submitted, processing, completed, not_submitted, exception
-  classification    String   @default("unclassified") // unclassified, legitimate, dust, scam
-  isKnownException  Boolean  @default(false)
-  exceptionReason   String   @default("")
-  analyticsAlertId  String   @default("") // chain analytics alert ref
-  analyticsStatus   String   @default("none") // none, open, under_review, resolved
-  complianceReviewStatus String @default("none") // none, pending, approved, rejected
-  reclassifiedAt    DateTime?
-  reclassifiedById  String?
-  notes             String   @default("")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                     String    @id @default(cuid())
+  transactionId          String    @unique // Komainu transaction ID
+  txHash                 String    @default("")
+  asset                  String
+  amount                 Float     @default(0)
+  direction              String    @default("IN") // IN, OUT
+  screeningStatus        String    @default("not_submitted") // submitted, processing, completed, not_submitted, exception
+  classification         String    @default("unclassified") // unclassified, legitimate, dust, scam
+  isKnownException       Boolean   @default(false)
+  exceptionReason        String    @default("")
+  analyticsAlertId       String    @default("") // chain analytics alert ref
+  analyticsStatus        String    @default("none") // none, open, under_review, resolved
+  complianceReviewStatus String    @default("none") // none, pending, approved, rejected
+  reclassifiedAt         DateTime?
+  reclassifiedById       String?
+  notes                  String    @default("")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([screeningStatus])
   @@index([classification])
@@ -775,8 +979,8 @@ model ScreeningEntry {
 
 model ApprovalAuditEntry {
   id            String   @id @default(cuid())
-  requestId     String   // Komainu request ID
-  action        String   // approved, escalated, flagged_stuck
+  requestId     String // Komainu request ID
+  action        String // approved, escalated, flagged_stuck
   performedById String
   riskLevel     String   @default("medium") // low, medium, high
   notes         String   @default("")
@@ -789,51 +993,51 @@ model ApprovalAuditEntry {
 // ─── Token Review & Onboarding ───
 
 model TokenReview {
-  id              String   @id @default(cuid())
-  symbol          String   // e.g. "BTC", "ETH", "SOL"
-  name            String   // e.g. "Bitcoin", "Ethereum"
-  network         String   @default("") // e.g. "Ethereum", "Solana", "Polkadot"
-  contractAddress String   @default("") // for ERC-20/SPL tokens
-  tokenType       String   @default("native") // native, erc20, spl, substrate, other
+  id                 String              @id @default(cuid())
+  symbol             String // e.g. "BTC", "ETH", "SOL"
+  name               String // e.g. "Bitcoin", "Ethereum"
+  network            String              @default("") // e.g. "Ethereum", "Solana", "Polkadot"
+  contractAddress    String              @default("") // for ERC-20/SPL tokens
+  tokenType          String              @default("native") // native, erc20, spl, substrate, other
   // Review pipeline
-  status          String   @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
-  proposedById    String?  // employee who proposed
-  proposedAt      DateTime @default(now())
-  reviewedById    String?  // ops reviewer
-  reviewedAt      DateTime?
-  complianceById  String?  // compliance reviewer
-  complianceAt    DateTime?
-  approvedAt      DateTime?
-  rejectedAt      DateTime?
-  liveAt          DateTime? // when token went live in custody
-  rejectionReason String   @default("")
+  status             String              @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
+  proposedById       String? // employee who proposed
+  proposedAt         DateTime            @default(now())
+  reviewedById       String? // ops reviewer
+  reviewedAt         DateTime?
+  complianceById     String? // compliance reviewer
+  complianceAt       DateTime?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  liveAt             DateTime? // when token went live in custody
+  rejectionReason    String              @default("")
   // Risk & compliance assessment
-  riskLevel       String   @default("medium") // low, medium, high, critical
-  riskNotes       String   @default("") // free-form risk assessment
-  regulatoryNotes String   @default("") // regulatory considerations
-  sanctionsCheck  Boolean  @default(false) // sanctions screening completed
-  amlRiskAssessed Boolean  @default(false) // AML risk assessed
+  riskLevel          String              @default("medium") // low, medium, high, critical
+  riskNotes          String              @default("") // free-form risk assessment
+  regulatoryNotes    String              @default("") // regulatory considerations
+  sanctionsCheck     Boolean             @default(false) // sanctions screening completed
+  amlRiskAssessed    Boolean             @default(false) // AML risk assessed
   // Custody support details
-  custodianSupport String  @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
-  stakingAvailable Boolean @default(false)
+  custodianSupport   String              @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
+  stakingAvailable   Boolean             @default(false)
   // Third-party vendor support tracking
-  chainalysisSupport String @default("unknown") // supported, partial, not_supported, unknown
-  notabeneSupport    String @default("unknown") // supported, partial, not_supported, unknown
-  fireblocksSupport  String @default("unknown") // supported, partial, not_supported, unknown
-  ledgerSupport      String @default("unknown") // supported, partial, not_supported, unknown
-  vendorNotes        String @default("") // JSON: per-vendor notes/caveats
+  chainalysisSupport String              @default("unknown") // supported, partial, not_supported, unknown
+  notabeneSupport    String              @default("unknown") // supported, partial, not_supported, unknown
+  fireblocksSupport  String              @default("unknown") // supported, partial, not_supported, unknown
+  ledgerSupport      String              @default("unknown") // supported, partial, not_supported, unknown
+  vendorNotes        String              @default("") // JSON: per-vendor notes/caveats
   // Institutional demand
-  demandScore     Int      @default(0) // 0-100 computed from demand signals
-  demandSignals   TokenDemandSignal[]
+  demandScore        Int                 @default(0) // 0-100 computed from demand signals
+  demandSignals      TokenDemandSignal[]
   // AI research persistence
-  aiResearchResult String   @default("") // JSON: full AI research output
-  aiResearchedAt   DateTime? // when AI research was last run
-  aiRecommendation String   @default("") // approve, approve_with_conditions, further_review, reject
+  aiResearchResult   String              @default("") // JSON: full AI research output
+  aiResearchedAt     DateTime? // when AI research was last run
+  aiRecommendation   String              @default("") // approve, approve_with_conditions, further_review, reject
   // Metadata
-  marketCapTier   String   @default("unknown") // mega, large, mid, small, micro, unknown
-  notes           String   @default("")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  marketCapTier      String              @default("unknown") // mega, large, mid, small, micro, unknown
+  notes              String              @default("")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@unique([symbol, network])
   @@index([status])
@@ -844,7 +1048,7 @@ model TokenReview {
 model TokenDemandSignal {
   id            String   @id @default(cuid())
   tokenReviewId String
-  signalType    String   // client_request, market_trend, competitor_listed, internal_proposal
+  signalType    String // client_request, market_trend, competitor_listed, internal_proposal
   source        String   @default("") // client name, market report, etc.
   description   String   @default("")
   weight        Int      @default(1) // 1-5 strength of signal
@@ -854,4 +1058,24 @@ model TokenDemandSignal {
   tokenReview TokenReview @relation(fields: [tokenReviewId], references: [id])
 
   @@index([tokenReviewId])
+}
+
+// ─── Workflow Event History ───
+
+model WorkflowEvent {
+  id            String   @id @default(cuid())
+  entityType    String // thread, case, incident, score, config
+  entityId      String
+  eventType     String // status_change, assignment, escalation, resolution, etc.
+  fromState     String?
+  toState       String?
+  performedById String?
+  reason        String   @default("")
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  performedBy User? @relation("WorkflowPerformedBy", fields: [performedById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

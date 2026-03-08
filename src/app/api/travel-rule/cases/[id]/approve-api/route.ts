@@ -12,7 +12,7 @@ import {
  * POST /api/travel-rule/cases/:id/approve-api
  *
  * Submits an API approval for the Komainu transaction linked to this case.
- * Sets the case status to "AwaitingApproval" while the API processes.
+ * Sets the case status to "PendingResponse" while the API processes.
  *
  * Body: { requestId: string }
  *   The Komainu request ID to approve.
@@ -76,7 +76,7 @@ export async function POST(
       const isFailed = txStatus === "FAILED" || requestStatus === "REJECTED" || requestStatus === "EXPIRED" || requestStatus === "CANCELLED";
 
       // Auto-update case status if approval completed
-      if (isApproved && travelCase.status === "AwaitingApproval") {
+      if (isApproved && travelCase.status === "PendingResponse") {
         await prisma.travelRuleCase.update({
           where: { id: params.id },
           data: { status: "Investigating" },
@@ -96,7 +96,7 @@ export async function POST(
         });
       }
 
-      if (isFailed && travelCase.status === "AwaitingApproval") {
+      if (isFailed && travelCase.status === "PendingResponse") {
         await prisma.travelRuleCase.update({
           where: { id: params.id },
           data: { status: "Investigating" },
@@ -142,7 +142,7 @@ export async function POST(
     // Set case to AwaitingApproval
     const updated = await prisma.travelRuleCase.update({
       where: { id: params.id },
-      data: { status: "AwaitingApproval" },
+      data: { status: "PendingResponse" },
     });
 
     await prisma.auditLog.create({
