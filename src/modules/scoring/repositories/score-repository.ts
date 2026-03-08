@@ -6,6 +6,7 @@
  * so that service logic remains free of direct Prisma calls.
  */
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import type { Category } from "@/types";
 
@@ -33,8 +34,8 @@ export interface UpsertScoreData {
   rawIndex: number;
   score: number;
   configVersion: string;
-  evidence?: unknown;
-  metadata?: unknown;
+  evidence?: Prisma.InputJsonValue;
+  metadata?: Prisma.InputJsonValue;
 }
 
 export interface ScoreRecord {
@@ -149,8 +150,8 @@ export const scoreRepository = {
         rawIndex: data.rawIndex,
         score: data.score,
         configVersion: data.configVersion,
-        ...(data.evidence !== undefined && { evidence: data.evidence }),
-        ...(data.metadata !== undefined && { metadata: data.metadata }),
+        evidence: data.evidence ?? undefined,
+        metadata: data.metadata ?? undefined,
       },
       include: {
         employee: { select: { id: true, name: true, role: true, team: true } },

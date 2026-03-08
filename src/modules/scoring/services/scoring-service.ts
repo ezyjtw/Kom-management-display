@@ -9,6 +9,7 @@
  * functions from @/lib/scoring.
  */
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import type { Category, CategoryWeight, ScoringConfigData, TrendData } from "@/types";
 import {
@@ -38,13 +39,17 @@ export type ConfigStatus = "draft" | "review" | "approved" | "active" | "archive
 export interface ScoringConfigRecord {
   id: string;
   version: string;
-  config: string;
+  config: unknown;
   active: boolean;
   createdById: string;
   createdAt: Date;
   notes: string;
-  /** Extended status stored in the notes field as JSON prefix. */
   status?: ConfigStatus;
+  reviewedById?: string | null;
+  reviewedAt?: Date | null;
+  approvedById?: string | null;
+  approvedAt?: Date | null;
+  activatedAt?: Date | null;
 }
 
 export interface ConfigTransitionResult {
@@ -209,7 +214,7 @@ export const scoringService = {
       rawIndex,
       score,
       configVersion: config.version,
-      metadata: metrics,
+      metadata: metrics as unknown as Prisma.InputJsonValue,
     });
 
     logger.info("scoringService.computeAndSaveScore", {
@@ -413,7 +418,7 @@ export const scoringService = {
     const record = await prisma.scoringConfig.create({
       data: {
         version: config.version,
-        config: config as unknown as Record<string, unknown>,
+        config: config as unknown as Prisma.InputJsonValue,
         active: false,
         createdById: createdBy,
         notes: combinedNotes,
