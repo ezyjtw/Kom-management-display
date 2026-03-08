@@ -31,15 +31,36 @@ async function main() {
   ];
 
   // Use a transaction to ensure Employees are created before Users reference them
-  const employees = await prisma.$transaction(
-    employeeData.map((data) =>
-      prisma.employee.upsert({
-        where: { email: data.email },
-        update: { team: data.team, role: data.role, region: data.region, name: data.name },
-        create: data,
-      })
-    )
-  );
+  console.log("Creating employees...");
+  let employees: Awaited<ReturnType<typeof prisma.employee.upsert>>[];
+  try {
+    employees = await prisma.$transaction(
+      employeeData.map((data) =>
+        prisma.employee.upsert({
+          where: { email: data.email },
+          update: { team: data.team, role: data.role, region: data.region, name: data.name, active: true },
+          create: data,
+        })
+      )
+    );
+  } catch (empError) {
+    console.error("EMPLOYEE SEED FAILED:", empError);
+    // Fallback: try creating employees one at a time to identify the failing record
+    console.log("Attempting individual employee upserts...");
+    employees = [];
+    for (const data of employeeData) {
+      try {
+        const emp = await prisma.employee.upsert({
+          where: { email: data.email },
+          update: { team: data.team, role: data.role, region: data.region, name: data.name, active: true },
+          create: data,
+        });
+        employees.push(emp);
+      } catch (indivError) {
+        console.error(`  Failed to upsert employee ${data.email}:`, indivError);
+      }
+    }
+  }
 
   console.log(`Upserted ${employees.length} employees`);
 
@@ -57,31 +78,48 @@ async function main() {
 
   const userData = [
     { email: "manager@ops.com", name: "Ops Manager", role: UserRole.admin, password: defaultPassword, employeeId: null as string | null },
-    { email: "carol@ops.com", name: "Carol Davies", role: UserRole.lead, password: leadPassword, employeeId: emp["carol@ops.com"].id },
-    { email: "alice@ops.com", name: "Alice Chen", role: UserRole.employee, password: userPassword, employeeId: emp["alice@ops.com"].id },
-    { email: "bob@ops.com", name: "Bob Martinez", role: UserRole.employee, password: userPassword, employeeId: emp["bob@ops.com"].id },
-    { email: "david@ops.com", name: "David Park", role: UserRole.employee, password: userPassword, employeeId: emp["david@ops.com"].id },
-    { email: "eva@ops.com", name: "Eva Kowalski", role: UserRole.employee, password: userPassword, employeeId: emp["eva@ops.com"].id },
-    { email: "frank@ops.com", name: "Frank Osei", role: UserRole.employee, password: userPassword, employeeId: emp["frank@ops.com"].id },
-    { email: "grace@ops.com", name: "Grace Thompson", role: UserRole.employee, password: userPassword, employeeId: emp["grace@ops.com"].id },
-    { email: "kenji@ops.com", name: "Kenji Yamamoto", role: UserRole.employee, password: userPassword, employeeId: emp["kenji@ops.com"].id },
-    { email: "liam@ops.com", name: "Liam O'Brien", role: UserRole.employee, password: userPassword, employeeId: emp["liam@ops.com"].id },
-    { email: "maria@ops.com", name: "Maria Santos", role: UserRole.employee, password: userPassword, employeeId: emp["maria@ops.com"].id },
-    { email: "nikhil@ops.com", name: "Nikhil Patel", role: UserRole.employee, password: userPassword, employeeId: emp["nikhil@ops.com"].id },
-    { email: "sophie@ops.com", name: "Sophie Laurent", role: UserRole.employee, password: userPassword, employeeId: emp["sophie@ops.com"].id },
-    { email: "tom@ops.com", name: "Tom Nakamura", role: UserRole.employee, password: userPassword, employeeId: emp["tom@ops.com"].id },
-    { email: "yuki@ops.com", name: "Yuki Tanaka", role: UserRole.employee, password: userPassword, employeeId: emp["yuki@ops.com"].id },
+    { email: "carol@ops.com", name: "Carol Davies", role: UserRole.lead, password: leadPassword, employeeId: emp["carol@ops.com"]?.id ?? null },
+    { email: "alice@ops.com", name: "Alice Chen", role: UserRole.employee, password: userPassword, employeeId: emp["alice@ops.com"]?.id ?? null },
+    { email: "bob@ops.com", name: "Bob Martinez", role: UserRole.employee, password: userPassword, employeeId: emp["bob@ops.com"]?.id ?? null },
+    { email: "david@ops.com", name: "David Park", role: UserRole.employee, password: userPassword, employeeId: emp["david@ops.com"]?.id ?? null },
+    { email: "eva@ops.com", name: "Eva Kowalski", role: UserRole.employee, password: userPassword, employeeId: emp["eva@ops.com"]?.id ?? null },
+    { email: "frank@ops.com", name: "Frank Osei", role: UserRole.employee, password: userPassword, employeeId: emp["frank@ops.com"]?.id ?? null },
+    { email: "grace@ops.com", name: "Grace Thompson", role: UserRole.employee, password: userPassword, employeeId: emp["grace@ops.com"]?.id ?? null },
+    { email: "kenji@ops.com", name: "Kenji Yamamoto", role: UserRole.employee, password: userPassword, employeeId: emp["kenji@ops.com"]?.id ?? null },
+    { email: "liam@ops.com", name: "Liam O'Brien", role: UserRole.employee, password: userPassword, employeeId: emp["liam@ops.com"]?.id ?? null },
+    { email: "maria@ops.com", name: "Maria Santos", role: UserRole.employee, password: userPassword, employeeId: emp["maria@ops.com"]?.id ?? null },
+    { email: "nikhil@ops.com", name: "Nikhil Patel", role: UserRole.employee, password: userPassword, employeeId: emp["nikhil@ops.com"]?.id ?? null },
+    { email: "sophie@ops.com", name: "Sophie Laurent", role: UserRole.employee, password: userPassword, employeeId: emp["sophie@ops.com"]?.id ?? null },
+    { email: "tom@ops.com", name: "Tom Nakamura", role: UserRole.employee, password: userPassword, employeeId: emp["tom@ops.com"]?.id ?? null },
+    { email: "yuki@ops.com", name: "Yuki Tanaka", role: UserRole.employee, password: userPassword, employeeId: emp["yuki@ops.com"]?.id ?? null },
   ];
 
-  await prisma.$transaction(
-    userData.map((data) =>
-      prisma.user.upsert({
-        where: { email: data.email },
-        update: { employeeId: data.employeeId, name: data.name, role: data.role },
-        create: data,
-      })
-    )
-  );
+  console.log("Creating user accounts...");
+  try {
+    await prisma.$transaction(
+      userData.map((data) =>
+        prisma.user.upsert({
+          where: { email: data.email },
+          update: { employeeId: data.employeeId, name: data.name, role: data.role },
+          create: data,
+        })
+      )
+    );
+  } catch (userError) {
+    console.error("USER SEED TRANSACTION FAILED:", userError);
+    console.log("Attempting individual user upserts...");
+    for (const data of userData) {
+      try {
+        await prisma.user.upsert({
+          where: { email: data.email },
+          update: { employeeId: data.employeeId, name: data.name, role: data.role },
+          create: data,
+        });
+      } catch (indivError) {
+        console.error(`  Failed to upsert user ${data.email}:`, indivError);
+      }
+    }
+  }
 
   console.log("Upserted user accounts");
 
@@ -390,24 +428,31 @@ async function main() {
 
   // Seed scoring config
   const adminUser = await prisma.user.findFirst({ where: { role: UserRole.admin } });
-  await prisma.scoringConfig.upsert({
-    where: { version: "1.0.0" },
-    update: {},
-    create: {
-      version: "1.0.0",
-      config: JSON.stringify({
-        version: "1.0.0",
-        weights: { daily_tasks: 0.25, projects: 0.15, asset_actions: 0.25, quality: 0.25, knowledge: 0.10 },
-        clampMin: 3,
-        clampMax: 8,
-      }),
-      active: true,
-      createdById: adminUser?.id ?? "system",
-      notes: "Initial default configuration",
-    },
-  });
-
-  console.log("Created scoring config");
+  if (adminUser) {
+    try {
+      await prisma.scoringConfig.upsert({
+        where: { version: "1.0.0" },
+        update: {},
+        create: {
+          version: "1.0.0",
+          config: JSON.stringify({
+            version: "1.0.0",
+            weights: { daily_tasks: 0.25, projects: 0.15, asset_actions: 0.25, quality: 0.25, knowledge: 0.10 },
+            clampMin: 3,
+            clampMax: 8,
+          }),
+          active: true,
+          createdById: adminUser.id,
+          notes: "Initial default configuration",
+        },
+      });
+      console.log("Created scoring config");
+    } catch (scError) {
+      console.error("Scoring config seed failed (non-fatal):", scError);
+    }
+  } else {
+    console.warn("No admin user found — skipping scoring config seed");
+  }
 
   // ─── Seed Schedule Data ───
 

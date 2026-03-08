@@ -137,6 +137,15 @@ export default function AdminPage() {
         <EmployeesTab
           employees={employees}
           orphanedUserCount={users.filter((u) => u.employeeId && !employees.some((e) => e.id === u.employeeId)).length}
+          onRefresh={() => {
+            Promise.all([
+              fetch("/api/employees").then((r) => r.json()),
+              fetch("/api/users").then((r) => r.json()).catch(() => ({ success: false })),
+            ]).then(([empJson, usersJson]) => {
+              if (empJson.success) setEmployees(empJson.data || []);
+              if (usersJson.success) setUsers(usersJson.data || []);
+            });
+          }}
         />
       )}
       {activeTab === "knowledge" && <KnowledgeScoringTab employees={employees} />}
