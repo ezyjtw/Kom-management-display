@@ -9,7 +9,58 @@ const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
   auditor: 4 * 60 * 60,  // 4 hours
 };
 
+/** HTTP methods that modify state. */
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Paths exempt from CSRF origin validation (webhooks, auth, SSE). */
+const CSRF_EXEMPT_PATHS = [
+  "/api/auth/",
+  "/api/integrations/slack",
+  "/api/integrations/jira",
+  "/api/alerts/generate",
+  "/api/events",
+];
+
+/**
+ * Security headers applied to every response.
+ * Defense-in-depth against common web attacks.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-XSS-Protection": "1; mode=block",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-DNS-Prefetch-Control": "off",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
+/**
+ * Get trusted origins for CSRF validation.
+ */
+function getAllowedOrigins(): string[] {
+  const origins: string[] = [];
+
+  if (process.env.NEXTAUTH_URL) {
+    try {
+      origins.push(new URL(process.env.NEXTAUTH_URL).origin);
+    } catch { /* invalid URL */ }
+  }
+
+  if (process.env.CSRF_ALLOWED_ORIGINS) {
+    origins.push(...process.env.CSRF_ALLOWED_ORIGINS.split(",").map((o) => o.trim()));
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    origins.push("http://localhost:3000", "http://127.0.0.1:3000");
+  }
+
+  return origins;
+}
+
 export async function middleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  const isApi = path.startsWith("/api/");
+
   // Determine if the original request was over HTTPS (handles reverse proxies like Railway)
   const isSecure =
     process.env.NEXTAUTH_URL?.startsWith("https://") ||
@@ -31,29 +82,30 @@ export async function middleware(req: NextRequest) {
     }));
 
   // Allow cron/external calls to alert generate endpoint with CRON_SECRET
-  if (req.nextUrl.pathname === "/api/alerts/generate") {
+  if (path === "/api/alerts/generate") {
     const authHeader = req.headers.get("authorization");
     if (
       authHeader?.startsWith("Bearer ") &&
       process.env.CRON_SECRET &&
       authHeader === `Bearer ${process.env.CRON_SECRET}`
     ) {
-      return NextResponse.next();
+      return addSecurityHeaders(NextResponse.next());
     }
   }
 
   // Allow webhook endpoints with their own auth (signature verification)
   const webhookPaths = ["/api/integrations/slack", "/api/integrations/jira"];
-  if (webhookPaths.some((p) => req.nextUrl.pathname.startsWith(p)) && req.method === "POST") {
-    // Webhook auth is handled by the route itself via signature verification
-    return NextResponse.next();
+  if (webhookPaths.some((p) => path.startsWith(p)) && req.method === "POST") {
+    return addSecurityHeaders(NextResponse.next());
   }
 
   if (!token) {
-    if (req.nextUrl.pathname.startsWith("/api/")) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required", code: "AUTH_REQUIRED" },
-        { status: 401 },
+    if (isApi) {
+      return addSecurityHeaders(
+        NextResponse.json(
+          { success: false, error: "Authentication required", code: "AUTH_REQUIRED" },
+          { status: 401 },
+        ),
       );
     }
     return NextResponse.redirect(new URL("/login", req.url));
@@ -61,17 +113,17 @@ export async function middleware(req: NextRequest) {
 
   // Enforce role-based idle timeout
   const role = token.role as string;
-  const path = req.nextUrl.pathname;
-  const isApi = path.startsWith("/api/");
 
   if (token.iat) {
     const issuedAt = (token.iat as number) * 1000;
     const idleTimeout = (IDLE_TIMEOUT_SECONDS[role] ?? IDLE_TIMEOUT_SECONDS.employee) * 1000;
     if (Date.now() - issuedAt > idleTimeout) {
       if (isApi) {
-        return NextResponse.json(
-          { success: false, error: "Session expired", code: "SESSION_EXPIRED" },
-          { status: 401 },
+        return addSecurityHeaders(
+          NextResponse.json(
+            { success: false, error: "Session expired", code: "SESSION_EXPIRED" },
+            { status: 401 },
+          ),
         );
       }
       return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
@@ -82,7 +134,7 @@ export async function middleware(req: NextRequest) {
   const adminOnlyPaths = ["/admin", "/api/users"];
   for (const restricted of adminOnlyPaths) {
     if (path.startsWith(restricted) && role !== "admin") {
-      if (isApi) return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
+      if (isApi) return addSecurityHeaders(NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 }));
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
   }
@@ -91,21 +143,83 @@ export async function middleware(req: NextRequest) {
   const adminLeadPaths = ["/api/scoring-config", "/api/export"];
   for (const restricted of adminLeadPaths) {
     if (path.startsWith(restricted) && !["admin", "lead"].includes(role)) {
-      if (isApi) return NextResponse.json({ success: false, error: "Insufficient permissions" }, { status: 403 });
+      if (isApi) return addSecurityHeaders(NextResponse.json({ success: false, error: "Insufficient permissions" }, { status: 403 }));
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
   }
 
   // Auditor: read-only (block POST/PUT/PATCH/DELETE)
   if (role === "auditor" && isApi && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    return NextResponse.json({ success: false, error: "Auditors have read-only access" }, { status: 403 });
+    return addSecurityHeaders(
+      NextResponse.json({ success: false, error: "Auditors have read-only access" }, { status: 403 }),
+    );
   }
 
-  // Add request ID and security context headers for downstream use
-  const requestId = crypto.randomUUID().substring(0, 8);
-  const response = NextResponse.next();
-  response.headers.set("x-request-id", requestId);
+  // ─── CSRF Protection ───
+  // Validate origin on state-changing requests to prevent cross-site attacks.
+  if (isApi && MUTATION_METHODS.has(req.method)) {
+    const isExempt = CSRF_EXEMPT_PATHS.some((exempt) => path.startsWith(exempt));
+
+    if (!isExempt) {
+      const origin = req.headers.get("origin");
+      const referer = req.headers.get("referer");
+      const allowedOrigins = getAllowedOrigins();
+
+      if (allowedOrigins.length > 0 && process.env.NODE_ENV === "production") {
+        let originValid = false;
+
+        if (origin) {
+          originValid = allowedOrigins.includes(origin);
+        } else if (referer) {
+          try {
+            originValid = allowedOrigins.includes(new URL(referer).origin);
+          } catch { originValid = false; }
+        } else {
+          // No origin header — allow if custom header is present (CORS preflight guard)
+          originValid = !!req.headers.get("x-requested-with");
+        }
+
+        if (!originValid) {
+          return addSecurityHeaders(
+            NextResponse.json(
+              { success: false, error: "Cross-origin request blocked", code: "CSRF_REJECTED" },
+              { status: 403 },
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // Generate correlation ID for request tracing across services and logs.
+  // Format: 8-char hex for compactness in logs.
+  const correlationId = crypto.randomUUID().substring(0, 8);
+  const response = NextResponse.next({
+    request: {
+      headers: new Headers({
+        ...Object.fromEntries(req.headers.entries()),
+        "x-correlation-id": correlationId,
+      }),
+    },
+  });
+
+  // Propagate correlation ID and security context to response
+  response.headers.set("x-correlation-id", correlationId);
+  response.headers.set("x-request-id", correlationId);
   response.headers.set("x-user-role", role);
+
+  return addSecurityHeaders(response);
+}
+
+/**
+ * Apply security headers to every response.
+ * These headers provide defense-in-depth against XSS, clickjacking,
+ * MIME sniffing, and other common attack vectors.
+ */
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+    response.headers.set(header, value);
+  }
   return response;
 }
 
@@ -131,6 +245,7 @@ export const config = {
     "/briefing/:path*",
     "/usdc-ramp/:path*",
     "/transactions/:path*",
+    "/transaction-confirmations/:path*",
     "/api/employees/:path*",
     "/api/scores/:path*",
     "/api/scoring-config/:path*",
@@ -157,5 +272,12 @@ export const config = {
     "/api/command-center/:path*",
     "/api/usdc-ramp/:path*",
     "/api/market-data/:path*",
+    "/api/transaction-confirmations/:path*",
+    "/api/feature-flags/:path*",
+    "/api/sessions/:path*",
+    "/api/jobs/:path*",
+    "/api/reports/:path*",
+    "/api/search/:path*",
+    "/api/metrics/:path*",
   ],
 };

@@ -179,6 +179,69 @@ export const updateDailyCheckItemSchema = z.object({
   notes: z.string().max(2000).default(""),
 });
 
+// ─── Transaction Confirmation Schemas ───
+
+export const createTransactionConfirmationSchema = z.object({
+  transactionId: z.string().min(1).max(500),
+  requestId: z.string().max(500).optional(),
+  asset: z.string().min(1).max(50),
+  amount: z.number().min(0),
+  direction: z.string().min(1).max(20),
+  account: z.string().max(500).default(""),
+  workspace: z.string().max(500).default(""),
+});
+
+export const confirmationActionSchema = z.object({
+  action: z.enum(["acknowledge", "sign_off", "escalate"]),
+  confirmationId: z.string().min(1),
+  reason: z.string().max(2000).optional(),
+});
+
+// ─── Feature Flag Schemas ───
+
+export const upsertFeatureFlagSchema = z.object({
+  key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Key must be lowercase alphanumeric with underscores"),
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).default(""),
+  enabled: z.boolean().default(false),
+  roles: z.array(z.string().max(50)).default([]),
+  teams: z.array(z.string().max(100)).default([]),
+  percentage: z.number().int().min(0).max(100).default(100),
+});
+
+// ─── Session Schemas ───
+
+export const revokeSessionSchema = z.object({
+  action: z.enum(["revoke", "revoke_all"]),
+  sessionToken: z.string().min(1).max(500).optional(),
+});
+
+// ─── Background Job Schemas ───
+
+export const enqueueJobSchema = z.object({
+  type: z.enum([
+    "sync_slack", "sync_email", "sync_jira", "check_sla",
+    "check_staking", "poll_komainu", "check_confirmations", "cleanup_sessions",
+  ]),
+  payload: z.record(z.string(), z.unknown()).default({}),
+});
+
+// ─── Search Schema ───
+
+export const searchQuerySchema = z.object({
+  q: z.string().min(2).max(200),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ─── Report Schema ───
+
+export const reportQuerySchema = z.object({
+  type: z.enum(["daily_digest", "weekly_report", "incident_report", "compliance_summary"]),
+  format: z.enum(["html", "json"]).default("json"),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+});
+
 // ─── Query Parameter Schemas ───
 
 export const listQuerySchema = z.object({
