@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { apiSuccess, apiError } from "@/lib/api/response";
+import { apiSuccess } from "@/lib/api/response";
 
 export async function GET() {
   const start = Date.now();
@@ -33,8 +33,6 @@ export async function GET() {
     health.databaseLatencyMs = Date.now() - start;
   }
 
-  if (health.status === "ok") {
-    return apiSuccess(health);
-  }
-  return apiError("Service degraded", 503);
+  const statusCode = health.status === "ok" ? 200 : 503;
+  return apiSuccess(health, undefined, statusCode);
 }

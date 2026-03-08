@@ -5,7 +5,7 @@
  * Checks DB connectivity, migration state, and critical env vars.
  */
 import { prisma } from "@/lib/prisma";
-import { apiSuccess, apiError } from "@/lib/api/response";
+import { apiSuccess } from "@/lib/api/response";
 
 interface ReadinessCheck {
   name: string;
@@ -80,15 +80,17 @@ export async function GET() {
       : "No external integrations configured",
   });
 
-  if (overallStatus === "ready") {
-    return apiSuccess({
+  const statusCode = overallStatus === "ready" ? 200 : 503;
+
+  return apiSuccess(
+    {
       status: overallStatus,
       checks,
       timestamp: new Date().toISOString(),
       version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || "dev",
       environment: process.env.NODE_ENV || "development",
-    });
-  }
-
-  return apiError("Service not ready", 503);
+    },
+    undefined,
+    statusCode,
+  );
 }
