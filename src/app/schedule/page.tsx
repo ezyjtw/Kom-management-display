@@ -1,143 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import {
-  Calendar,
-  Clock,
-  Users,
-  Plus,
-  RefreshCw,
-  Sun,
-  Palmtree,
-  CheckCircle2,
-  Circle,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  AlertTriangle,
-  RotateCcw,
-  MapPin,
-  Home,
-  Moon,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
-interface Employee {
-  id: string;
-  name: string;
-  team: string;
-  role: string;
-}
-
-interface OnCallEntry {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  team: string;
-  shiftType: string;
-}
-
-interface Holiday {
-  id: string;
-  date: string;
-  name: string;
-  region: string;
-}
-
-interface PtoEntry {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  employeeTeam?: string;
-  startDate: string;
-  endDate: string;
-  type: string;
-  status: string;
-  notes: string;
-}
-
-interface DailyTaskEntry {
-  id: string;
-  date: string;
-  team: string;
-  assigneeId: string | null;
-  assigneeName: string | null;
-  title: string;
-  description: string;
-  priority: string;
-  status: string;
-  category: string;
-  completedAt: string | null;
-  createdByName: string;
-}
-
-interface TeamSummary {
-  team: string;
-  teamLead: string;
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  inProgressTasks: number;
-  onCall: Array<{ employeeName: string; shiftType: string }>;
-  ptoToday: Array<{ employeeName: string; type: string }>;
-  tasks: DailyTaskEntry[];
-}
-
-interface DailySummary {
-  date: string;
-  holidays: Array<{ name: string; region: string }>;
-  teams: TeamSummary[];
-}
-
-interface RotaMember {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  location: string;
-  shiftType: string;
-  isWfh: boolean;
-  hasPto: boolean;
-}
-
-interface RotaPeriod {
-  startDate: string;
-  endDate: string;
-  rotationCycle: string;
-  lead: RotaMember | null;
-  members: RotaMember[];
-}
-
-interface RotaSubTeam {
-  subTeam: {
-    id: string;
-    name: string;
-    parentTeam: string;
-    description: string;
-  };
-  periods: RotaPeriod[];
-}
-
-interface RotaData {
-  subTeams: RotaSubTeam[];
-  holidays: Array<{ date: string; name: string; region: string }>;
-  pto: Array<{ employeeId: string; employeeName: string; startDate: string; endDate: string; type: string }>;
-}
-
-type Tab = "rota" | "daily" | "oncall" | "holidays" | "pto";
-
-const TEAMS = ["Transaction Operations", "Admin Operations", "Data Operations"];
-const PRIORITY_COLORS: Record<string, string> = {
-  urgent: "bg-red-500/10 text-red-400 border-red-500/20",
-  high: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  normal: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  low: "bg-gray-500/10 text-gray-400 border-gray-500/20",
-};
-const STATUS_ICONS: Record<string, typeof CheckCircle2> = {
-  completed: CheckCircle2,
-  in_progress: Loader2,
-  pending: Circle,
-  skipped: AlertTriangle,
-};
+import type { Employee, OnCallEntry, Holiday, PtoEntry, DailySummary, RotaData, Tab } from "./types";
+import { TEAMS } from "./types";
+import ScheduleHeader from "./ScheduleHeader";
+import OnCallRota, { OnCallSchedule } from "./OnCallRota";
+import PtoSection from "./PtoSection";
+import HolidaysSection from "./HolidaysSection";
+import DailyTasksSection from "./DailyTasksSection";
 
 export default function SchedulePage() {
   const [activeTab, setActiveTab] = useState<Tab>("rota");
@@ -148,119 +20,71 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
-  // Daily task state
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
-
-  // On-call state
   const [onCallEntries, setOnCallEntries] = useState<OnCallEntry[]>([]);
-
-  // Holiday state
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-
-  // PTO state
   const [ptoEntries, setPtoEntries] = useState<PtoEntry[]>([]);
-
-  // Rota state
   const [rotaData, setRotaData] = useState<RotaData | null>(null);
-
-  // Forms
   const [showAddTask, setShowAddTask] = useState(false);
   const [showAddOnCall, setShowAddOnCall] = useState(false);
   const [showAddHoliday, setShowAddHoliday] = useState(false);
   const [showAddPto, setShowAddPto] = useState(false);
-
-  // Form fields
   const [newTask, setNewTask] = useState({ team: TEAMS[0], title: "", description: "", priority: "normal", category: "operational", assigneeId: "" });
   const [newOnCall, setNewOnCall] = useState({ team: TEAMS[0], employeeId: "", shiftType: "primary" });
   const [newHoliday, setNewHoliday] = useState({ name: "", region: "Global" });
   const [newPto, setNewPto] = useState({ employeeId: "", startDate: selectedDate, endDate: selectedDate, type: "annual_leave", notes: "" });
 
-  const fetchEmployees = useCallback(async () => {
-    try {
-      const res = await fetch("/api/employees");
-      const json = await res.json();
-      if (json.success) setEmployees(json.data || []);
-    } catch { /* ignore */ }
+  // ─── Data fetching ───
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fetchJson = useCallback(async (url: string, onSuccess: (data: any) => void, showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try { const json = await (await fetch(url)).json(); if (json.success) onSuccess(json.data); } catch { /* ignore */ }
+    if (showLoading) setLoading(false);
   }, []);
 
-  const fetchDailySummary = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/schedule/daily-tasks/summary?date=${selectedDate}`);
-      const json = await res.json();
-      if (json.success) setDailySummary(json.data);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [selectedDate]);
+  const fetchEmployees = useCallback(() => fetchJson("/api/employees", (d) => setEmployees(d || []), false), [fetchJson]);
 
-  const fetchOnCall = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Get a week around the selected date
-      const d = new Date(selectedDate);
-      const from = new Date(d.getTime() - 3 * 86400000).toISOString().split("T")[0];
-      const to = new Date(d.getTime() + 7 * 86400000).toISOString().split("T")[0];
-      const res = await fetch(`/api/schedule/on-call?from=${from}&to=${to}`);
-      const json = await res.json();
-      if (json.success) setOnCallEntries(json.data || []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [selectedDate]);
+  const fetchDailySummary = useCallback(() =>
+    fetchJson(`/api/schedule/daily-tasks/summary?date=${selectedDate}`, setDailySummary), [fetchJson, selectedDate]);
 
-  const fetchHolidays = useCallback(async () => {
-    setLoading(true);
-    try {
-      const year = new Date(selectedDate).getFullYear();
-      const res = await fetch(`/api/schedule/holidays?year=${year}`);
-      const json = await res.json();
-      if (json.success) setHolidays(json.data || []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [selectedDate]);
+  const fetchOnCall = useCallback(() => {
+    const d = new Date(selectedDate);
+    const from = new Date(d.getTime() - 3 * 86400000).toISOString().split("T")[0];
+    const to = new Date(d.getTime() + 7 * 86400000).toISOString().split("T")[0];
+    return fetchJson(`/api/schedule/on-call?from=${from}&to=${to}`, (d) => setOnCallEntries(d || []));
+  }, [fetchJson, selectedDate]);
 
-  const fetchRota = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Snap to the Monday of the selected date's week, then fetch 2 weeks of rota data.
-      // This ensures we always show complete rotation periods (Mon-Fri).
-      const d = new Date(selectedDate);
-      const weekday = d.getDay();
-      // Sunday (0) maps to -6 (previous Monday), otherwise subtract weekday-1
-      const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
-      const monday = new Date(d.getTime() + mondayOffset * 86400000);
-      const from = monday.toISOString().split("T")[0];
-      const to = new Date(monday.getTime() + 13 * 86400000).toISOString().split("T")[0];
-      const res = await fetch(`/api/schedule/rota?from=${from}&to=${to}&team=Transaction Operations`);
-      const json = await res.json();
-      if (json.success) setRotaData(json.data);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [selectedDate]);
+  const fetchHolidays = useCallback(() => {
+    const year = new Date(selectedDate).getFullYear();
+    return fetchJson(`/api/schedule/holidays?year=${year}`, (d) => setHolidays(d || []));
+  }, [fetchJson, selectedDate]);
 
-  const fetchPto = useCallback(async () => {
-    setLoading(true);
-    try {
-      const d = new Date(selectedDate);
-      const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-      const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
-      const res = await fetch(`/api/schedule/pto?from=${from}&to=${to}`);
-      const json = await res.json();
-      if (json.success) setPtoEntries(json.data || []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [selectedDate]);
+  const fetchRota = useCallback(() => {
+    const d = new Date(selectedDate);
+    const weekday = d.getDay();
+    const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+    const monday = new Date(d.getTime() + mondayOffset * 86400000);
+    const from = monday.toISOString().split("T")[0];
+    const to = new Date(monday.getTime() + 13 * 86400000).toISOString().split("T")[0];
+    return fetchJson(`/api/schedule/rota?from=${from}&to=${to}&team=Transaction Operations`, setRotaData);
+  }, [fetchJson, selectedDate]);
+
+  const fetchPto = useCallback(() => {
+    const d = new Date(selectedDate);
+    const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+    const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
+    return fetchJson(`/api/schedule/pto?from=${from}&to=${to}`, (d) => setPtoEntries(d || []));
+  }, [fetchJson, selectedDate]);
+
+  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
   useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
-
-  useEffect(() => {
-    if (activeTab === "rota") fetchRota();
-    else if (activeTab === "daily") fetchDailySummary();
-    else if (activeTab === "oncall") fetchOnCall();
-    else if (activeTab === "holidays") fetchHolidays();
-    else if (activeTab === "pto") fetchPto();
+    const fetchers: Record<Tab, () => void> = { rota: fetchRota, daily: fetchDailySummary, oncall: fetchOnCall, holidays: fetchHolidays, pto: fetchPto };
+    fetchers[activeTab]();
   }, [activeTab, selectedDate, fetchRota, fetchDailySummary, fetchOnCall, fetchHolidays, fetchPto]);
+
+  // ─── Action handlers ───
 
   function changeDate(delta: number) {
     const d = new Date(selectedDate);
@@ -268,34 +92,26 @@ export default function SchedulePage() {
     setSelectedDate(d.toISOString().split("T")[0]);
   }
 
+  const postJson = async (url: string, body: object, method = "POST") => {
+    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  };
+
   async function handleAddTask() {
     if (!newTask.title) return;
-    await fetch("/api/schedule/daily-tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newTask, date: selectedDate, assigneeId: newTask.assigneeId || null }),
-    });
+    await postJson("/api/schedule/daily-tasks", { ...newTask, date: selectedDate, assigneeId: newTask.assigneeId || null });
     setShowAddTask(false);
     setNewTask({ team: TEAMS[0], title: "", description: "", priority: "normal", category: "operational", assigneeId: "" });
     fetchDailySummary();
   }
 
   async function handleTaskStatusChange(taskId: string, status: string) {
-    await fetch("/api/schedule/daily-tasks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: taskId, status }),
-    });
+    await postJson("/api/schedule/daily-tasks", { id: taskId, status }, "PATCH");
     fetchDailySummary();
   }
 
   async function handleAddOnCall() {
     if (!newOnCall.employeeId) return;
-    await fetch("/api/schedule/on-call", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newOnCall, date: selectedDate }),
-    });
+    await postJson("/api/schedule/on-call", { ...newOnCall, date: selectedDate });
     setShowAddOnCall(false);
     setNewOnCall({ team: TEAMS[0], employeeId: "", shiftType: "primary" });
     fetchOnCall();
@@ -303,11 +119,7 @@ export default function SchedulePage() {
 
   async function handleAddHoliday() {
     if (!newHoliday.name) return;
-    await fetch("/api/schedule/holidays", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newHoliday, date: selectedDate }),
-    });
+    await postJson("/api/schedule/holidays", { ...newHoliday, date: selectedDate });
     setShowAddHoliday(false);
     setNewHoliday({ name: "", region: "Global" });
     fetchHolidays();
@@ -315,90 +127,34 @@ export default function SchedulePage() {
 
   async function handleAddPto() {
     if (!newPto.employeeId) return;
-    await fetch("/api/schedule/pto", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newPto),
-    });
+    await postJson("/api/schedule/pto", newPto);
     setShowAddPto(false);
     setNewPto({ employeeId: "", startDate: selectedDate, endDate: selectedDate, type: "annual_leave", notes: "" });
     fetchPto();
   }
 
-  const tabs: Array<{ key: Tab; label: string; icon: typeof Calendar }> = [
-    { key: "rota", label: "Team Rota", icon: RotateCcw },
-    { key: "daily", label: "Daily Tasks", icon: CheckCircle2 },
-    { key: "oncall", label: "On-Call", icon: Clock },
-    { key: "holidays", label: "Holidays", icon: Sun },
-    { key: "pto", label: "PTO / Leave", icon: Palmtree },
-  ];
-
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  // ─── Render ───
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Schedule & Tasks</h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            On-call schedule, daily task allocation, holidays, and PTO management
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => changeDate(-1)} className="p-2 text-muted-foreground hover:text-foreground border border-border rounded-lg">
-            <ChevronLeft size={16} />
-          </button>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground"
-          />
-          <button onClick={() => changeDate(1)} className="p-2 text-muted-foreground hover:text-foreground border border-border rounded-lg">
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+      <ScheduleHeader
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
+        changeDate={changeDate}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        dailySummary={dailySummary}
+      />
 
-      {/* Date Display */}
-      <div className="text-sm font-medium text-muted-foreground">
-        {formatDate(selectedDate)}
-        {dailySummary?.holidays && dailySummary.holidays.length > 0 && (
-          <span className="ml-2 px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded text-xs">
-            {dailySummary.holidays.map((h) => h.name).join(", ")}
-          </span>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-card rounded-xl border border-border p-1">
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors flex-1 justify-center ${
-              activeTab === key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent/50"
-            }`}
-          >
-            <Icon size={16} />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
       {loading ? (
         <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
           <RefreshCw size={24} className="mx-auto mb-3 animate-spin" />
           Loading...
         </div>
       ) : activeTab === "rota" ? (
-        <RotaView rotaData={rotaData} />
+        <OnCallRota rotaData={rotaData} />
       ) : activeTab === "daily" ? (
-        <DailyTasksView
+        <DailyTasksSection
           summary={dailySummary}
           employees={employees}
           showAdd={showAddTask}
@@ -409,7 +165,7 @@ export default function SchedulePage() {
           onStatusChange={handleTaskStatusChange}
         />
       ) : activeTab === "oncall" ? (
-        <OnCallView
+        <OnCallSchedule
           entries={onCallEntries}
           selectedDate={selectedDate}
           employees={employees}
@@ -420,7 +176,7 @@ export default function SchedulePage() {
           onAdd={handleAddOnCall}
         />
       ) : activeTab === "holidays" ? (
-        <HolidaysView
+        <HolidaysSection
           holidays={holidays}
           showAdd={showAddHoliday}
           setShowAdd={setShowAddHoliday}
@@ -429,7 +185,7 @@ export default function SchedulePage() {
           onAdd={handleAddHoliday}
         />
       ) : (
-        <PtoView
+        <PtoSection
           entries={ptoEntries}
           employees={employees}
           showAdd={showAddPto}
@@ -439,641 +195,6 @@ export default function SchedulePage() {
           onAdd={handleAddPto}
         />
       )}
-    </div>
-  );
-}
-
-// ─── Daily Tasks View ───
-
-function DailyTasksView({
-  summary,
-  employees,
-  showAdd,
-  setShowAdd,
-  newTask,
-  setNewTask,
-  onAdd,
-  onStatusChange,
-}: {
-  summary: DailySummary | null;
-  employees: Employee[];
-  showAdd: boolean;
-  setShowAdd: (v: boolean) => void;
-  newTask: { team: string; title: string; description: string; priority: string; category: string; assigneeId: string };
-  setNewTask: (v: typeof newTask) => void;
-  onAdd: () => void;
-  onStatusChange: (id: string, status: string) => void;
-}) {
-  if (!summary) return <div className="text-muted-foreground text-center py-8">No data available</div>;
-
-  return (
-    <div className="space-y-4">
-      {/* Add Task button */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-        >
-          <Plus size={16} />
-          Add Task
-        </button>
-      </div>
-
-      {/* Add Task Form */}
-      {showAdd && (
-        <div className="bg-card rounded-xl border border-border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">New Daily Task</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Team</label>
-              <select value={newTask.team} onChange={(e) => setNewTask({ ...newTask, team: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Assign To</label>
-              <select value={newTask.assigneeId} onChange={(e) => setNewTask({ ...newTask, assigneeId: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="">Unassigned</option>
-                {employees.filter((e) => e.team === newTask.team).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-xs text-muted-foreground block mb-1">Title</label>
-              <input value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground" placeholder="Task title..." />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Priority</label>
-              <select value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="low">Low</option>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Category</label>
-              <select value={newTask.category} onChange={(e) => setNewTask({ ...newTask, category: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="operational">Operational</option>
-                <option value="compliance">Compliance</option>
-                <option value="client">Client</option>
-                <option value="administrative">Administrative</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onAdd} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">Create</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-accent/50">Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Team Cards */}
-      {summary.teams.map((team) => (
-        <div key={team.team} className="bg-card rounded-xl border border-border overflow-hidden">
-          {/* Team Header */}
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">{team.team}</h3>
-              <p className="text-xs text-muted-foreground">Lead: {team.teamLead}</p>
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              {team.onCall.length > 0 && (
-                <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded">
-                  On-call: {team.onCall.map((o) => o.employeeName).join(", ")}
-                </span>
-              )}
-              {team.ptoToday.length > 0 && (
-                <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded">
-                  PTO: {team.ptoToday.map((p) => p.employeeName).join(", ")}
-                </span>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-400">{team.completedTasks}/{team.totalTasks}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Tasks */}
-          {team.tasks.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">No tasks allocated</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {team.tasks.map((task) => {
-                const StatusIcon = STATUS_ICONS[task.status] || Circle;
-                const statusColor = task.status === "completed" ? "text-emerald-400" : task.status === "in_progress" ? "text-blue-400 animate-spin" : "text-muted-foreground";
-                return (
-                  <div key={task.id} className="px-4 py-3 flex items-center gap-3 hover:bg-accent/30 transition-colors">
-                    <button
-                      onClick={() => {
-                        const next = task.status === "pending" ? "in_progress" : task.status === "in_progress" ? "completed" : "pending";
-                        onStatusChange(task.id, next);
-                      }}
-                      className={statusColor}
-                    >
-                      <StatusIcon size={18} />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${task.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                        {task.title}
-                      </p>
-                      {task.assigneeName && (
-                        <p className="text-xs text-muted-foreground">{task.assigneeName}</p>
-                      )}
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded border ${PRIORITY_COLORS[task.priority] || ""}`}>
-                      {task.priority}
-                    </span>
-                    <span className="text-xs text-muted-foreground capitalize">{task.category}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Rota View ───
-
-function RotaView({ rotaData }: { rotaData: RotaData | null }) {
-  if (!rotaData || rotaData.subTeams.length === 0) {
-    return <div className="text-muted-foreground text-center py-8">No rota data available</div>;
-  }
-
-  const SHIFT_BADGES: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-    standard: { label: "Standard", color: "bg-blue-500/10 text-blue-400", icon: Clock },
-    late: { label: "Late Shift", color: "bg-purple-500/10 text-purple-400", icon: Moon },
-    weekend: { label: "Weekend", color: "bg-amber-500/10 text-amber-400", icon: Calendar },
-  };
-
-  const LOCATION_COLORS: Record<string, string> = {
-    London: "text-blue-400",
-    "Hong Kong": "text-emerald-400",
-    Jersey: "text-amber-400",
-  };
-
-  function formatPeriod(start: string, end: string) {
-    const s = new Date(start);
-    const e = new Date(end);
-    return `${s.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — ${e.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
-  }
-
-  function MemberBadge({ member }: { member: RotaMember }) {
-    const shiftCfg = SHIFT_BADGES[member.shiftType] || SHIFT_BADGES.standard;
-    const locColor = LOCATION_COLORS[member.location] || "text-muted-foreground";
-
-    return (
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border ${member.hasPto ? "opacity-50 bg-red-500/5" : "bg-card"}`}>
-        <Users size={14} className="text-muted-foreground shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">{member.employeeName}</span>
-            {member.hasPto && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">PTO</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-            <span className={`flex items-center gap-1 ${locColor}`}>
-              <MapPin size={10} />
-              {member.location}
-            </span>
-            {member.isWfh && (
-              <span className="flex items-center gap-1 text-purple-400">
-                <Home size={10} />
-                WFH
-              </span>
-            )}
-            {member.shiftType !== "standard" && (
-              <span className={`px-1.5 py-0.5 rounded ${shiftCfg.color}`}>
-                {shiftCfg.label}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* PTO warnings */}
-      {rotaData.pto.length > 0 && (
-        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
-          <h4 className="text-xs font-medium text-amber-400 mb-2 flex items-center gap-1">
-            <AlertTriangle size={12} />
-            PTO / Leave in this period
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {rotaData.pto.map((p, i) => (
-              <span key={i} className="text-xs px-2 py-1 bg-amber-500/10 text-amber-300 rounded">
-                {p.employeeName}: {new Date(p.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — {new Date(p.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sub-team cards */}
-      {rotaData.subTeams.map((st) => (
-        <div key={st.subTeam.id} className="bg-card rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold text-foreground">{st.subTeam.name}</h3>
-            <p className="text-xs text-muted-foreground">{st.subTeam.description}</p>
-          </div>
-
-          {st.periods.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">No assignments for this period</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {st.periods.map((period, idx) => (
-                <div key={idx} className="px-4 py-3">
-                  {/* Period header */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {formatPeriod(period.startDate, period.endDate)}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-accent/50 text-accent-foreground rounded capitalize">
-                      {period.rotationCycle} rotation
-                    </span>
-                  </div>
-
-                  {/* Lead */}
-                  {period.lead && (
-                    <div className="mb-2">
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Team Lead</p>
-                      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-primary/30 ${period.lead.hasPto ? "opacity-50 bg-red-500/5" : "bg-primary/5"}`}>
-                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <Users size={12} className="text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">{period.lead.employeeName}</span>
-                            {period.lead.hasPto && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">PTO</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className={`flex items-center gap-1 ${LOCATION_COLORS[period.lead.location] || ""}`}>
-                              <MapPin size={10} />
-                              {period.lead.location}
-                            </span>
-                            {period.lead.isWfh && (
-                              <span className="flex items-center gap-1 text-purple-400"><Home size={10} /> WFH</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Members */}
-                  {period.members.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Team Members</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {period.members.map((m) => (
-                          <MemberBadge key={m.id} member={m} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-
-      {/* Holidays in range */}
-      {rotaData.holidays.length > 0 && (
-        <div className="bg-card rounded-xl border border-border p-4">
-          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-            <Sun size={12} className="text-amber-400" />
-            Holidays in this period
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {rotaData.holidays.map((h, i) => (
-              <span key={i} className="text-xs px-2 py-1 bg-amber-500/10 text-amber-300 rounded">
-                {h.name} — {new Date(h.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ({h.region})
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── On-Call View ───
-
-function OnCallView({
-  entries,
-  selectedDate,
-  employees,
-  showAdd,
-  setShowAdd,
-  newOnCall,
-  setNewOnCall,
-  onAdd,
-}: {
-  entries: OnCallEntry[];
-  selectedDate: string;
-  employees: Employee[];
-  showAdd: boolean;
-  setShowAdd: (v: boolean) => void;
-  newOnCall: { team: string; employeeId: string; shiftType: string };
-  setNewOnCall: (v: typeof newOnCall) => void;
-  onAdd: () => void;
-}) {
-  // Group entries by date
-  const byDate = new Map<string, OnCallEntry[]>();
-  entries.forEach((e) => {
-    const d = e.date.split("T")[0];
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d)!.push(e);
-  });
-
-  const dates = Array.from(byDate.keys()).sort();
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-          <Plus size={16} /> Assign On-Call
-        </button>
-      </div>
-
-      {showAdd && (
-        <div className="bg-card rounded-xl border border-border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Assign On-Call for {selectedDate}</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Team</label>
-              <select value={newOnCall.team} onChange={(e) => setNewOnCall({ ...newOnCall, team: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Employee</label>
-              <select value={newOnCall.employeeId} onChange={(e) => setNewOnCall({ ...newOnCall, employeeId: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="">Select...</option>
-                {employees.filter((e) => e.team === newOnCall.team).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Shift</label>
-              <select value={newOnCall.shiftType} onChange={(e) => setNewOnCall({ ...newOnCall, shiftType: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="primary">Primary</option>
-                <option value="backup">Backup</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onAdd} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">Assign</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-accent/50">Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Schedule Grid */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Date</th>
-                {TEAMS.map((t) => (
-                  <th key={t} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {dates.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No on-call assignments in this range</td></tr>
-              ) : (
-                dates.map((date) => {
-                  const isToday = date === selectedDate;
-                  return (
-                    <tr key={date} className={`border-b border-border ${isToday ? "bg-primary/5" : ""}`}>
-                      <td className="px-4 py-3">
-                        <span className={`text-sm ${isToday ? "font-semibold text-primary" : "text-foreground"}`}>
-                          {new Date(date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
-                        </span>
-                      </td>
-                      {TEAMS.map((team) => {
-                        const teamEntries = byDate.get(date)?.filter((e) => e.team === team) || [];
-                        return (
-                          <td key={team} className="px-4 py-3">
-                            {teamEntries.length === 0 ? (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            ) : (
-                              teamEntries.map((e) => (
-                                <div key={e.id} className="flex items-center gap-1">
-                                  <Users size={12} className="text-muted-foreground" />
-                                  <span className="text-sm text-foreground">{e.employeeName}</span>
-                                  {e.shiftType === "backup" && (
-                                    <span className="text-xs text-muted-foreground">(backup)</span>
-                                  )}
-                                </div>
-                              ))
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Holidays View ───
-
-function HolidaysView({
-  holidays,
-  showAdd,
-  setShowAdd,
-  newHoliday,
-  setNewHoliday,
-  onAdd,
-}: {
-  holidays: Holiday[];
-  showAdd: boolean;
-  setShowAdd: (v: boolean) => void;
-  newHoliday: { name: string; region: string };
-  setNewHoliday: (v: typeof newHoliday) => void;
-  onAdd: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-          <Plus size={16} /> Add Holiday
-        </button>
-      </div>
-
-      {showAdd && (
-        <div className="bg-card rounded-xl border border-border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Add Public Holiday</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Holiday Name</label>
-              <input value={newHoliday.name} onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground" placeholder="e.g. Good Friday" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Region</label>
-              <select value={newHoliday.region} onChange={(e) => setNewHoliday({ ...newHoliday, region: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="Global">Global</option>
-                <option value="EMEA">EMEA</option>
-                <option value="APAC">APAC</option>
-                <option value="Americas">Americas</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onAdd} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">Add</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-accent/50">Cancel</button>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        {holidays.length === 0 ? (
-          <div className="px-4 py-8 text-center text-muted-foreground text-sm">No holidays recorded for this year</div>
-        ) : (
-          <div className="divide-y divide-border">
-            {holidays.map((h) => {
-              const d = new Date(h.date);
-              const isPast = d < new Date(new Date().toDateString());
-              return (
-                <div key={h.id} className={`px-4 py-3 flex items-center gap-4 ${isPast ? "opacity-50" : ""}`}>
-                  <Sun size={16} className="text-amber-400" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">{h.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-                    </p>
-                  </div>
-                  <span className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded">{h.region}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── PTO View ───
-
-function PtoView({
-  entries,
-  employees,
-  showAdd,
-  setShowAdd,
-  newPto,
-  setNewPto,
-  onAdd,
-}: {
-  entries: PtoEntry[];
-  employees: Employee[];
-  showAdd: boolean;
-  setShowAdd: (v: boolean) => void;
-  newPto: { employeeId: string; startDate: string; endDate: string; type: string; notes: string };
-  setNewPto: (v: typeof newPto) => void;
-  onAdd: () => void;
-}) {
-  const typeLabels: Record<string, string> = {
-    annual_leave: "Annual Leave",
-    sick: "Sick Leave",
-    wfh: "WFH",
-    other: "Other",
-  };
-
-  const typeColors: Record<string, string> = {
-    annual_leave: "bg-blue-500/10 text-blue-400",
-    sick: "bg-red-500/10 text-red-400",
-    wfh: "bg-purple-500/10 text-purple-400",
-    other: "bg-gray-500/10 text-gray-400",
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-          <Plus size={16} /> Add PTO
-        </button>
-      </div>
-
-      {showAdd && (
-        <div className="bg-card rounded-xl border border-border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Add PTO / Leave</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Employee</label>
-              <select value={newPto.employeeId} onChange={(e) => setNewPto({ ...newPto, employeeId: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="">Select...</option>
-                {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.team})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Type</label>
-              <select value={newPto.type} onChange={(e) => setNewPto({ ...newPto, type: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground">
-                <option value="annual_leave">Annual Leave</option>
-                <option value="sick">Sick Leave</option>
-                <option value="wfh">WFH</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Start Date</label>
-              <input type="date" value={newPto.startDate} onChange={(e) => setNewPto({ ...newPto, startDate: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">End Date</label>
-              <input type="date" value={newPto.endDate} onChange={(e) => setNewPto({ ...newPto, endDate: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onAdd} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">Add</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-accent/50">Cancel</button>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        {entries.length === 0 ? (
-          <div className="px-4 py-8 text-center text-muted-foreground text-sm">No PTO records for this period</div>
-        ) : (
-          <div className="divide-y divide-border">
-            {entries.map((p) => (
-              <div key={p.id} className="px-4 py-3 flex items-center gap-4">
-                <Palmtree size={16} className="text-emerald-400" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{p.employeeName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(p.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                    {" — "}
-                    {new Date(p.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                    {p.notes && ` · ${p.notes}`}
-                  </p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${typeColors[p.type] || ""}`}>
-                  {typeLabels[p.type] || p.type}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
