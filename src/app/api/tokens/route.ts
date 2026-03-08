@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/tokens
@@ -97,9 +99,9 @@ export async function GET(request: NextRequest) {
       highRisk: data.filter((d) => d.riskLevel === "high" || d.riskLevel === "critical").length,
     };
 
-    return NextResponse.json({ success: true, data: { tokens: data, summary } });
+    return apiSuccess({ tokens: data, summary });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "tokens GET");
   }
 }
 
@@ -117,12 +119,15 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { action } = body;
 
     if (!action) {
-      return NextResponse.json({ success: false, error: "action is required" }, { status: 400 });
+      return apiValidationError("action is required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -131,7 +136,7 @@ export async function POST(request: NextRequest) {
       case "create": {
         const { symbol, name, network, contractAddress, tokenType, riskLevel, marketCapTier, notes, custodianSupport, stakingAvailable } = body;
         if (!symbol || !name) {
-          return NextResponse.json({ success: false, error: "symbol and name are required" }, { status: 400 });
+          return apiValidationError("symbol and name are required");
         }
 
         const token = await prisma.tokenReview.create({
@@ -151,18 +156,18 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        return NextResponse.json({ success: true, data: { id: token.id } });
+        return apiSuccess({ id: token.id });
       }
 
       case "update_status": {
         const { tokenId, newStatus, reason } = body;
         if (!tokenId || !newStatus) {
-          return NextResponse.json({ success: false, error: "tokenId and newStatus are required" }, { status: 400 });
+          return apiValidationError("tokenId and newStatus are required");
         }
 
         const validStatuses = ["proposed", "under_review", "compliance_review", "approved", "rejected", "live"];
         if (!validStatuses.includes(newStatus)) {
-          return NextResponse.json({ success: false, error: `Invalid status: ${newStatus}` }, { status: 400 });
+          return apiValidationError(`Invalid status: ${newStatus}`);
         }
 
         const updateData: Record<string, unknown> = { status: newStatus };
@@ -188,43 +193,45 @@ export async function POST(request: NextRequest) {
           data: updateData,
         });
 
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "add_signal": {
         const { tokenId, signalType, source, description, weight } = body;
         if (!tokenId || !signalType) {
-          return NextResponse.json({ success: false, error: "tokenId and signalType are required" }, { status: 400 });
+          return apiValidationError("tokenId and signalType are required");
         }
 
-        await prisma.tokenDemandSignal.create({
-          data: {
-            tokenReviewId: tokenId,
-            signalType,
-            source: source || "",
-            description: description || "",
-            weight: weight || 1,
-            recordedById: actorId,
-          },
+        await prisma.$transaction(async (tx) => {
+          await tx.tokenDemandSignal.create({
+            data: {
+              tokenReviewId: tokenId,
+              signalType,
+              source: source || "",
+              description: description || "",
+              weight: weight || 1,
+              recordedById: actorId,
+            },
+          });
+
+          // Recompute demand score: sum of signal weights, capped at 100
+          const signals = await tx.tokenDemandSignal.findMany({
+            where: { tokenReviewId: tokenId },
+          });
+          const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0) * 10);
+          await tx.tokenReview.update({
+            where: { id: tokenId },
+            data: { demandScore: score },
+          });
         });
 
-        // Recompute demand score: sum of signal weights, capped at 100
-        const signals = await prisma.tokenDemandSignal.findMany({
-          where: { tokenReviewId: tokenId },
-        });
-        const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0) * 10);
-        await prisma.tokenReview.update({
-          where: { id: tokenId },
-          data: { demandScore: score },
-        });
-
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "update": {
         const { tokenId } = body;
         if (!tokenId) {
-          return NextResponse.json({ success: false, error: "tokenId is required" }, { status: 400 });
+          return apiValidationError("tokenId is required");
         }
 
         const updateData: Record<string, unknown> = {};
@@ -249,13 +256,13 @@ export async function POST(request: NextRequest) {
           data: updateData,
         });
 
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "save_research": {
         const { tokenId, researchResult, recommendation } = body;
         if (!tokenId || !researchResult) {
-          return NextResponse.json({ success: false, error: "tokenId and researchResult are required" }, { status: 400 });
+          return apiValidationError("tokenId and researchResult are required");
         }
 
         await prisma.tokenReview.update({
@@ -267,13 +274,13 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       default:
-        return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
+        return apiValidationError(`Unknown action: ${action}`);
     }
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "tokens POST");
   }
 }

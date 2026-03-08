@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { computeSlaStatus, computeTravelRuleAging } from "@/lib/sla";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/command-center
@@ -208,75 +209,69 @@ export async function GET() {
       (t) => t.slaStatus.isTtoBreached || t.slaStatus.isTtfaBreached || t.slaStatus.isTslaBreached,
     );
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        travelRule: {
-          openCount: openCases.length,
-          redCount: casesWithAging.filter((c) => c.agingStatus === "red").length,
-          amberCount: casesWithAging.filter((c) => c.agingStatus === "amber").length,
-          topUrgent: casesWithAging.slice(0, 5),
-        },
-        comms: {
-          totalActive: activeThreads.length,
-          breachedCount: breachedThreads.length,
-          unassignedCount: activeThreads.filter((t) => t.status === "Unassigned").length,
-          topBreached: breachedThreads.slice(0, 5),
-        },
-        alerts: {
-          activeCount: activeAlerts.length,
-          items: activeAlerts,
-        },
-        recentActivity: recentAudit.map((a) => ({
-          id: a.id,
-          action: a.action,
-          entityType: a.entityType,
-          entityId: a.entityId,
-          userName: (a as Record<string, unknown>).user
-            ? ((a as Record<string, unknown>).user as { name?: string })?.name ?? "System"
-            : "System",
-          details: a.details,
-          createdAt: a.createdAt,
-        })),
-        dailyTasks: {
-          total: todaysTasks.length,
-          completed: todaysTasks.filter((t) => t.status === "completed").length,
-          pending: todaysTasks.filter((t) => t.status === "pending").length,
-          inProgress: todaysTasks.filter((t) => t.status === "in_progress").length,
-          urgent: todaysTasks.filter((t) => t.priority === "urgent" || t.priority === "high").length,
-        },
-        coverage: activityCoverage,
-        projects: {
-          activeCount: activeProjects.filter((p) => p.status === "active").length,
-          onHoldCount: activeProjects.filter((p) => p.status === "on_hold").length,
-          overdueCount: activeProjects.filter((p) => p.targetDate && new Date(p.targetDate) < new Date() && p.status === "active").length,
-          items: activeProjects.map((p) => ({
-            id: p.id,
-            name: p.name,
-            status: p.status,
-            priority: p.priority,
-            progress: p.progress,
-            targetDate: p.targetDate,
-            team: p.team,
-          })),
-        },
-        incidents: {
-          activeCount: activeIncidents.filter((i) => i.status === "active").length,
-          monitoringCount: activeIncidents.filter((i) => i.status === "monitoring").length,
-          criticalCount: activeIncidents.filter((i) => i.severity === "critical" && i.status === "active").length,
-          items: activeIncidents,
-        },
-        staking: stakingHeartbeat,
-        dailyChecks: dailyCheckStatus,
-        screening: screeningHealth,
-        rca: rcaStatus,
-        tokens: tokenPipeline,
+    return apiSuccess({
+      travelRule: {
+        openCount: openCases.length,
+        redCount: casesWithAging.filter((c) => c.agingStatus === "red").length,
+        amberCount: casesWithAging.filter((c) => c.agingStatus === "amber").length,
+        topUrgent: casesWithAging.slice(0, 5),
       },
+      comms: {
+        totalActive: activeThreads.length,
+        breachedCount: breachedThreads.length,
+        unassignedCount: activeThreads.filter((t) => t.status === "Unassigned").length,
+        topBreached: breachedThreads.slice(0, 5),
+      },
+      alerts: {
+        activeCount: activeAlerts.length,
+        items: activeAlerts,
+      },
+      recentActivity: recentAudit.map((a) => ({
+        id: a.id,
+        action: a.action,
+        entityType: a.entityType,
+        entityId: a.entityId,
+        userName: (a as Record<string, unknown>).user
+          ? ((a as Record<string, unknown>).user as { name?: string })?.name ?? "System"
+          : "System",
+        details: a.details,
+        createdAt: a.createdAt,
+      })),
+      dailyTasks: {
+        total: todaysTasks.length,
+        completed: todaysTasks.filter((t) => t.status === "completed").length,
+        pending: todaysTasks.filter((t) => t.status === "pending").length,
+        inProgress: todaysTasks.filter((t) => t.status === "in_progress").length,
+        urgent: todaysTasks.filter((t) => t.priority === "urgent" || t.priority === "high").length,
+      },
+      coverage: activityCoverage,
+      projects: {
+        activeCount: activeProjects.filter((p) => p.status === "active").length,
+        onHoldCount: activeProjects.filter((p) => p.status === "on_hold").length,
+        overdueCount: activeProjects.filter((p) => p.targetDate && new Date(p.targetDate) < new Date() && p.status === "active").length,
+        items: activeProjects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          priority: p.priority,
+          progress: p.progress,
+          targetDate: p.targetDate,
+          team: p.team,
+        })),
+      },
+      incidents: {
+        activeCount: activeIncidents.filter((i) => i.status === "active").length,
+        monitoringCount: activeIncidents.filter((i) => i.status === "monitoring").length,
+        criticalCount: activeIncidents.filter((i) => i.severity === "critical" && i.status === "active").length,
+        items: activeIncidents,
+      },
+      staking: stakingHeartbeat,
+      dailyChecks: dailyCheckStatus,
+      screening: screeningHealth,
+      rca: rcaStatus,
+      tokens: tokenPipeline,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "command center");
   }
 }

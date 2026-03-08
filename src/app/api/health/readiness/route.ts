@@ -4,8 +4,8 @@
  * Readiness probe — confirms the app can serve requests.
  * Checks DB connectivity, migration state, and critical env vars.
  */
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess, apiError } from "@/lib/api/response";
 
 interface ReadinessCheck {
   name: string;
@@ -80,16 +80,15 @@ export async function GET() {
       : "No external integrations configured",
   });
 
-  const statusCode = overallStatus === "ready" ? 200 : 503;
-
-  return NextResponse.json(
-    {
+  if (overallStatus === "ready") {
+    return apiSuccess({
       status: overallStatus,
       checks,
       timestamp: new Date().toISOString(),
       version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || "dev",
       environment: process.env.NODE_ENV || "development",
-    },
-    { status: statusCode },
-  );
+    });
+  }
+
+  return apiError("Service not ready", 503);
 }

@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess, apiError } from "@/lib/api/response";
 
 export async function GET() {
   const start = Date.now();
@@ -33,6 +33,8 @@ export async function GET() {
     health.databaseLatencyMs = Date.now() - start;
   }
 
-  const statusCode = health.status === "ok" ? 200 : 503;
-  return NextResponse.json(health, { status: statusCode });
+  if (health.status === "ok") {
+    return apiSuccess(health);
+  }
+  return apiError("Service degraded", 503);
 }
