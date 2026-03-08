@@ -7,6 +7,10 @@ RUN npm ci
 # Stage 2: Build
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Prisma engines need OpenSSL during next build (page data collection)
+RUN apk add --no-cache openssl
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
