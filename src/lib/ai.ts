@@ -365,6 +365,173 @@ Respond with ONLY valid JSON matching this structure. Be specific to institution
  *
  * Returns JSON array of suggested tokens with rationale.
  */
+/**
+ * Summarise daily check results into a Jira-ready report.
+ */
+export async function summariseDailyChecks(data: {
+  date: string;
+  items: Array<{
+    name: string;
+    category: string;
+    status: string;
+    autoResult: string;
+    notes: string;
+  }>;
+}): Promise<string | null> {
+  return complete({
+    system: `You are an ops report writer for a digital asset custody firm (Komainu).
+Given daily check results, produce a concise Jira ticket summary grouped by category.
+Lead with issues found, then confirmations. Use bullet points.
+Format: "## Daily Ops Check — [date]" then categories as ### headings.
+Mark issues with ⚠️ and passes with ✅. Keep it brief and actionable.`,
+    userMessage: `Generate a Jira summary for these daily check results:\n\n${JSON.stringify(data, null, 2)}`,
+    maxTokens: 1024,
+  });
+}
+
+/**
+ * Explain why a staking wallet's reward is late or has a balance variance.
+ */
+export async function analyseStakingAnomaly(wallet: {
+  asset: string;
+  network: string;
+  validatorName: string;
+  rewardModel: string;
+  expectedRewardFrequencyHours: number;
+  lastRewardAt: string | null;
+  nextExpectedRewardAt: string | null;
+  stakedAmount: number;
+  onChainBalance: number;
+  platformBalance: number;
+  varianceAmount: number;
+  isColdStaking: boolean;
+  isTestWallet: boolean;
+  minimumThreshold: number;
+  rewardStatus: string;
+}): Promise<string | null> {
+  return complete({
+    system: `You are a staking operations analyst for a digital asset custody firm.
+Explain why this staking wallet's reward may be late or its balance shows a variance.
+Consider: reward model timing, minimum thresholds, validator behavior, chain-specific delays, test wallets, cold staking specifics.
+Provide a 1-2 sentence explanation that an operator can use to decide if action is needed.`,
+    userMessage: JSON.stringify(wallet),
+    maxTokens: 256,
+  });
+}
+
+/**
+ * AI-assisted risk classification for a screening entry.
+ * Returns JSON with riskLevel, reasoning, and suggestedAction.
+ */
+export async function classifyScreeningRisk(entry: {
+  transactionId: string;
+  txHash: string;
+  asset: string;
+  amount: number;
+  direction: string;
+  screeningStatus: string;
+  riskScore: number;
+  classification: string;
+}): Promise<{ riskLevel: string; reasoning: string; suggestedAction: string } | null> {
+  const text = await complete({
+    system: `You are a transaction screening analyst for a digital asset custody firm.
+Given transaction details and screening data, classify the risk level and suggest an action.
+Consider: amount thresholds, asset risk profile, screening status, direction, and existing classification.
+Respond with ONLY valid JSON: {"riskLevel":"low|medium|high|critical","reasoning":"brief explanation","suggestedAction":"clear|review|escalate|block"}`,
+    userMessage: JSON.stringify(entry),
+    maxTokens: 256,
+  });
+
+  if (!text) return null;
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Draft an RCA summary from incident details and timeline.
+ */
+export async function draftRcaSummary(incident: {
+  title: string;
+  provider: string;
+  severity: string;
+  description: string;
+  status: string;
+  rcaStatus: string;
+  updates: Array<{ message: string; createdAt: string; authorName: string }>;
+  followUpItems: string[];
+}): Promise<string | null> {
+  return complete({
+    system: `You are an incident management analyst for a digital asset custody firm.
+Draft a concise RCA summary covering:
+1. **Incident Overview** — what happened, when, and which systems/clients were affected
+2. **Root Cause** — the underlying technical or process failure
+3. **Impact Assessment** — operational and client impact
+4. **Remediation Actions** — what was done to resolve the incident
+5. **Preventive Measures** — what changes will prevent recurrence
+
+Use markdown formatting. Be specific to digital asset custody operations. Keep it to one page.`,
+    userMessage: JSON.stringify(incident),
+    maxTokens: 1024,
+  });
+}
+
+/**
+ * Draft a compliance escalation note for an approval request.
+ */
+export async function draftEscalationNote(request: {
+  requestId: string;
+  type: string;
+  entity: string;
+  requestedAt: string;
+  expiresAt: string;
+  ageMinutes: number;
+  riskLevel: string;
+  lane: string;
+}): Promise<string | null> {
+  return complete({
+    system: `You are a compliance liaison for a digital asset custody firm (Komainu).
+Draft a concise escalation note for a compliance reviewer, including:
+- Request summary (type, entity, age)
+- Risk factors identified
+- Recommended urgency level
+- Specific questions for compliance to address
+
+Keep it professional and under 200 words. Use bullet points.`,
+    userMessage: JSON.stringify(request),
+    maxTokens: 512,
+  });
+}
+
+/**
+ * Analyse stuck/slow transactions and identify patterns.
+ */
+export async function analyseStuckTransactions(transactions: Array<{
+  id: string;
+  asset: string;
+  network?: string;
+  ageMinutes: number;
+  status: string;
+  amount?: number;
+}>): Promise<string | null> {
+  return complete({
+    system: `You are a blockchain operations analyst for a digital asset custody firm.
+Analyse these stuck/slow transactions and identify patterns:
+- Chain congestion issues
+- Fee-related delays
+- Validator or node delays
+- Systemic problems across chains or assets
+- Any common factors
+
+Provide a brief operational summary (3-5 bullet points) that an operator can use in a daily check report.`,
+    userMessage: `Stuck/slow transactions:\n\n${JSON.stringify(transactions, null, 2)}`,
+    maxTokens: 512,
+  });
+}
+
 export async function suggestTokensToOnboard(context: {
   existingTokens: Array<{ symbol: string; network: string; status: string }>;
   clientDemandSignals?: Array<{ source: string; description: string }>;
