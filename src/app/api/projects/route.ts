@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       startDate: p.startDate?.toISOString() || null,
       targetDate: p.targetDate?.toISOString() || null,
       progress: p.progress,
-      tags: JSON.parse(p.tags || "[]"),
+      tags: typeof p.tags === "string" ? JSON.parse(p.tags || "[]") : (p.tags ?? []),
       memberCount: p._count.members,
       latestUpdate: p.updates[0]?.content || null,
       latestUpdateAt: p.updates[0]?.createdAt.toISOString() || null,

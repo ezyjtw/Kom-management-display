@@ -26,7 +26,8 @@ export async function GET(
       );
     }
 
-    const ids: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const rawIds = thread.secondaryOwnerIds;
+    const ids: string[] = typeof rawIds === "string" ? JSON.parse(rawIds || "[]") : (rawIds as string[] ?? []);
 
     // Resolve names
     const employees = ids.length
@@ -84,7 +85,8 @@ export async function POST(
     const actorId = auth.employeeId || auth.id;
     const isPrivileged = ["admin", "lead"].includes(auth.role);
     const isOwner = thread.ownerUserId === actorId;
-    const currentIds: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const rawCurrentIds = thread.secondaryOwnerIds;
+    const currentIds: string[] = typeof rawCurrentIds === "string" ? JSON.parse(rawCurrentIds || "[]") : (rawCurrentIds as string[] ?? []);
     const isSecondary = currentIds.includes(actorId);
 
     if (!isPrivileged && !isOwner && !isSecondary) {

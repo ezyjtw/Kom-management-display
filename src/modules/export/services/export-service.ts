@@ -521,10 +521,11 @@ async function auditExport(
   }
 }
 
-function safeParseJson(value: string): Record<string, unknown> {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
+function safeParseJson(value: unknown): Record<string, unknown> {
+  if (value === null || value === undefined) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return {}; }
   }
+  return {};
 }

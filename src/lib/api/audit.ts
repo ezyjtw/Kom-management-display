@@ -124,7 +124,7 @@ export async function queryAuditLogs(filters: {
   return {
     logs: logs.map((log) => ({
       ...log,
-      details: JSON.parse(log.details || "{}"),
+      details: typeof log.details === "string" ? JSON.parse(log.details || "{}") : (log.details ?? {}),
     })),
     total,
     page,

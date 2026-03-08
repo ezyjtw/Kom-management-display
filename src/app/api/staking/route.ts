@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     const data = wallets.map((w) => {
       let tags: string[] = [];
-      try { tags = JSON.parse(w.tags); } catch { /* */ }
+      try { tags = typeof w.tags === "string" ? JSON.parse(w.tags) : (w.tags as string[] ?? []); } catch { /* */ }
       const rewardHealth = computeRewardHealth(w);
       const varianceFlag = w.onChainBalance != null && w.platformBalance != null
         ? Math.abs(w.onChainBalance - w.platformBalance) > w.varianceThreshold

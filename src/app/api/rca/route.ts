@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const data = incidents.map((inc) => {
       let followUpItems: Array<{ title: string; status: string; assigneeId?: string }> = [];
-      try { followUpItems = JSON.parse(inc.rcaFollowUpItems); } catch { /* */ }
+      try { followUpItems = typeof inc.rcaFollowUpItems === "string" ? JSON.parse(inc.rcaFollowUpItems) : (inc.rcaFollowUpItems as typeof followUpItems ?? []); } catch { /* */ }
 
       const rcaRaisedAt = inc.rcaRaisedAt || inc.createdAt;
       const ageDays = Math.round((now.getTime() - rcaRaisedAt.getTime()) / 86400000);

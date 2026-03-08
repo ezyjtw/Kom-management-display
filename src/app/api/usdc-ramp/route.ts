@@ -213,7 +213,7 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 });
         }
         let existing: string[] = [];
-        try { existing = JSON.parse(ticket.evidence) as string[]; } catch { /* ignore */ }
+        try { existing = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
         existing.push(fields.evidenceRef || "");
         data.evidence = JSON.stringify(existing);
         break;

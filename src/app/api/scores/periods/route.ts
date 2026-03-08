@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "12", 10), 52);
 
     const periods = await prisma.timePeriod.findMany({
-      where: { type },
+      where: { type: type as never },
       orderBy: { startDate: "desc" },
       take: limit,
     });
