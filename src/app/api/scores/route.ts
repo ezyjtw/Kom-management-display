@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { createScoreSchema, validateBody } from "@/lib/validation";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
@@ -51,7 +52,6 @@ export async function GET(request: NextRequest) {
     }
     if (!latestPeriod) {
       // No scoring periods yet — return employees with default scores
-      const { prisma } = await import("@/lib/prisma");
       const employeeWhere: Record<string, unknown> = { active: true };
       if (authz.scope === "own" && (auth as { employeeId?: string }).employeeId) {
         employeeWhere.id = (auth as { employeeId?: string }).employeeId;
@@ -78,10 +78,19 @@ export async function GET(request: NextRequest) {
       return apiSuccess(fallbackOverviews);
     }
 
-    const [previousPeriod, periodScoresResult, config] = await Promise.all([
+    // Build scope filter so leads/employees only see their own data
+    const employeeWhere: Record<string, unknown> = { active: true };
+    if (authz.scope === "own" && (auth as { employeeId?: string }).employeeId) {
+      employeeWhere.id = (auth as { employeeId?: string }).employeeId;
+    } else if (authz.scope === "team" && (auth as { team?: string }).team) {
+      employeeWhere.team = (auth as { team?: string }).team;
+    }
+
+    const [previousPeriod, periodScoresResult, config, employees] = await Promise.all([
       scoreRepository.getPreviousPeriod(periodType, latestPeriod.startDate).catch(() => null),
       scoreRepository.getScoresForPeriod(latestPeriod.id).catch(() => ({ scores: [], total: 0 })),
       scoringService.getActiveScoringConfig(),
+      prisma.employee.findMany({ where: employeeWhere }),
     ]);
 
     const periodScores = periodScoresResult.scores;
@@ -89,22 +98,26 @@ export async function GET(request: NextRequest) {
       ? await scoreRepository.getScoresForPeriod(previousPeriod.id).then(r => r.scores).catch(() => [])
       : [];
 
-    // Build employee overviews
+    // Build employee overviews — start from all active employees so those
+    // without scores in the current period still appear (with defaults)
     const employeeMap = new Map<string, {
       employee: { id: string; name: string; role: string; team: string; region?: string };
       current: Record<string, number>;
       previous: Record<string, number>;
     }>();
 
+    for (const emp of employees) {
+      employeeMap.set(emp.id, {
+        employee: emp,
+        current: {},
+        previous: {},
+      });
+    }
+
     for (const s of periodScores) {
-      if (!employeeMap.has(s.employeeId)) {
-        employeeMap.set(s.employeeId, {
-          employee: s.employee ?? { id: s.employeeId, name: "", role: "", team: "" },
-          current: {},
-          previous: {},
-        });
+      if (employeeMap.has(s.employeeId)) {
+        employeeMap.get(s.employeeId)!.current[s.category] = s.score;
       }
-      employeeMap.get(s.employeeId)!.current[s.category] = s.score;
     }
 
     for (const s of prevScores) {
