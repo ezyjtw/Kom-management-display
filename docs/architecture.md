@@ -1,5 +1,48 @@
 # Architecture Overview
 
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Client Browser                              │
+│  Next.js SSR Pages + React Client Components                        │
+│  Dashboard │ Thread Detail │ Admin │ Travel Rule │ Command Centre   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ HTTPS (JWT cookie)
+┌──────────────────────────────▼──────────────────────────────────────┐
+│                      Next.js API Routes                             │
+│  /api/scores │ /api/comms │ /api/export │ /api/travel-rule │ ...    │
+│                                                                     │
+│  Request → Middleware (JWT) → Route Handler → requireAuth()         │
+│    → checkAuthorization(user, resource, action) → applyScopeFilter()│
+│    → Service Layer → Repository → Prisma → PostgreSQL               │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+      ┌────────────────────────┼────────────────────────┐
+      ▼                        ▼                        ▼
+┌───────────┐          ┌──────────────┐         ┌──────────────┐
+│  Domain   │          │  Repository  │         │  Integration │
+│  Services │          │  Layer       │         │  Adapters    │
+│           │          │              │         │              │
+│ scoring   │──────────▶ score-repo   │         │ slack        │
+│ thread    │          │ thread-repo  │         │ email/IMAP   │
+│ alert     │          │ employee-repo│         │ jira         │
+│ employee  │          │              │         │ fireblocks   │
+│ travel    │          └──────┬───────┘         │ komainu      │
+│ incident  │                 │                 │ notabene     │
+│ export    │                 ▼                 └──────┬───────┘
+└───────────┘          ┌──────────────┐                │
+                       │  Prisma ORM  │                │
+                       └──────┬───────┘         NormalizedEvent[]
+                              │                        │
+                              ▼                        ▼
+                       ┌──────────────┐         ┌──────────────┐
+                       │ PostgreSQL   │         │  Job Queue   │
+                       │              │◀────────│  (async      │
+                       │ + Audit Log  │         │   workers)   │
+                       └──────────────┘         └──────────────┘
+```
+
 ## Layers
 
 ```
@@ -43,6 +86,50 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Module Dependency Diagram
+
+```
+                    ┌──────────┐
+                    │   auth   │ (RBAC matrix, scope filtering)
+                    └────┬─────┘
+                         │ used by all modules
+        ┌────────────────┼────────────────────────┐
+        ▼                ▼                        ▼
+   ┌─────────┐    ┌───────────┐           ┌──────────────┐
+   │ scoring │    │   comms   │           │ travel-rule  │
+   │         │    │           │           │              │
+   │ config  │    │ threads   │           │ cases        │
+   │ scores  │    │ notes     │           │ reconcile    │
+   │ periods │    │ ownership │           │ compliance   │
+   └────┬────┘    │ SLA       │           └──────────────┘
+        │         └─────┬─────┘
+        │               │ triggers
+        │               ▼
+        │         ┌───────────┐     ┌──────────────┐
+        │         │  alerts   │     │  incidents   │
+        │         │           │     │              │
+        │         │ generate  │     │ tracking     │
+        │         │ route     │     │ RCA          │
+        │         │ lifecycle │     └──────────────┘
+        │         └───────────┘
+        │
+        ▼
+   ┌─────────┐    ┌───────────┐     ┌──────────────┐
+   │employees│    │  export   │     │    jobs       │
+   │         │    │           │     │              │
+   │ CRUD    │    │ governed  │     │ async queue  │
+   │ teams   │    │ CSV/JSON  │     │ retry/DLQ    │
+   └─────────┘    └───────────┘     └──────┬───────┘
+                                           │
+                                    ┌──────▼───────┐
+                                    │ integrations │
+                                    │              │
+                                    │ adapters     │
+                                    │ registry     │
+                                    │ health       │
+                                    └──────────────┘
+```
+
 ## Module Boundaries
 
 Each operational domain has its own module under `src/modules/`:
@@ -60,36 +147,101 @@ Each operational domain has its own module under `src/modules/`:
 | `jobs` | Async processing queue | Job |
 | `export` | Governed data export | - |
 
-## Auth Flow
+## Data Flow
 
 ```
-Request → Middleware (JWT check) → Route Handler → requireAuth()
-  → checkAuthorization(user, resource, action) → applyScopeFilter()
-  → Service Layer → Repository → Prisma → PostgreSQL
+Client Request
+  │
+  ▼
+Middleware (JWT validation, rate limiting)
+  │
+  ▼
+Route Handler (parse params, validate input)
+  │
+  ▼
+requireAuth() → checkAuthorization(user, resource, action)
+  │
+  ▼
+applyScopeFilter(query, user.scope)   ← restricts data to all/team/own
+  │
+  ▼
+Service Layer (business logic, validation, orchestration)
+  │
+  ▼
+Repository (data access patterns, query building)
+  │
+  ▼
+Prisma Client (type-safe ORM)
+  │
+  ▼
+PostgreSQL (persistence + audit log triggers)
 ```
 
 ## Integration Flow
 
 ```
-External System → Adapter.sync() → NormalizedEvent[]
-  → Job Queue → Worker → Service Layer → Database
-  → Alert Generation (if thresholds breached)
+External System (Jira / Slack / Email / Fireblocks / Komainu / Notabene)
+  │
+  ▼
+Adapter.sync()  ─── verifyWebhookSignature() (for push-based integrations)
+  │
+  ▼
+NormalizedEvent[] (sourceSystem, sourceId, entityType, eventType, payload)
+  │
+  ▼
+Deduplication (by sourceSystem + sourceId)
+  │
+  ▼
+Job Queue (enqueue for async processing, with retry + dead-letter)
+  │
+  ▼
+Worker (persist to DB via service layer)
+  │
+  ▼
+Alert Generation (if SLA thresholds breached)
 ```
 
-## Data Flow
+## Deployment Architecture
 
 ```
-Inbound Data (Jira/Slack/Email/Fireblocks/Komainu/Notabene)
-  ↓
-Integration Adapter (normalize + deduplicate)
-  ↓
-Job Queue (retry + dead-letter)
-  ↓
-Domain Service (business logic)
-  ↓
-Repository (data access)
-  ↓
-PostgreSQL (persistence)
-  ↓
-Audit Log (every mutation)
+┌─────────────────────────────────────────────────┐
+│                   Docker Host / Railway           │
+│                                                   │
+│  ┌─────────────────────────────────────────────┐ │
+│  │         App Container (node:20-alpine)      │ │
+│  │                                             │ │
+│  │  Next.js Standalone Server (port 3000)      │ │
+│  │  ├─ SSR Pages                               │ │
+│  │  ├─ API Routes                              │ │
+│  │  ├─ Prisma Client                           │ │
+│  │  └─ start.sh (migrations + seed + server)   │ │
+│  │                                             │ │
+│  │  Health checks:                             │ │
+│  │  ├─ /api/health/liveness  (app running)     │ │
+│  │  ├─ /api/health/readiness (DB + env ready)  │ │
+│  │  └─ /api/health           (full status)     │ │
+│  └──────────────────┬──────────────────────────┘ │
+│                     │                             │
+│  ┌──────────────────▼──────────────────────────┐ │
+│  │         DB Container (postgres:16)          │ │
+│  │                                             │ │
+│  │  Database: kommand                          │ │
+│  │  Volume: pg-data (persistent)               │ │
+│  │  Health: pg_isready                         │ │
+│  └─────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
 ```
+
+### Docker Build Stages
+
+| Stage | Base Image | Purpose |
+|-------|-----------|---------|
+| `deps` | node:20-alpine | Install npm dependencies |
+| `builder` | node:20-alpine | Generate Prisma client, build Next.js, compile seed |
+| `runner` | node:20-alpine | Minimal production image with standalone output |
+
+The production image runs as a non-root `nextjs` user (UID 1001) and exposes port 3000.
+
+### Railway Deployment
+
+Railway auto-detects the Dockerfile. Required environment variables are set via the Railway dashboard. The PostgreSQL database is provisioned as a Railway service with `DATABASE_URL` injected automatically.

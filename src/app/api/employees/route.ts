@@ -1,32 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { checkAuthorization } from "@/modules/auth/services/authorization";
+import { employeeService } from "@/modules/employees/services/employee-service";
+import { createAuditEntry } from "@/lib/api/audit";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = checkAuthorization(auth, "employee", "view");
+  if (!authz.allowed) return apiForbiddenError(authz.reason);
+
   try {
     const { searchParams } = new URL(request.url);
-    const team = searchParams.get("team");
-    const role = searchParams.get("role");
+    const team = searchParams.get("team") || undefined;
+    const role = searchParams.get("role") || undefined;
     const active = searchParams.get("active") !== "false";
 
-    const where: Record<string, unknown> = { active };
-    if (team) where.team = team;
-    if (role) where.role = role;
-
-    const employees = await prisma.employee.findMany({
-      where,
-      orderBy: { name: "asc" },
-    });
-
-    return NextResponse.json({ success: true, data: employees });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
+    const { employees } = await employeeService.getEmployees(
+      { team, role, active },
+      { orderBy: "name", order: "asc" },
+      {
+        userRole: auth.role,
+        userTeam: auth.team ?? undefined,
+        userEmployeeId: auth.employeeId ?? undefined,
+      },
     );
+
+    return apiSuccess(employees);
+  } catch (error) {
+    return handleApiError(error, "GET /api/employees");
   }
 }
 
@@ -43,31 +47,20 @@ export async function POST(request: NextRequest) {
     const { name, email, role, team, region } = body;
 
     if (!name || !email || !role || !team) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: name, email, role, team" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: name, email, role, team");
     }
 
-    const employee = await prisma.employee.create({
-      data: { name, email, role, team, region: region || "Global" },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "employee_created",
-        entityType: "employee",
-        entityId: employee.id,
-        userId: auth.id,
-        details: JSON.stringify({ name, email, role, team }),
+    const employee = await employeeService.createEmployee(
+      { name, email, role, team, region },
+      {
+        userRole: auth.role,
+        userTeam: auth.team ?? undefined,
+        userEmployeeId: auth.employeeId ?? undefined,
       },
-    });
-
-    return NextResponse.json({ success: true, data: employee }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
     );
+
+    return apiSuccess(employee, undefined, 201);
+  } catch (error) {
+    return handleApiError(error, "POST /api/employees");
   }
 }

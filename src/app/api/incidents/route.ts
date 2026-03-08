@@ -1,51 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { checkAuthorization } from "@/modules/auth/services/authorization";
+import { incidentService } from "@/modules/incidents/services/incident-service";
+import { createAuditEntry } from "@/lib/api/audit";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
+import type { IncidentFilters } from "@/modules/incidents/services/incident-service";
 
 /**
  * GET /api/incidents
  *
  * List incidents with optional filters: ?status=active&provider=Fireblocks
- * Returns incidents with their updates, linked alerts, and reporter info.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = checkAuthorization(auth, "incident", "view");
+  if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const provider = searchParams.get("provider");
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (provider) where.provider = provider;
+    const filters: IncidentFilters = {};
+    if (status) filters.status = status as never;
+    if (provider) filters.provider = provider;
 
-    const incidents = await prisma.incident.findMany({
-      where,
-      include: {
-        reportedBy: { select: { id: true, name: true } },
-        resolvedBy: { select: { id: true, name: true } },
-        updates: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-        alerts: {
-          select: {
-            id: true,
-            type: true,
-            priority: true,
-            message: true,
-            status: true,
-            createdAt: true,
-            thread: { select: { id: true, subject: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-      },
-      orderBy: [{ status: "asc" }, { startedAt: "desc" }],
-    });
+    const { incidents } = await incidentService.getIncidents(filters);
 
     // Fetch linked thread subjects for display
     const allThreadIds = incidents.flatMap((i) => {
@@ -72,12 +55,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "GET /api/incidents");
   }
 }
 
@@ -85,79 +65,49 @@ export async function GET(request: NextRequest) {
  * POST /api/incidents
  *
  * Create a new 3rd party incident.
- * Body: { title, provider, severity?, description?, impact?, linkedThreadIds?, linkedTransactionIds? }
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = checkAuthorization(auth, "incident", "create");
+  if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
     const body = await request.json();
     const { title, provider, severity, description, impact, linkedThreadIds, linkedTransactionIds } = body;
 
     if (!title || !provider) {
-      return NextResponse.json(
-        { success: false, error: "title and provider are required" },
-        { status: 400 },
-      );
+      return apiValidationError("title and provider are required");
     }
 
     const validSeverities = ["low", "medium", "high", "critical"];
     if (severity && !validSeverities.includes(severity)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}` },
-        { status: 400 },
-      );
+      return apiValidationError(`Invalid severity. Must be one of: ${validSeverities.join(", ")}`);
     }
-
     if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
-      return NextResponse.json(
-        { success: false, error: "linkedThreadIds must be an array" },
-        { status: 400 },
-      );
+      return apiValidationError("linkedThreadIds must be an array");
     }
-
     if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
-      return NextResponse.json(
-        { success: false, error: "linkedTransactionIds must be an array" },
-        { status: 400 },
-      );
+      return apiValidationError("linkedTransactionIds must be an array");
     }
 
     const actorId = auth.employeeId || auth.id;
 
-    const incident = await prisma.incident.create({
-      data: {
-        title,
-        provider,
-        severity: severity || "medium",
-        description: description || "",
-        impact: impact || "",
-        reportedById: actorId,
-        linkedThreadIds: JSON.stringify(linkedThreadIds || []),
-        linkedTransactionIds: JSON.stringify(linkedTransactionIds || []),
-      },
-      include: {
-        reportedBy: { select: { id: true, name: true } },
-      },
+    const incident = await incidentService.createIncident({
+      title,
+      provider,
+      severity,
+      description,
+      impact,
+      reportedById: actorId,
+      linkedThreadIds,
+      linkedTransactionIds,
     });
 
-    await prisma.auditLog.create({
-      data: {
-        action: "incident_created",
-        entityType: "incident",
-        entityId: incident.id,
-        userId: actorId,
-        details: JSON.stringify({ title, provider, severity: severity || "medium" }),
-      },
-    });
-
-    return NextResponse.json({ success: true, data: incident }, { status: 201 });
+    return apiSuccess(incident, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/incidents");
   }
 }
 
@@ -166,34 +116,27 @@ export async function POST(request: NextRequest) {
  *
  * Update an incident: change status, add update note, link alerts/threads,
  * or resolve.
- *
- * Body: {
- *   id: string,
- *   status?: string,
- *   severity?: string,
- *   impact?: string,
- *   update?: string,        // adds an IncidentUpdate entry
- *   updateType?: string,    // update, escalation, resolution
- *   linkedThreadIds?: string[],
- *   linkedTransactionIds?: string[],
- *   linkAlertIds?: string[],   // link existing alerts to this incident
- * }
  */
 export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = checkAuthorization(auth, "incident", "update");
+  if (!authz.allowed) return apiForbiddenError(authz.reason);
+
   try {
     const body = await request.json();
-    const { id, status, severity, impact, update, updateType, linkedThreadIds, linkedTransactionIds, linkAlertIds,
-      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline, rcaReceivedAt, rcaFollowUpItems, rcaRaisedAt,
-      externalTicketRef, externalTicketUrl, externalTicketStatus, externalTicketDisputed, externalTicketDisputeReason } = body;
+    const {
+      id, status, severity, impact, update, updateType,
+      linkedThreadIds, linkedTransactionIds, linkAlertIds,
+      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline,
+      rcaFollowUpItems,
+      externalTicketRef, externalTicketUrl, externalTicketStatus,
+      externalTicketDisputed, externalTicketDisputeReason,
+    } = body;
 
     if (!id) {
-      return NextResponse.json(
-        { success: false, error: "id is required" },
-        { status: 400 },
-      );
+      return apiValidationError("id is required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -201,91 +144,55 @@ export async function PATCH(request: NextRequest) {
     // Validate enum fields
     const validStatuses = ["active", "monitoring", "resolved"];
     if (status && !validStatuses.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
-        { status: 400 },
-      );
+      return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
     }
-
     const validSeverities = ["low", "medium", "high", "critical"];
     if (severity && !validSeverities.includes(severity)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}` },
-        { status: 400 },
-      );
+      return apiValidationError(`Invalid severity. Must be one of: ${validSeverities.join(", ")}`);
     }
-
     const validRcaStatuses = ["not_required", "raised", "awaiting_rca", "rca_received", "follow_up_pending", "closed"];
     if (rcaStatus !== undefined && !validRcaStatuses.includes(rcaStatus)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid rcaStatus. Must be one of: ${validRcaStatuses.join(", ")}` },
-        { status: 400 },
-      );
+      return apiValidationError(`Invalid rcaStatus. Must be one of: ${validRcaStatuses.join(", ")}`);
     }
-
     if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
-      return NextResponse.json(
-        { success: false, error: "linkedThreadIds must be an array" },
-        { status: 400 },
-      );
+      return apiValidationError("linkedThreadIds must be an array");
     }
-
     if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
-      return NextResponse.json(
-        { success: false, error: "linkedTransactionIds must be an array" },
-        { status: 400 },
-      );
+      return apiValidationError("linkedTransactionIds must be an array");
     }
 
-    // Build update payload
-    const updateData: Record<string, unknown> = {};
-    if (status) updateData.status = status;
-    if (severity) updateData.severity = severity;
-    if (impact !== undefined) updateData.impact = impact;
-    if (linkedThreadIds) updateData.linkedThreadIds = JSON.stringify(linkedThreadIds);
-    if (linkedTransactionIds) updateData.linkedTransactionIds = JSON.stringify(linkedTransactionIds);
+    // Use service for core update (status, severity, impact, linked items)
+    const incident = await incidentService.updateIncident(
+      id,
+      { status, severity, impact, linkedThreadIds, linkedTransactionIds },
+      actorId,
+    );
 
-    // RCA tracker fields
-    if (rcaStatus !== undefined) updateData.rcaStatus = rcaStatus;
-    if (rcaDocumentRef !== undefined) updateData.rcaDocumentRef = rcaDocumentRef;
-    if (rcaResponsibleId !== undefined) updateData.rcaResponsibleId = rcaResponsibleId || null;
-    if (rcaSlaDeadline !== undefined) updateData.rcaSlaDeadline = rcaSlaDeadline ? new Date(rcaSlaDeadline) : null;
-    if (rcaReceivedAt !== undefined) updateData.rcaReceivedAt = rcaReceivedAt ? new Date(rcaReceivedAt) : null;
-    if (rcaFollowUpItems !== undefined) updateData.rcaFollowUpItems = JSON.stringify(rcaFollowUpItems);
-    if (rcaRaisedAt !== undefined) updateData.rcaRaisedAt = rcaRaisedAt ? new Date(rcaRaisedAt) : null;
-
-    // External ticket fields
-    if (externalTicketRef !== undefined) updateData.externalTicketRef = externalTicketRef;
-    if (externalTicketUrl !== undefined) updateData.externalTicketUrl = externalTicketUrl;
-    if (externalTicketStatus !== undefined) updateData.externalTicketStatus = externalTicketStatus;
-    if (externalTicketDisputed !== undefined) updateData.externalTicketDisputed = externalTicketDisputed;
-    if (externalTicketDisputeReason !== undefined) updateData.externalTicketDisputeReason = externalTicketDisputeReason;
-
-    // Auto-set resolvedAt and resolvedById when resolving
-    if (status === "resolved") {
-      updateData.resolvedAt = new Date();
-      updateData.resolvedById = actorId;
+    // RCA updates via service
+    if (rcaStatus !== undefined) {
+      await incidentService.updateRca(id, {
+        rcaStatus,
+        rcaDocumentRef,
+        rcaResponsibleId,
+        rcaSlaDeadline: rcaSlaDeadline ? new Date(rcaSlaDeadline) : undefined,
+        rcaFollowUpItems,
+      }, actorId);
     }
 
-    const incident = await prisma.incident.update({
-      where: { id },
-      data: updateData,
-      include: {
-        reportedBy: { select: { id: true, name: true } },
-        resolvedBy: { select: { id: true, name: true } },
-      },
-    });
+    // External ticket fields (direct update for fields not covered by service methods)
+    const ticketFields: Record<string, unknown> = {};
+    if (externalTicketRef !== undefined) ticketFields.externalTicketRef = externalTicketRef;
+    if (externalTicketUrl !== undefined) ticketFields.externalTicketUrl = externalTicketUrl;
+    if (externalTicketStatus !== undefined) ticketFields.externalTicketStatus = externalTicketStatus;
+    if (externalTicketDisputed !== undefined) ticketFields.externalTicketDisputed = externalTicketDisputed;
+    if (externalTicketDisputeReason !== undefined) ticketFields.externalTicketDisputeReason = externalTicketDisputeReason;
+    if (Object.keys(ticketFields).length > 0) {
+      await prisma.incident.update({ where: { id }, data: ticketFields });
+    }
 
-    // Add an update note if provided
+    // Add update note if provided
     if (update) {
-      await prisma.incidentUpdate.create({
-        data: {
-          incidentId: id,
-          authorId: actorId,
-          content: update,
-          type: updateType || "update",
-        },
-      });
+      await incidentService.addUpdate(id, actorId, update, updateType || "update");
     }
 
     // Link existing alerts to this incident
@@ -295,31 +202,15 @@ export async function PATCH(request: NextRequest) {
           prisma.alert.update({
             where: { id: alertId },
             data: { incidentId: id },
-          })
-        )
+          }),
+        ),
       );
     }
 
-    await prisma.auditLog.create({
-      data: {
-        action: status === "resolved" ? "incident_resolved" : "incident_updated",
-        entityType: "incident",
-        entityId: id,
-        userId: actorId,
-        details: JSON.stringify({
-          status,
-          severity,
-          hasUpdate: !!update,
-          linkedAlerts: linkAlertIds?.length || 0,
-        }),
-      },
-    });
-
-    return NextResponse.json({ success: true, data: incident });
+    // Re-fetch for complete response
+    const updated = await incidentService.getIncidentById(id);
+    return apiSuccess(updated ?? incident);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "PATCH /api/incidents");
   }
 }

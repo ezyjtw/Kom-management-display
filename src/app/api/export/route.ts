@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
 import { requireRole } from "@/lib/auth-user";
-import { checkAuthorization, applyScopeFilter } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
-import { handleApiError, apiForbiddenError, apiValidationError } from "@/lib/api/response";
-import { logger } from "@/lib/logger";
-import type { Category } from "@/types";
-
-/** Maximum rows per export to prevent bulk extraction */
-const MAX_EXPORT_ROWS = 10_000;
+import { checkAuthorization } from "@/modules/auth/services/authorization";
+import { exportService } from "@/modules/export/services/export-service";
+import { apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
+import type { Role } from "@/modules/auth/types";
 
 /**
  * GET /api/export
  *
  * Export performance data as CSV or JSON.
- * - Admin: unrestricted
- * - Lead: team-scoped only
- * - Employee: denied
- * - Auditor: unrestricted (read-only)
- *
- * Every export is audited with user, format, scope, and row count.
+ * Delegates to exportService which handles permissions, watermarking,
+ * sensitivity controls, and audit logging.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireRole("admin", "lead", "auditor");
@@ -38,137 +28,50 @@ export async function GET(request: NextRequest) {
     if (!periodId) {
       return apiValidationError("periodId is required");
     }
-
     if (!["csv", "json"].includes(format)) {
       return apiValidationError("format must be 'csv' or 'json'");
     }
 
-    // Build scoped query
-    const where: Record<string, unknown> = { periodId };
-    if (employeeId) where.employeeId = employeeId;
+    const filters: Record<string, unknown> = { periodId };
+    if (employeeId) filters.employeeId = employeeId;
 
-    // Apply team scope for leads
-    if (authz.scope === "team" && auth.team) {
-      where.employee = { team: auth.team };
-    }
-
-    const scores = await prisma.categoryScore.findMany({
-      where,
-      include: {
-        employee: true,
-        period: true,
+    const result = await exportService.exportData(
+      {
+        resource: "scores",
+        format: format as "csv" | "json",
+        filters,
       },
-      take: MAX_EXPORT_ROWS * 5, // 5 categories per employee
-    });
-
-    const config = await getActiveScoringConfig();
-    const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
-
-    // Group by employee
-    const employeeData = new Map<string, {
-      name: string;
-      role: string;
-      team: string;
-      region: string;
-      scores: Record<string, number>;
-    }>();
-
-    for (const s of scores) {
-      if (!employeeData.has(s.employeeId)) {
-        employeeData.set(s.employeeId, {
-          name: s.employee.name,
-          role: s.employee.role,
-          team: s.employee.team,
-          region: s.employee.region,
-          scores: {},
-        });
-      }
-      employeeData.get(s.employeeId)!.scores[s.category] = s.score;
-    }
-
-    // Enforce row limit
-    if (employeeData.size > MAX_EXPORT_ROWS) {
-      return apiValidationError(`Export exceeds maximum of ${MAX_EXPORT_ROWS} rows. Apply filters to reduce scope.`);
-    }
-
-    // Get period label for filename
-    const period = scores[0]?.period;
-    const periodLabel = period?.label || periodId;
-
-    // Audit the export
-    await createAuditEntry({
-      action: "export_generated",
-      entityType: "performance_data",
-      entityId: periodId,
-      userId: auth.employeeId || auth.id,
-      summary: `${format.toUpperCase()} export of ${employeeData.size} employees for period ${periodLabel}`,
-      metadata: {
-        format,
-        periodId,
-        periodLabel,
-        employeeId: employeeId || "all",
-        recordCount: employeeData.size,
-        scope: authz.scope,
-        team: authz.scope === "team" ? auth.team : undefined,
+      {
+        userId: auth.id,
+        userRole: auth.role as Role,
+        userName: auth.name,
+        userTeam: auth.team ?? undefined,
+        userEmployeeId: auth.employeeId ?? undefined,
       },
-    });
-
-    logger.info("Export generated", {
-      userId: auth.id,
-      format,
-      periodId,
-      recordCount: employeeData.size,
-      scope: authz.scope,
-    });
+    );
 
     if (format === "csv") {
-      // Watermark header with export metadata
-      const watermark = `# Exported by ${auth.name} (${auth.email}) at ${new Date().toISOString()}`;
-      const scopeNote = `# Scope: ${authz.scope === "team" ? `Team: ${auth.team}` : "All teams"}`;
-
-      const headers = ["Name", "Role", "Team", "Region", ...categories.map(c => c.replace("_", " ")), "Overall"];
-      const rows = Array.from(employeeData.values()).map(emp => {
-        const catScores = {} as Record<Category, number>;
-        for (const cat of categories) {
-          catScores[cat] = emp.scores[cat] ?? 3;
-        }
-        const overall = computeOverallScore(catScores, config.weights);
-        return [emp.name, emp.role, emp.team, emp.region, ...categories.map(c => emp.scores[c]?.toString() ?? "3"), overall.toString()];
-      });
-
-      const csv = [watermark, scopeNote, headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-      const filename = `performance-${periodLabel}-${new Date().toISOString().slice(0, 10)}.csv`;
-
-      return new NextResponse(csv, {
+      return new NextResponse(result.content, {
         headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": `attachment; filename=${filename}`,
+          "Content-Type": result.mimeType,
+          "Content-Disposition": `attachment; filename=${result.filename}`,
         },
       });
     }
 
-    // JSON format with metadata
-    const result = {
+    return NextResponse.json({
+      success: true,
       exportMeta: {
         exportedBy: auth.name,
         exportedAt: new Date().toISOString(),
         scope: authz.scope,
         team: authz.scope === "team" ? auth.team : null,
-        period: periodLabel,
         format: "json",
-        recordCount: employeeData.size,
+        recordCount: result.rowCount,
+        watermark: result.watermark,
       },
-      data: Array.from(employeeData.entries()).map(([id, emp]) => {
-        const catScores = {} as Record<Category, number>;
-        for (const cat of categories) {
-          catScores[cat] = emp.scores[cat] ?? 3;
-        }
-        const overall = computeOverallScore(catScores, config.weights);
-        return { id, ...emp, overall };
-      }),
-    };
-
-    return NextResponse.json({ success: true, ...result });
+      data: JSON.parse(result.content).data,
+    });
   } catch (error) {
     return handleApiError(error, "export");
   }

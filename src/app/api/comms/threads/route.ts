@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth-user";
+import { threadService } from "@/modules/comms/services/thread-service";
+import { createAuditEntry } from "@/lib/api/audit";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { computeSlaStatus } from "@/lib/sla";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
+import type { ThreadFilters } from "@/modules/comms/repositories/thread-repository";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -15,91 +18,49 @@ export async function GET(request: NextRequest) {
     const queue = searchParams.get("queue");
     const priority = searchParams.get("priority");
     const source = searchParams.get("source");
-    const view = searchParams.get("view"); // my_threads, unassigned, overdue, all
+    const view = searchParams.get("view");
 
     const isPrivileged = ["admin", "lead"].includes(auth.role);
     const actorEmployeeId = auth.employeeId || auth.id;
 
-    const where: Record<string, unknown> = {};
+    // Build filters based on view and role
+    const filters: ThreadFilters = {};
 
     if (view === "unassigned") {
-      where.status = "Unassigned";
-      // Employees can only see unassigned threads in their team's queue
-      if (auth.role === "employee" && auth.team) {
-        where.queue = auth.team;
-      }
-      // Leads see unassigned across their team's queue (unless queue filter overrides)
-      if (auth.role === "lead" && auth.team && !queue) {
-        where.queue = auth.team;
-      }
+      filters.status = "Unassigned" as never;
+      if (auth.role === "employee" && auth.team) filters.queue = auth.team;
+      if (auth.role === "lead" && auth.team && !queue) filters.queue = auth.team;
     } else if (view === "my_threads") {
-      // Show threads where user is primary OR secondary owner
-      where.OR = [
-        { ownerUserId: actorEmployeeId },
-        { secondaryOwnerIds: { contains: actorEmployeeId } },
-      ];
-      where.status = { notIn: ["Done", "Closed"] };
+      filters.ownerUserId = actorEmployeeId;
     } else if (view === "overdue") {
-      // Employees: only their own overdue threads
-      if (auth.role === "employee") {
-        where.ownerUserId = actorEmployeeId;
-      }
-      // Leads: their team's queue
-      if (auth.role === "lead" && auth.team && !queue) {
-        where.queue = auth.team;
-      }
-      // Admin: unrestricted
+      if (auth.role === "employee") filters.ownerUserId = actorEmployeeId;
+      if (auth.role === "lead" && auth.team && !queue) filters.queue = auth.team;
+      filters.slaBreached = true;
     } else {
-      // Default / "all" view — scoped by role
+      // Default / "all" view -- scoped by role
       if (auth.role === "employee") {
-        // Employees see only their own threads + unassigned in their queue
-        where.OR = [
-          { ownerUserId: actorEmployeeId },
-          { status: "Unassigned", ...(auth.team ? { queue: auth.team } : {}) },
-        ];
+        filters.ownerUserId = actorEmployeeId;
       } else if (auth.role === "lead") {
-        // Leads see their team's queue (all statuses)
-        if (auth.team && !queue) {
-          where.queue = auth.team;
-        }
-        // Leads can also filter by a specific user's threads
-        if (ownerUserId) {
-          where.ownerUserId = ownerUserId;
-        }
+        if (auth.team && !queue) filters.queue = auth.team;
+        if (ownerUserId) filters.ownerUserId = ownerUserId;
       } else {
-        // Admin: unrestricted, can filter by ownerUserId
-        if (status) where.status = status;
-        if (ownerUserId) where.ownerUserId = ownerUserId;
+        if (status) filters.status = status as never;
+        if (ownerUserId) filters.ownerUserId = ownerUserId;
       }
     }
 
-    // Queue/priority/source filters (admin/lead can override, employees constrained above)
     if (queue) {
-      // If employee tries to filter a queue that isn't their team, ignore
-      if (auth.role === "employee" && auth.team && queue !== auth.team) {
-        // Don't apply — employee can't see other queues
-      } else {
-        where.queue = queue;
+      if (!(auth.role === "employee" && auth.team && queue !== auth.team)) {
+        filters.queue = queue;
       }
     }
-    if (priority) where.priority = priority;
-    if (source) where.source = source;
-    // Admin/lead status filter (employees constrained by the OR above)
-    if (status && isPrivileged) where.status = status;
+    if (priority) filters.priority = priority as never;
+    if (source) filters.source = source as never;
+    if (status && isPrivileged) filters.status = status as never;
 
-    const threads = await prisma.commsThread.findMany({
-      where,
-      include: {
-        owner: { select: { id: true, name: true } },
-        messages: {
-          orderBy: { timestamp: "desc" },
-          take: 1,
-        },
-        _count: {
-          select: { messages: true, ownershipChanges: true },
-        },
-      },
-      orderBy: [{ priority: "asc" }, { lastMessageAt: "desc" }],
+    const { threads } = await threadService.getThreads(filters, {
+      orderBy: "lastMessageAt",
+      order: "desc",
     });
 
     // Compute SLA status for each thread
@@ -129,9 +90,9 @@ export async function GET(request: NextRequest) {
         lastActionAt: thread.lastActionAt?.toISOString() ?? null,
         createdAt: thread.createdAt.toISOString(),
         slaStatus,
-        messageCount: thread._count.messages,
-        ownershipChangeCount: thread._count.ownershipChanges,
-        latestMessage: thread.messages[0] ?? null,
+        messageCount: thread._count?.messages ?? 0,
+        ownershipChangeCount: thread._count?.ownershipChanges ?? 0,
+        latestMessage: thread.messages?.[0] ?? null,
       };
     });
 
@@ -142,44 +103,28 @@ export async function GET(request: NextRequest) {
             (t) =>
               t.slaStatus.isTtoBreached ||
               t.slaStatus.isTtfaBreached ||
-              t.slaStatus.isTslaBreached
+              t.slaStatus.isTslaBreached,
           )
         : threadsWithSla;
 
-    return NextResponse.json({ success: true, data: filtered });
+    return apiSuccess(filtered);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "GET /api/comms/threads");
   }
 }
 
 export async function POST(request: NextRequest) {
-  const authPost = await requireAuth();
-  if (authPost instanceof NextResponse) return authPost;
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const body = await request.json();
-    const {
-      source,
-      sourceThreadRef,
-      participants,
-      clientOrPartnerTag,
-      subject,
-      priority,
-      queue,
-      initialMessage,
-    } = body;
+    const { source, sourceThreadRef, participants, clientOrPartnerTag, subject, priority, queue, initialMessage } = body;
 
     if (!source || !sourceThreadRef || !subject) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: source, sourceThreadRef, subject" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: source, sourceThreadRef, subject");
     }
 
-    // Normalise subject and auto-detect priority if not explicitly set
     const cleanSubject = normaliseSubject(subject);
     const effectivePriority =
       priority ||
@@ -190,21 +135,19 @@ export async function POST(request: NextRequest) {
       }) ||
       "P2";
 
-    const thread = await prisma.commsThread.create({
-      data: {
-        source,
-        sourceThreadRef,
-        participants: JSON.stringify(participants || []),
-        clientOrPartnerTag: clientOrPartnerTag || "",
-        subject: cleanSubject,
-        priority: effectivePriority,
-        queue: queue || "Transaction Operations",
-        status: "Unassigned",
-      },
+    const thread = await threadService.createThread({
+      source,
+      sourceThreadRef,
+      subject: cleanSubject,
+      priority: effectivePriority,
+      queue: queue || "Transaction Operations",
+      clientOrPartnerTag: clientOrPartnerTag || "",
+      participants: participants || [],
     });
 
-    // Create initial message if provided
+    // Create initial message if provided (threadService.createThread doesn't handle this)
     if (initialMessage) {
+      const { prisma } = await import("@/lib/prisma");
       await prisma.commsMessage.create({
         data: {
           threadId: thread.id,
@@ -218,27 +161,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Audit: thread creation
-    await prisma.auditLog.create({
-      data: {
-        action: "thread_created",
-        entityType: "thread",
-        entityId: thread.id,
-        userId: authPost.employeeId || authPost.id,
-        details: JSON.stringify({
-          source,
-          subject: cleanSubject,
-          priority: effectivePriority,
-          queue: queue || "Transaction Operations",
-        }),
+    await createAuditEntry({
+      action: "thread_created",
+      entityType: "thread",
+      entityId: thread.id,
+      userId: auth.employeeId || auth.id,
+      summary: `Thread created: ${cleanSubject}`,
+      after: {
+        source,
+        subject: cleanSubject,
+        priority: effectivePriority,
+        queue: queue || "Transaction Operations",
       },
     });
 
-    return NextResponse.json({ success: true, data: thread }, { status: 201 });
+    return apiSuccess(thread, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "POST /api/comms/threads");
   }
 }

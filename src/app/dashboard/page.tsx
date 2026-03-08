@@ -1,22 +1,43 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { TeamOverviewTable } from "@/components/dashboard/TeamOverviewTable";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { Download, RefreshCw, AlertTriangle, Clock, Users, Activity } from "lucide-react";
+import { Download, RefreshCw, AlertTriangle, Clock, Users, Activity, ArrowRight, Shield, Zap } from "lucide-react";
 import type { EmployeeOverview } from "@/types";
 
 interface CommandCenterData {
-  comms: { totalActive: number; breachedCount: number; unassignedCount: number };
-  travelRule: { openCount: number; redCount: number; amberCount: number };
-  alerts: { activeCount: number };
-  incidents: { activeCount: number; criticalCount: number };
+  comms: {
+    totalActive: number;
+    breachedCount: number;
+    unassignedCount: number;
+    topBreached?: Array<{ id: string; subject: string; priority: string; ownerName: string | null }>;
+  };
+  travelRule: {
+    openCount: number;
+    redCount: number;
+    amberCount: number;
+    topUrgent?: Array<{ id: string; transactionId: string; asset: string; amount: number; agingStatus: string }>;
+  };
+  alerts: {
+    activeCount: number;
+    items?: Array<{ id: string; type: string; priority: string; message: string }>;
+  };
+  incidents: { activeCount: number; criticalCount: number; monitoringCount: number; items?: Array<{ id: string; title: string; provider: string; severity: string; status: string }> };
   dailyChecks: { exists: boolean; total: number; passed: number; issues: number; pending: number };
   staking: { overdue: number; approaching: number };
   coverage: { total: number; active: number; onQueues: number; onBreak: number };
+  rca?: { awaiting: number; overdue: number; followUp: number };
+  screening?: { notSubmitted: number; openAlerts: number };
 }
+
+/** Preset filter views */
+const VIEW_PRESETS: Record<string, { label: string; filters: Record<string, string> }> = {
+  at_risk: { label: "At Risk", filters: { flags: "warnings" } },
+  critical: { label: "Critical Only", filters: { flags: "critical" } },
+};
 
 export default function DashboardPage() {
   return (
@@ -38,6 +59,8 @@ function DashboardContent() {
   const [roleFilter, setRoleFilter] = useState(searchParams.get("role") || "");
   const [regionFilter, setRegionFilter] = useState(searchParams.get("region") || "");
   const [flagFilter, setFlagFilter] = useState(searchParams.get("flags") || "");
+  const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "");
+  const [slaRiskFilter, setSlaRiskFilter] = useState(searchParams.get("sla") || "");
 
   const [employees, setEmployees] = useState<EmployeeOverview[]>([]);
   const [opsData, setOpsData] = useState<CommandCenterData | null>(null);
@@ -91,8 +114,11 @@ function DashboardContent() {
 
   // Update URL when filters change
   useEffect(() => {
-    updateUrl({ period: periodType, team: teamFilter, role: roleFilter, region: regionFilter, flags: flagFilter });
-  }, [periodType, teamFilter, roleFilter, regionFilter, flagFilter, updateUrl]);
+    updateUrl({
+      period: periodType, team: teamFilter, role: roleFilter, region: regionFilter,
+      flags: flagFilter, priority: priorityFilter, sla: slaRiskFilter,
+    });
+  }, [periodType, teamFilter, roleFilter, regionFilter, flagFilter, priorityFilter, slaRiskFilter, updateUrl]);
 
   const filteredEmployees = employees.filter((e) => {
     if (teamFilter && e.team !== teamFilter) return false;
@@ -112,9 +138,36 @@ function DashboardContent() {
     setRoleFilter("");
     setRegionFilter("");
     setFlagFilter("");
+    setPriorityFilter("");
+    setSlaRiskFilter("");
   };
 
-  const hasActiveFilters = teamFilter || roleFilter || regionFilter || flagFilter;
+  const applyPreset = (preset: keyof typeof VIEW_PRESETS) => {
+    clearFilters();
+    const { filters } = VIEW_PRESETS[preset];
+    if (filters.team) setTeamFilter(filters.team);
+    if (filters.role) setRoleFilter(filters.role);
+    if (filters.region) setRegionFilter(filters.region);
+    if (filters.flags) setFlagFilter(filters.flags);
+    if (filters.priority) setPriorityFilter(filters.priority);
+    if (filters.sla) setSlaRiskFilter(filters.sla);
+  };
+
+  const hasActiveFilters = teamFilter || roleFilter || regionFilter || flagFilter || priorityFilter || slaRiskFilter;
+
+  // Compute action items that need attention right now
+  const actionItems = useMemo(() => {
+    if (!opsData) return [];
+    const items: Array<{ label: string; count: number; severity: "critical" | "warning" | "info"; href: string }> = [];
+    if (opsData.comms.unassignedCount > 0) items.push({ label: "Unowned threads", count: opsData.comms.unassignedCount, severity: "warning", href: "/comms?view=unassigned" });
+    if (opsData.comms.breachedCount > 0) items.push({ label: "SLA breached threads", count: opsData.comms.breachedCount, severity: "critical", href: "/comms?view=overdue" });
+    if (opsData.travelRule.redCount > 0) items.push({ label: "Overdue travel rule cases", count: opsData.travelRule.redCount, severity: "critical", href: "/travel-rule?status=overdue" });
+    if (opsData.incidents.criticalCount > 0) items.push({ label: "Critical incidents", count: opsData.incidents.criticalCount, severity: "critical", href: "/incidents?severity=critical" });
+    if ((opsData.rca?.overdue ?? 0) > 0) items.push({ label: "Overdue RCAs", count: opsData.rca!.overdue, severity: "warning", href: "/rca" });
+    if ((opsData.screening?.notSubmitted ?? 0) > 0) items.push({ label: "Unscreened transactions", count: opsData.screening!.notSubmitted, severity: "warning", href: "/screening" });
+    if ((opsData.staking?.overdue ?? 0) > 0) items.push({ label: "Overdue staking rewards", count: opsData.staking.overdue, severity: "warning", href: "/staking" });
+    return items;
+  }, [opsData]);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -148,6 +201,38 @@ function DashboardContent() {
 
       {/* Error state */}
       {error && <ErrorState message={error} onRetry={fetchData} />}
+
+      {/* Action Queue — what needs attention NOW */}
+      {actionItems.length > 0 && (
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border bg-accent/30">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Zap size={14} />
+              Needs Action ({actionItems.length})
+            </div>
+          </div>
+          <div className="divide-y divide-border">
+            {actionItems.map((item, i) => (
+              <a
+                key={i}
+                href={item.href}
+                className="flex items-center justify-between px-4 py-2.5 hover:bg-accent/20 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${item.severity === "critical" ? "bg-red-500" : item.severity === "warning" ? "bg-amber-500" : "bg-blue-500"}`} />
+                  <span className="text-sm text-foreground">{item.label}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-semibold ${item.severity === "critical" ? "text-red-500" : item.severity === "warning" ? "text-amber-500" : "text-foreground"}`}>
+                    {item.count}
+                  </span>
+                  <ArrowRight size={14} className="text-muted-foreground" />
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Operational KPIs Banner */}
       {opsData && (
@@ -220,13 +305,28 @@ function DashboardContent() {
       {/* Degraded state banners */}
       {opsData?.dailyChecks?.exists && opsData.dailyChecks.issues > 0 && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
-          Daily checks found {opsData.dailyChecks.issues} issue(s) — {opsData.dailyChecks.pending} pending
+          <span className="font-medium">Daily Checks:</span> {opsData.dailyChecks.issues} issue(s) found — {opsData.dailyChecks.pending} pending review
+          {opsData.dailyChecks.passed > 0 && <span className="ml-2 opacity-70">({opsData.dailyChecks.passed}/{opsData.dailyChecks.total} passed)</span>}
         </div>
       )}
 
       {(opsData?.staking?.overdue ?? 0) > 0 && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-sm text-red-700 dark:text-red-400">
-          {opsData?.staking?.overdue} staking wallet(s) with overdue rewards
+          <span className="font-medium">Staking:</span> {opsData?.staking?.overdue} wallet(s) with overdue rewards
+          {(opsData?.staking?.approaching ?? 0) > 0 && <span className="ml-2 opacity-70">({opsData?.staking?.approaching} approaching deadline)</span>}
+        </div>
+      )}
+
+      {(opsData?.screening?.openAlerts ?? 0) > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <span className="font-medium">Screening:</span> {opsData?.screening?.openAlerts} open analytics alerts
+          {(opsData?.screening?.notSubmitted ?? 0) > 0 && <span className="ml-2 opacity-70">({opsData?.screening?.notSubmitted} not yet submitted)</span>}
+        </div>
+      )}
+
+      {(opsData?.rca?.overdue ?? 0) > 0 && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-sm text-red-700 dark:text-red-400">
+          <span className="font-medium">RCA Tracker:</span> {opsData?.rca?.overdue} overdue RCA(s) — {opsData?.rca?.awaiting ?? 0} awaiting response
         </div>
       )}
 
@@ -234,80 +334,123 @@ function DashboardContent() {
       <StatsCards employees={filteredEmployees} />
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 md:gap-4 bg-card rounded-xl border border-border p-3 md:p-4">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1">Period</label>
-          <select
-            value={periodType}
-            onChange={(e) => setPeriodType(e.target.value as "week" | "month" | "quarter")}
-            className="text-sm border border-border rounded-lg px-3 py-1.5"
-          >
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-            <option value="quarter">Quarterly</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1">Team</label>
-          <select
-            value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5"
-          >
-            <option value="">All Teams</option>
-            {teams.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1">Role</label>
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5"
-          >
-            <option value="">All Roles</option>
-            {roles.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1">Region</label>
-          <select
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5"
-          >
-            <option value="">All Regions</option>
-            {regions.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1">Flags</label>
-          <select
-            value={flagFilter}
-            onChange={(e) => setFlagFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5"
-          >
-            <option value="">All</option>
-            <option value="warnings">With Warnings</option>
-            <option value="critical">Critical Only</option>
-          </select>
-        </div>
-        {hasActiveFilters && (
-          <div className="flex items-end">
+      <div className="bg-card rounded-xl border border-border p-3 md:p-4 space-y-3">
+        {/* Preset views */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Quick views:</span>
+          {Object.entries(VIEW_PRESETS).map(([key, { label }]) => (
             <button
-              onClick={clearFilters}
-              className="text-xs text-muted-foreground hover:text-foreground underline mt-4"
+              key={key}
+              onClick={() => applyPreset(key)}
+              className="text-xs px-2.5 py-1 rounded-md bg-accent/50 text-foreground hover:bg-accent transition-colors"
             >
-              Clear all
+              {label}
             </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 md:gap-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Period</label>
+            <select
+              value={periodType}
+              onChange={(e) => setPeriodType(e.target.value as "week" | "month" | "quarter")}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+              <option value="quarter">Quarterly</option>
+            </select>
           </div>
-        )}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Team</label>
+            <select
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All Teams</option>
+              {teams.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Role</label>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All Roles</option>
+              {roles.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Region</label>
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All Regions</option>
+              {regions.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Priority</label>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All</option>
+              <option value="P0">P0 - Critical</option>
+              <option value="P1">P1 - High</option>
+              <option value="P2">P2 - Medium</option>
+              <option value="P3">P3 - Low</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">SLA Risk</label>
+            <select
+              value={slaRiskFilter}
+              onChange={(e) => setSlaRiskFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All</option>
+              <option value="breached">Breached</option>
+              <option value="at_risk">At Risk</option>
+              <option value="healthy">Healthy</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Flags</label>
+            <select
+              value={flagFilter}
+              onChange={(e) => setFlagFilter(e.target.value)}
+              className="text-sm border border-border rounded-lg px-3 py-1.5"
+            >
+              <option value="">All</option>
+              <option value="warnings">With Warnings</option>
+              <option value="critical">Critical Only</option>
+            </select>
+          </div>
+          {hasActiveFilters && (
+            <div className="flex items-end">
+              <button
+                onClick={clearFilters}
+                className="text-xs text-muted-foreground hover:text-foreground underline mt-4"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -326,7 +469,7 @@ function DashboardContent() {
             </>
           ) : (
             <>
-              <AlertTriangle size={32} className="mx-auto mb-3 opacity-50" />
+              <Shield size={32} className="mx-auto mb-3 opacity-50" />
               <p className="text-lg font-medium">No results match your filters</p>
               <p className="text-sm mt-1">Try adjusting the filters above or <button onClick={clearFilters} className="underline">clear all filters</button>.</p>
             </>

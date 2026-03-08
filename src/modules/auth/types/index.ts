@@ -37,7 +37,9 @@ export type Action =
   | "delete"
   | "assign"
   | "reassign"
+  | "acknowledge"
   | "resolve"
+  | "escalate"
   | "override"
   | "export"
   | "configure"
@@ -61,10 +63,10 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     scoring_config:   { actions: ["view", "create", "update", "configure", "approve"], scope: "all" },
     thread:           { actions: ["view", "create", "update", "assign", "reassign", "resolve"], scope: "all" },
     thread_note:      { actions: ["view", "create"], scope: "all" },
-    alert:            { actions: ["view", "update", "resolve"], scope: "all" },
+    alert:            { actions: ["view", "update", "acknowledge", "resolve"], scope: "all" },
     project:          { actions: ["view", "create", "update", "delete"], scope: "all" },
-    incident:         { actions: ["view", "create", "update", "resolve"], scope: "all" },
-    travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign"], scope: "all" },
+    incident:         { actions: ["view", "create", "update", "resolve", "escalate"], scope: "all" },
+    travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign", "escalate"], scope: "all" },
     daily_check:      { actions: ["view", "create", "update"], scope: "all" },
     staking_wallet:   { actions: ["view", "create", "update"], scope: "all" },
     settlement:       { actions: ["view", "create", "update", "approve"], scope: "all" },
@@ -82,10 +84,10 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     scoring_config:   { actions: ["view"], scope: "all" },
     thread:           { actions: ["view", "create", "update", "assign", "reassign", "resolve"], scope: "team" },
     thread_note:      { actions: ["view", "create"], scope: "team" },
-    alert:            { actions: ["view", "update", "resolve"], scope: "team" },
+    alert:            { actions: ["view", "update", "acknowledge", "resolve"], scope: "team" },
     project:          { actions: ["view", "create", "update"], scope: "team" },
-    incident:         { actions: ["view", "create", "update", "resolve"], scope: "all" },
-    travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign"], scope: "team" },
+    incident:         { actions: ["view", "create", "update", "resolve", "escalate"], scope: "all" },
+    travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign", "escalate"], scope: "team" },
     daily_check:      { actions: ["view", "create", "update"], scope: "team" },
     staking_wallet:   { actions: ["view", "update"], scope: "all" },
     settlement:       { actions: ["view", "update", "approve"], scope: "all" },
@@ -103,7 +105,7 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     scoring_config:   { actions: ["view"], scope: "all" },
     thread:           { actions: ["view", "update", "resolve"], scope: "own" },
     thread_note:      { actions: ["view", "create"], scope: "own" },
-    alert:            { actions: ["view"], scope: "own" },
+    alert:            { actions: ["view", "acknowledge"], scope: "own" },
     project:          { actions: ["view"], scope: "team" },
     incident:         { actions: ["view", "create"], scope: "all" },
     travel_rule_case: { actions: ["view", "update"], scope: "own" },
@@ -143,7 +145,7 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
 
 /** Sensitive fields that should be masked for non-admin roles */
 export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
-  employee: [],
+  employee: ["email"],
   score: [],
   scoring_config: [],
   thread: ["participants"],
