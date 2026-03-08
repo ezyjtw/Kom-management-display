@@ -316,7 +316,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
         </div>
       )}
 
-      <StatsCards employees={filteredEmployees} />
+      <StatsCards employees={filteredEmployees} teamSizeOverride={opsData?.coverage?.active} />
 
       {/* Filters */}
       <div className="bg-card rounded-xl border border-border p-3 md:p-4 space-y-3">
