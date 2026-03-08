@@ -436,7 +436,7 @@ export default function CommandCenterPage() {
                 <Timer size={14} className="text-orange-400" />
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BTC Network</span>
                 {market.btcNetwork.secondsSinceBlock > 0 && (
-                  <span className={`ml-auto text-xs font-medium ${market.btcNetwork.secondsSinceBlock > 1200 ? "text-amber-400" : market.btcNetwork.secondsSinceBlock > 1800 ? "text-red-400" : "text-muted-foreground"}`}>
+                  <span className={`ml-auto text-xs font-medium ${market.btcNetwork.secondsSinceBlock > 1800 ? "text-red-400" : market.btcNetwork.secondsSinceBlock > 1200 ? "text-amber-400" : "text-muted-foreground"}`}>
                     Last block: {formatBlockTime(market.btcNetwork.secondsSinceBlock)} ago
                   </span>
                 )}
