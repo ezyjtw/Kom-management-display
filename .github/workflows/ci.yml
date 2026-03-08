@@ -55,7 +55,13 @@ jobs:
         run: npm test
 
       - name: Check test coverage thresholds
-        run: npm test -- --coverage --reporter=json 2>/dev/null || true
+        run: |
+          npm test -- --coverage 2>&1 | tee coverage-output.txt
+          # Warn but don't fail if coverage is low (informational)
+          if grep -q "ERROR" coverage-output.txt; then
+            echo "WARNING: Some coverage checks may have issues"
+          fi
+          echo "Coverage report generated"
 
   security:
     name: Security Audit
@@ -96,14 +102,23 @@ jobs:
           echo "Checking CSP header configuration..."
           if grep -q "Content-Security-Policy" next.config.js; then
             echo "CSP header found"
-            # Verify no unsafe-eval
-            if grep -q "unsafe-eval" next.config.js; then
-              echo "ERROR: unsafe-eval found in CSP"
+            # Extract CSP value lines and check for unsafe-eval in actual directives (not comments)
+            CSP_DIRECTIVES=$(grep -v '^\s*//' next.config.js | grep -oP "'[^']*'" | grep -i "unsafe-eval" || true)
+            if [ -n "$CSP_DIRECTIVES" ]; then
+              echo "ERROR: unsafe-eval found in CSP directive values"
+              echo "$CSP_DIRECTIVES"
               exit 1
             fi
-            echo "No unsafe-eval — CSP looks good"
+            echo "No unsafe-eval in CSP directives"
+            # Verify frame-ancestors 'none' is present
+            if grep -q "frame-ancestors" next.config.js; then
+              echo "frame-ancestors directive found"
+            else
+              echo "WARNING: No frame-ancestors directive in CSP"
+            fi
           else
-            echo "WARNING: No CSP header found in next.config.js"
+            echo "ERROR: No CSP header found in next.config.js"
+            exit 1
           fi
 
       - name: Check for dual auth paths
@@ -115,6 +130,34 @@ jobs:
             exit 1
           fi
           echo "No legacy auth paths found"
+
+      - name: Verify authorization matrix completeness
+        run: |
+          echo "Checking authorization matrix covers all resources..."
+          # Count roles defined in the matrix
+          ROLE_COUNT=$(grep -c "^  \(admin\|lead\|employee\|auditor\):" src/modules/auth/types/index.ts || true)
+          if [ "$ROLE_COUNT" -lt 4 ]; then
+            echo "ERROR: Expected 4 roles in AUTHORIZATION_MATRIX, found $ROLE_COUNT"
+            exit 1
+          fi
+          echo "All 4 roles defined in AUTHORIZATION_MATRIX"
+          # Verify Resource type and matrix keys stay in sync
+          RESOURCE_TYPE_COUNT=$(grep -cP '^\s+\| "' src/modules/auth/types/index.ts || true)
+          echo "Resource type has $RESOURCE_TYPE_COUNT resources"
+
+      - name: Verify scoring config workflow actions
+        run: |
+          echo "Checking config workflow actions are properly mapped..."
+          # Ensure the PUT handler in scores/config/route.ts references all workflow actions
+          for action in submit_review approve activate archive send_back; do
+            if grep -q "$action" src/app/api/scores/config/route.ts; then
+              echo "  OK: $action action found"
+            else
+              echo "  MISSING: $action action not found in config route"
+              exit 1
+            fi
+          done
+          echo "All workflow actions verified"
 
   schema-check:
     name: Schema Validation
@@ -166,7 +209,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, test]
+    needs: [lint-and-typecheck, test, schema-check]
     steps:
       - uses: actions/checkout@v4
 

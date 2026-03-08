@@ -1,31 +1,41 @@
-"use client";
+import { Suspense } from "react";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth-options";
+import { prisma } from "@/lib/prisma";
+import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
+import type { Category, EmployeeOverview } from "@/types";
+import { DashboardClient } from "./DashboardClient";
 
-import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { TeamOverviewTable } from "@/components/dashboard/TeamOverviewTable";
-import { StatsCards } from "@/components/dashboard/StatsCards";
-import { ErrorState } from "@/components/shared/ErrorState";
-import { Download, RefreshCw, AlertTriangle, Clock, Users, Activity, ArrowRight, Shield, Zap } from "lucide-react";
-import type { EmployeeOverview } from "@/types";
+/**
+ * Server component: fetches initial data on the server before render.
+ * Auth is enforced server-side — unauthenticated users are redirected.
+ * Client component handles filters, refresh, and interactivity.
+ */
+export default async function DashboardPage() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) redirect("/login");
 
-interface CommandCenterData {
-  comms: {
-    totalActive: number;
-    breachedCount: number;
-    unassignedCount: number;
-    topBreached?: Array<{ id: string; subject: string; priority: string; ownerName: string | null }>;
-  };
-  travelRule: {
-    openCount: number;
-    redCount: number;
-    amberCount: number;
-    topUrgent?: Array<{ id: string; transactionId: string; asset: string; amount: number; agingStatus: string }>;
-  };
-  alerts: {
-    activeCount: number;
-    items?: Array<{ id: string; type: string; priority: string; message: string }>;
-  };
-  incidents: { activeCount: number; criticalCount: number; monitoringCount: number; items?: Array<{ id: string; title: string; provider: string; severity: string; status: string }> };
+  const user = session.user as { id: string; role: string; employeeId?: string; team?: string };
+
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      }
+    >
+      <DashboardDataLoader user={user} />
+    </Suspense>
+  );
+}
+
+interface OpsData {
+  comms: { totalActive: number; breachedCount: number; unassignedCount: number };
+  travelRule: { openCount: number; redCount: number; amberCount: number };
+  alerts: { activeCount: number };
+  incidents: { activeCount: number; criticalCount: number; monitoringCount: number };
   dailyChecks: { exists: boolean; total: number; passed: number; issues: number; pending: number };
   staking: { overdue: number; approaching: number };
   coverage: { total: number; active: number; onQueues: number; onBreak: number };
@@ -33,451 +43,174 @@ interface CommandCenterData {
   screening?: { notSubmitted: number; openAlerts: number };
 }
 
-/** Preset filter views */
-const VIEW_PRESETS: Record<string, { label: string; filters: Record<string, string> }> = {
-  at_risk: { label: "At Risk", filters: { flags: "warnings" } },
-  critical: { label: "Critical Only", filters: { flags: "critical" } },
-};
+async function DashboardDataLoader({ user }: { user: { id: string; role: string; employeeId?: string; team?: string } }) {
+  const initialData = await loadDashboardData(user, "month");
 
-export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
-      <DashboardContent />
-    </Suspense>
+    <DashboardClient
+      initialEmployees={initialData.employees}
+      initialOpsData={initialData.opsData}
+      userRole={user.role}
+    />
   );
 }
 
-function DashboardContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+// ─── Server-side data fetching ───
 
-  // Read filters from URL params for shareable/restorable state
-  const [periodType, setPeriodType] = useState<"week" | "month" | "quarter">(
-    (searchParams.get("period") as "week" | "month" | "quarter") || "month"
-  );
-  const [teamFilter, setTeamFilter] = useState(searchParams.get("team") || "");
-  const [roleFilter, setRoleFilter] = useState(searchParams.get("role") || "");
-  const [regionFilter, setRegionFilter] = useState(searchParams.get("region") || "");
-  const [flagFilter, setFlagFilter] = useState(searchParams.get("flags") || "");
-  const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "");
-  const [slaRiskFilter, setSlaRiskFilter] = useState(searchParams.get("sla") || "");
-
-  const [employees, setEmployees] = useState<EmployeeOverview[]>([]);
-  const [opsData, setOpsData] = useState<CommandCenterData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-
-  // Persist filters in URL params
-  const updateUrl = useCallback((params: Record<string, string>) => {
-    const url = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value) url.set(key, value);
-    }
-    const qs = url.toString();
-    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
-  }, [router]);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [scoresRes, opsRes] = await Promise.all([
-        fetch(`/api/scores?periodType=${periodType}`),
-        fetch("/api/command-center").catch(() => null),
-      ]);
-      const scoresJson = await scoresRes.json();
-
-      if (scoresJson.success) {
-        setEmployees(scoresJson.data || []);
-      } else {
-        setError(scoresJson.error || "Failed to load scores");
-      }
-
-      if (opsRes) {
-        const opsJson = await opsRes.json();
-        if (opsJson.success) setOpsData(opsJson.data);
-      }
-
-      setLastRefreshed(new Date());
-    } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
-      setError("Network error — could not reach server");
-    } finally {
-      setLoading(false);
-    }
-  }, [periodType]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Update URL when filters change
-  useEffect(() => {
-    updateUrl({
-      period: periodType, team: teamFilter, role: roleFilter, region: regionFilter,
-      flags: flagFilter, priority: priorityFilter, sla: slaRiskFilter,
+async function loadDashboardData(
+  user: { role: string; employeeId?: string; team?: string },
+  periodType: string,
+) {
+  try {
+    const latestPeriod = await prisma.timePeriod.findFirst({
+      where: { type: periodType as never },
+      orderBy: { startDate: "desc" },
     });
-  }, [periodType, teamFilter, roleFilter, regionFilter, flagFilter, priorityFilter, slaRiskFilter, updateUrl]);
 
-  const filteredEmployees = employees.filter((e) => {
-    if (teamFilter && e.team !== teamFilter) return false;
-    if (roleFilter && e.role !== roleFilter) return false;
-    if (regionFilter && e.region !== regionFilter) return false;
-    if (flagFilter === "warnings" && e.flags.length === 0) return false;
-    if (flagFilter === "critical" && !e.flags.some((f) => f.severity === "critical")) return false;
-    return true;
-  });
+    if (!latestPeriod) {
+      return { employees: [] as EmployeeOverview[], opsData: null as OpsData | null };
+    }
 
-  const teams = [...new Set(employees.map((e) => e.team))];
-  const roles = [...new Set(employees.map((e) => e.role))];
-  const regions = [...new Set(employees.map((e) => e.region))];
+    // Build employee filter with scope
+    const employeeWhere: Record<string, unknown> = { active: true };
+    if (user.role === "employee" && user.employeeId) {
+      employeeWhere.id = user.employeeId;
+    } else if (user.role === "lead" && user.team) {
+      employeeWhere.team = user.team;
+    }
 
-  const clearFilters = () => {
-    setTeamFilter("");
-    setRoleFilter("");
-    setRegionFilter("");
-    setFlagFilter("");
-    setPriorityFilter("");
-    setSlaRiskFilter("");
-  };
+    const [periodScores, previousPeriod] = await Promise.all([
+      prisma.categoryScore.findMany({
+        where: { periodId: latestPeriod.id, employee: employeeWhere },
+        include: { employee: true },
+      }),
+      prisma.timePeriod.findFirst({
+        where: { type: periodType as never, startDate: { lt: latestPeriod.startDate } },
+        orderBy: { startDate: "desc" },
+      }),
+    ]);
 
-  const applyPreset = (preset: keyof typeof VIEW_PRESETS) => {
-    clearFilters();
-    const { filters } = VIEW_PRESETS[preset];
-    if (filters.team) setTeamFilter(filters.team);
-    if (filters.role) setRoleFilter(filters.role);
-    if (filters.region) setRegionFilter(filters.region);
-    if (filters.flags) setFlagFilter(filters.flags);
-    if (filters.priority) setPriorityFilter(filters.priority);
-    if (filters.sla) setSlaRiskFilter(filters.sla);
-  };
+    const prevScores = previousPeriod
+      ? await prisma.categoryScore.findMany({ where: { periodId: previousPeriod.id } })
+      : [];
 
-  const hasActiveFilters = teamFilter || roleFilter || regionFilter || flagFilter || priorityFilter || slaRiskFilter;
+    const config = await getActiveScoringConfig();
+    const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
 
-  // Compute action items that need attention right now
-  const actionItems = useMemo(() => {
-    if (!opsData) return [];
-    const items: Array<{ label: string; count: number; severity: "critical" | "warning" | "info"; href: string }> = [];
-    if (opsData.comms.unassignedCount > 0) items.push({ label: "Unowned threads", count: opsData.comms.unassignedCount, severity: "warning", href: "/comms?view=unassigned" });
-    if (opsData.comms.breachedCount > 0) items.push({ label: "SLA breached threads", count: opsData.comms.breachedCount, severity: "critical", href: "/comms?view=overdue" });
-    if (opsData.travelRule.redCount > 0) items.push({ label: "Overdue travel rule cases", count: opsData.travelRule.redCount, severity: "critical", href: "/travel-rule?status=overdue" });
-    if (opsData.incidents.criticalCount > 0) items.push({ label: "Critical incidents", count: opsData.incidents.criticalCount, severity: "critical", href: "/incidents?severity=critical" });
-    if ((opsData.rca?.overdue ?? 0) > 0) items.push({ label: "Overdue RCAs", count: opsData.rca!.overdue, severity: "warning", href: "/rca" });
-    if ((opsData.screening?.notSubmitted ?? 0) > 0) items.push({ label: "Unscreened transactions", count: opsData.screening!.notSubmitted, severity: "warning", href: "/screening" });
-    if ((opsData.staking?.overdue ?? 0) > 0) items.push({ label: "Overdue staking rewards", count: opsData.staking.overdue, severity: "warning", href: "/staking" });
-    return items;
-  }, [opsData]);
+    const employeeMap = new Map<string, {
+      employee: typeof periodScores[0]["employee"];
+      current: Record<string, number>;
+      previous: Record<string, number>;
+    }>();
 
-  return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Command Centre</h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            Operational overview with performance scores, SLA status, and active alerts
-            {lastRefreshed && (
-              <span className="ml-2 text-xs opacity-60">
-                Last refreshed: {lastRefreshed.toLocaleTimeString()}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={fetchData}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50"
-          >
-            <RefreshCw size={16} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-          <button className="flex items-center gap-2 px-3 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90">
-            <Download size={16} />
-            <span className="hidden sm:inline">Export</span>
-          </button>
-        </div>
-      </div>
+    for (const s of periodScores) {
+      if (!employeeMap.has(s.employeeId)) {
+        employeeMap.set(s.employeeId, { employee: s.employee, current: {}, previous: {} });
+      }
+      employeeMap.get(s.employeeId)!.current[s.category] = s.score;
+    }
 
-      {/* Error state */}
-      {error && <ErrorState message={error} onRetry={fetchData} />}
+    for (const s of prevScores) {
+      if (employeeMap.has(s.employeeId)) {
+        employeeMap.get(s.employeeId)!.previous[s.category] = s.score;
+      }
+    }
 
-      {/* Action Queue — what needs attention NOW */}
-      {actionItems.length > 0 && (
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-border bg-accent/30">
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Zap size={14} />
-              Needs Action ({actionItems.length})
-            </div>
-          </div>
-          <div className="divide-y divide-border">
-            {actionItems.map((item, i) => (
-              <a
-                key={i}
-                href={item.href}
-                className="flex items-center justify-between px-4 py-2.5 hover:bg-accent/20 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${item.severity === "critical" ? "bg-red-500" : item.severity === "warning" ? "bg-amber-500" : "bg-blue-500"}`} />
-                  <span className="text-sm text-foreground">{item.label}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-semibold ${item.severity === "critical" ? "text-red-500" : item.severity === "warning" ? "text-amber-500" : "text-foreground"}`}>
-                    {item.count}
-                  </span>
-                  <ArrowRight size={14} className="text-muted-foreground" />
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+    const employees: EmployeeOverview[] = Array.from(employeeMap.values()).map(({ employee, current, previous }) => {
+      const categoryScores = {} as Record<Category, number>;
+      const trends = {} as Record<string, { current: number; previous: number; delta: number; direction: "up" | "down" | "flat" }>;
 
-      {/* Operational KPIs Banner */}
-      {opsData && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <div className={`bg-card rounded-xl border p-3 ${opsData.comms.unassignedCount > 0 ? "border-amber-500/50" : "border-border"}`}>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Users size={12} />
-              Unowned Threads
-            </div>
-            <div className={`text-lg font-bold ${opsData.comms.unassignedCount > 0 ? "text-amber-500" : "text-foreground"}`}>
-              {opsData.comms.unassignedCount}
-            </div>
-          </div>
+      for (const cat of categories) {
+        categoryScores[cat] = current[cat] ?? 3;
+        const prev = previous[cat] ?? current[cat] ?? 3;
+        const delta = Math.round((categoryScores[cat] - prev) * 10) / 10;
+        trends[cat] = { current: categoryScores[cat], previous: prev, delta, direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat" };
+      }
 
-          <div className={`bg-card rounded-xl border p-3 ${opsData.comms.breachedCount > 0 ? "border-red-500/50" : "border-border"}`}>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Clock size={12} />
-              SLA Breached
-            </div>
-            <div className={`text-lg font-bold ${opsData.comms.breachedCount > 0 ? "text-red-500" : "text-foreground"}`}>
-              {opsData.comms.breachedCount}
-            </div>
-          </div>
+      const overallScore = computeOverallScore(categoryScores, config.weights);
+      const prevCategoryScores = {} as Record<Category, number>;
+      for (const cat of categories) prevCategoryScores[cat] = previous[cat] ?? 3;
+      const prevOverall = computeOverallScore(prevCategoryScores, config.weights);
+      const overallDelta = Math.round((overallScore - prevOverall) * 10) / 10;
+      trends["overall"] = { current: overallScore, previous: prevOverall, delta: overallDelta, direction: overallDelta > 0 ? "up" : overallDelta < 0 ? "down" : "flat" };
 
-          <div className={`bg-card rounded-xl border p-3 ${opsData.travelRule.redCount > 0 ? "border-red-500/50" : "border-border"}`}>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <AlertTriangle size={12} />
-              Travel Rule Overdue
-            </div>
-            <div className={`text-lg font-bold ${opsData.travelRule.redCount > 0 ? "text-red-500" : "text-foreground"}`}>
-              {opsData.travelRule.redCount}
-            </div>
-          </div>
+      const flags: { type: string; message: string; severity: "warning" | "critical" }[] = [];
+      if (trends["quality"]?.direction === "down" && trends["quality"].delta < -0.5) {
+        flags.push({ type: "mistakes_rising", message: "Quality score declining", severity: "warning" });
+      }
+      if (trends["daily_tasks"]?.direction === "down" && trends["daily_tasks"].delta < -0.5) {
+        flags.push({ type: "throughput_drop", message: "Task throughput dropping", severity: "warning" });
+      }
+      if ((categoryScores["projects"] ?? 3) <= 3.5) {
+        flags.push({ type: "docs_stalled", message: "Documentation stalled", severity: "warning" });
+      }
+      if (overallScore <= 4.0) {
+        flags.push({ type: "sla_slipping", message: "Overall performance below threshold", severity: "critical" });
+      }
 
-          <div className={`bg-card rounded-xl border p-3 ${opsData.alerts.activeCount > 0 ? "border-amber-500/50" : "border-border"}`}>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <AlertTriangle size={12} />
-              Active Alerts
-            </div>
-            <div className={`text-lg font-bold ${opsData.alerts.activeCount > 0 ? "text-amber-500" : "text-foreground"}`}>
-              {opsData.alerts.activeCount}
-            </div>
-          </div>
+      return {
+        id: employee.id,
+        name: employee.name,
+        role: employee.role,
+        team: employee.team,
+        region: employee.region,
+        overallScore,
+        categoryScores,
+        trends: trends as EmployeeOverview["trends"],
+        flags: flags as EmployeeOverview["flags"],
+      };
+    });
 
-          <div className={`bg-card rounded-xl border p-3 ${opsData.incidents.criticalCount > 0 ? "border-red-500/50" : "border-border"}`}>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Activity size={12} />
-              Active Incidents
-            </div>
-            <div className={`text-lg font-bold ${opsData.incidents.criticalCount > 0 ? "text-red-500" : "text-foreground"}`}>
-              {opsData.incidents.activeCount}
-              {opsData.incidents.criticalCount > 0 && (
-                <span className="text-xs ml-1 text-red-500">({opsData.incidents.criticalCount} crit)</span>
-              )}
-            </div>
-          </div>
+    // Load ops data in parallel
+    const opsData = await loadOpsData();
+    return { employees, opsData };
+  } catch (error) {
+    console.error("Failed to load dashboard data server-side:", error);
+    return { employees: [] as EmployeeOverview[], opsData: null as OpsData | null };
+  }
+}
 
-          <div className="bg-card rounded-xl border border-border p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Users size={12} />
-              Team Coverage
-            </div>
-            <div className="text-lg font-bold text-foreground">
-              {opsData.coverage.active}/{opsData.coverage.total}
-            </div>
-          </div>
-        </div>
-      )}
+async function loadOpsData(): Promise<OpsData | null> {
+  try {
+    const now = new Date();
 
-      {/* Degraded state banners */}
-      {opsData?.dailyChecks?.exists && opsData.dailyChecks.issues > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
-          <span className="font-medium">Daily Checks:</span> {opsData.dailyChecks.issues} issue(s) found — {opsData.dailyChecks.pending} pending review
-          {opsData.dailyChecks.passed > 0 && <span className="ml-2 opacity-70">({opsData.dailyChecks.passed}/{opsData.dailyChecks.total} passed)</span>}
-        </div>
-      )}
+    const [
+      activeThreadCount,
+      breachedThreads,
+      unassignedThreads,
+      openTravelRule,
+      activeAlerts,
+      activeIncidents,
+      criticalIncidents,
+    ] = await Promise.all([
+      prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }),
+      prisma.commsThread.count({
+        where: {
+          status: { notIn: ["Done", "Closed"] },
+          OR: [
+            { ttoDeadline: { lt: now } },
+            { ttfaDeadline: { lt: now } },
+            { tslaDeadline: { lt: now } },
+          ],
+        },
+      }),
+      prisma.commsThread.count({ where: { status: "Unassigned" } }),
+      prisma.travelRuleCase.count({ where: { status: { notIn: ["Resolved"] } } }),
+      prisma.alert.count({ where: { status: "active" } }),
+      prisma.incident.count({ where: { status: "active" } }),
+      prisma.incident.count({ where: { status: "active", severity: "critical" } }),
+    ]);
 
-      {(opsData?.staking?.overdue ?? 0) > 0 && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-sm text-red-700 dark:text-red-400">
-          <span className="font-medium">Staking:</span> {opsData?.staking?.overdue} wallet(s) with overdue rewards
-          {(opsData?.staking?.approaching ?? 0) > 0 && <span className="ml-2 opacity-70">({opsData?.staking?.approaching} approaching deadline)</span>}
-        </div>
-      )}
-
-      {(opsData?.screening?.openAlerts ?? 0) > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
-          <span className="font-medium">Screening:</span> {opsData?.screening?.openAlerts} open analytics alerts
-          {(opsData?.screening?.notSubmitted ?? 0) > 0 && <span className="ml-2 opacity-70">({opsData?.screening?.notSubmitted} not yet submitted)</span>}
-        </div>
-      )}
-
-      {(opsData?.rca?.overdue ?? 0) > 0 && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-sm text-red-700 dark:text-red-400">
-          <span className="font-medium">RCA Tracker:</span> {opsData?.rca?.overdue} overdue RCA(s) — {opsData?.rca?.awaiting ?? 0} awaiting response
-        </div>
-      )}
-
-      {/* Stats */}
-      <StatsCards employees={filteredEmployees} />
-
-      {/* Filters */}
-      <div className="bg-card rounded-xl border border-border p-3 md:p-4 space-y-3">
-        {/* Preset views */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Quick views:</span>
-          {Object.entries(VIEW_PRESETS).map(([key, { label }]) => (
-            <button
-              key={key}
-              onClick={() => applyPreset(key)}
-              className="text-xs px-2.5 py-1 rounded-md bg-accent/50 text-foreground hover:bg-accent transition-colors"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 md:gap-4">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Period</label>
-            <select
-              value={periodType}
-              onChange={(e) => setPeriodType(e.target.value as "week" | "month" | "quarter")}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="week">Weekly</option>
-              <option value="month">Monthly</option>
-              <option value="quarter">Quarterly</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Team</label>
-            <select
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All Teams</option>
-              {teams.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Role</label>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All Roles</option>
-              {roles.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Region</label>
-            <select
-              value={regionFilter}
-              onChange={(e) => setRegionFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All Regions</option>
-              {regions.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Priority</label>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All</option>
-              <option value="P0">P0 - Critical</option>
-              <option value="P1">P1 - High</option>
-              <option value="P2">P2 - Medium</option>
-              <option value="P3">P3 - Low</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">SLA Risk</label>
-            <select
-              value={slaRiskFilter}
-              onChange={(e) => setSlaRiskFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All</option>
-              <option value="breached">Breached</option>
-              <option value="at_risk">At Risk</option>
-              <option value="healthy">Healthy</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Flags</label>
-            <select
-              value={flagFilter}
-              onChange={(e) => setFlagFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5"
-            >
-              <option value="">All</option>
-              <option value="warnings">With Warnings</option>
-              <option value="critical">Critical Only</option>
-            </select>
-          </div>
-          {hasActiveFilters && (
-            <div className="flex items-end">
-              <button
-                onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground underline mt-4"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
-          <RefreshCw size={24} className="mx-auto mb-3 animate-spin" />
-          Loading performance data...
-        </div>
-      ) : filteredEmployees.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
-          {employees.length === 0 ? (
-            <>
-              <Users size={32} className="mx-auto mb-3 opacity-50" />
-              <p className="text-lg font-medium">No employees found</p>
-              <p className="text-sm mt-1">No scoring data available for the selected period.</p>
-            </>
-          ) : (
-            <>
-              <Shield size={32} className="mx-auto mb-3 opacity-50" />
-              <p className="text-lg font-medium">No results match your filters</p>
-              <p className="text-sm mt-1">Try adjusting the filters above or <button onClick={clearFilters} className="underline">clear all filters</button>.</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <TeamOverviewTable employees={filteredEmployees} />
-      )}
-    </div>
-  );
+    return {
+      comms: { totalActive: activeThreadCount, breachedCount: breachedThreads, unassignedCount: unassignedThreads },
+      travelRule: { openCount: openTravelRule, redCount: 0, amberCount: 0 },
+      alerts: { activeCount: activeAlerts },
+      incidents: { activeCount: activeIncidents, criticalCount: criticalIncidents, monitoringCount: 0 },
+      dailyChecks: { exists: false, total: 0, passed: 0, issues: 0, pending: 0 },
+      staking: { overdue: 0, approaching: 0 },
+      coverage: { total: 0, active: 0, onQueues: 0, onBreak: 0 },
+    };
+  } catch {
+    return null;
+  }
 }

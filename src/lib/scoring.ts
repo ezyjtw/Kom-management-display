@@ -175,7 +175,9 @@ export async function getActiveScoringConfig(): Promise<ScoringConfigData> {
     });
 
     if (dbConfig) {
-      return JSON.parse(dbConfig.config) as ScoringConfigData;
+      // config is a native Json column — parse if string (legacy), otherwise use directly
+      const raw = dbConfig.config;
+      return (typeof raw === "string" ? JSON.parse(raw) : raw) as ScoringConfigData;
     }
   } catch {
     // DB unavailable or parse error — fall back to defaults

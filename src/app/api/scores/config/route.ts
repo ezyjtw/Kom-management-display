@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
     const newConfig = await prisma.scoringConfig.create({
       data: {
         version,
-        config: typeof config === "string" ? config : JSON.stringify(config),
+        config: typeof config === "string" ? JSON.parse(config) : config,
         active: false,
+        status: "draft",
         createdById: auth.id,
         notes: notes || `Draft config created by ${auth.name}`,
       },
@@ -92,12 +93,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * PUT /api/scores/config
+ * Transition config through the approval workflow.
+ *
+ * Supported actions: submit_review, approve, activate, archive, send_back
+ * Enforces the state machine: draft → review → approved → active
+ * Segregation of duties:
+ *   - reviewer cannot be the creator
+ *   - approver cannot be the reviewer
+ */
 export async function PUT(request: NextRequest) {
-  const auth = await requireRole("admin");
+  const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
-
-  const authz = checkAuthorization(auth, "scoring_config", "configure");
-  if (!authz.allowed) return apiForbiddenError();
 
   try {
     const body = await request.json();
@@ -110,34 +118,109 @@ export async function PUT(request: NextRequest) {
     const config = await prisma.scoringConfig.findUnique({ where: { id: configId } });
     if (!config) return apiNotFoundError("Scoring config");
 
+    // Map user-friendly action names to target statuses
+    const actionToStatus: Record<string, string> = {
+      submit_review: "review",
+      approve: "approved",
+      activate: "active",
+      archive: "archived",
+      send_back: "draft",
+    };
+
+    const targetStatus = actionToStatus[configAction];
+    if (!targetStatus) {
+      return apiValidationError(
+        `Invalid action '${configAction}'. Supported: submit_review, approve, activate, archive, send_back`,
+      );
+    }
+
+    // Enforce segregation of duties
+    if (configAction === "approve" || targetStatus === "approved") {
+      // Only admin can approve
+      const approveAuthz = checkAuthorization(auth, "scoring_config", "approve");
+      if (!approveAuthz.allowed) return apiForbiddenError("Only admin can approve configs");
+      // Reviewer cannot be the creator
+      if (config.createdById === auth.id) {
+        return apiForbiddenError("Cannot approve your own config — segregation of duties required");
+      }
+    }
+
     if (configAction === "activate") {
-      // Deactivate all other configs
+      // Only admin can activate
+      const configureAuthz = checkAuthorization(auth, "scoring_config", "configure");
+      if (!configureAuthz.allowed) return apiForbiddenError("Only admin can activate configs");
+      // Must be in approved status
+      if (config.status !== "approved") {
+        return apiValidationError(
+          `Cannot activate config in '${config.status}' status. Config must be approved first (draft → review → approved → active).`,
+        );
+      }
+      // Activator should not be the approver (double-check segregation)
+      if (config.approvedById === auth.id) {
+        return apiForbiddenError("Cannot activate a config you approved — segregation of duties required");
+      }
+    }
+
+    // Execute the state transition
+    const validTransitions: Record<string, string[]> = {
+      draft: ["review", "archived"],
+      review: ["approved", "draft", "archived"],
+      approved: ["active", "archived"],
+      active: ["archived"],
+      archived: [],
+    };
+
+    const currentStatus = config.status;
+    if (!validTransitions[currentStatus]?.includes(targetStatus)) {
+      return apiValidationError(
+        `Invalid transition: ${currentStatus} → ${targetStatus}. Valid transitions from '${currentStatus}': ${validTransitions[currentStatus]?.join(", ") || "none"}`,
+      );
+    }
+
+    // If activating, deactivate all other configs first
+    if (targetStatus === "active") {
       await prisma.scoringConfig.updateMany({
         where: { active: true },
         data: { active: false },
       });
-
-      // Activate this one
-      const updated = await prisma.scoringConfig.update({
-        where: { id: configId },
-        data: { active: true, notes: notes ? `${config.notes}\nActivated: ${notes}` : config.notes },
-      });
-
-      await createAuditEntry({
-        action: "config_activated",
-        entityType: "scoring_config",
-        entityId: configId,
-        userId: auth.employeeId || auth.id,
-        summary: `Scoring config '${config.version}' activated`,
-        before: { active: false },
-        after: { active: true },
-        metadata: { notes },
-      });
-
-      return apiSuccess(updated);
     }
 
-    return apiValidationError("Invalid action. Supported: 'activate'");
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      status: targetStatus,
+      active: targetStatus === "active",
+      notes: notes ? `${config.notes}\n[${targetStatus}] ${notes}` : config.notes,
+    };
+
+    // Track who reviewed/approved/activated and when
+    if (targetStatus === "review") {
+      // No reviewer assignment yet — just submit for review
+    } else if (targetStatus === "approved") {
+      updateData.reviewedById = auth.id;
+      updateData.reviewedAt = new Date();
+    } else if (targetStatus === "active") {
+      updateData.approvedById = config.reviewedById !== auth.id ? auth.id : config.approvedById;
+      updateData.approvedAt = config.approvedAt ?? new Date();
+      updateData.activatedAt = new Date();
+    }
+
+    const updated = await prisma.scoringConfig.update({
+      where: { id: configId },
+      data: updateData,
+    });
+
+    await createAuditEntry({
+      action: `config_${configAction}`,
+      entityType: "scoring_config",
+      entityId: configId,
+      userId: auth.employeeId || auth.id,
+      summary: `Scoring config '${config.version}' transitioned: ${currentStatus} → ${targetStatus}`,
+      before: { status: currentStatus, active: config.active },
+      after: { status: targetStatus, active: targetStatus === "active" },
+      metadata: { notes, performedBy: auth.name },
+    });
+
+    return apiSuccess(updated);
   } catch (error) {
     return handleApiError(error, "scores/config PUT");
   }
