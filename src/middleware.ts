@@ -1,12 +1,36 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 
-/** Role-based idle timeout in seconds. Privileged roles get shorter timeouts. */
+/**
+ * Role-based idle timeout in seconds. Privileged roles get shorter timeouts.
+ * This is the maximum time since JWT issuance (approximates idle time since
+ * JWTs are re-issued on each sign-in).
+ */
 const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
   admin: 2 * 60 * 60,    // 2 hours
   lead: 4 * 60 * 60,     // 4 hours
   employee: 8 * 60 * 60, // 8 hours
   auditor: 4 * 60 * 60,  // 4 hours
+};
+
+/**
+ * Absolute session lifetime in seconds — hard cap regardless of activity.
+ * After this, user must re-authenticate. Separate from idle timeout.
+ */
+const ABSOLUTE_SESSION_LIFETIME = 8 * 60 * 60; // 8 hours for all roles
+
+/**
+ * Sensitive action session freshness requirements.
+ * For high-risk operations, the session must have been issued recently.
+ * Key format: "METHOD:path_prefix"
+ */
+const SENSITIVE_ACTION_MAX_AGE: Record<string, number> = {
+  "POST:/api/users": 1 * 60 * 60,        // User creation: 1h
+  "DELETE:/api/users": 1 * 60 * 60,       // User deletion: 1h
+  "PUT:/api/scores/config": 2 * 60 * 60,  // Scoring config: 2h
+  "PUT:/api/feature-flags": 2 * 60 * 60,  // Feature flags: 2h
+  "DELETE:/api/sessions": 1 * 60 * 60,    // Session revocation: 1h
+  "POST:/api/export": 4 * 60 * 60,        // Data export: 4h
 };
 
 /** HTTP methods that modify state. */
@@ -111,22 +135,69 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Enforce role-based idle timeout
+  // Enforce session timeouts (both idle and absolute)
   const role = token.role as string;
 
   if (token.iat) {
-    const issuedAt = (token.iat as number) * 1000;
-    const idleTimeout = (IDLE_TIMEOUT_SECONDS[role] ?? IDLE_TIMEOUT_SECONDS.employee) * 1000;
-    if (Date.now() - issuedAt > idleTimeout) {
+    const issuedAt = token.iat as number; // unix seconds
+    const ageSeconds = Math.floor(Date.now() / 1000) - issuedAt;
+
+    // Absolute session lifetime — hard cap for all roles
+    if (ageSeconds > ABSOLUTE_SESSION_LIFETIME) {
       if (isApi) {
         return addSecurityHeaders(
           NextResponse.json(
-            { success: false, error: "Session expired", code: "SESSION_EXPIRED" },
+            { success: false, error: "Session expired (absolute lifetime)", code: "SESSION_EXPIRED_ABSOLUTE" },
             { status: 401 },
           ),
         );
       }
       return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
+    }
+
+    // Role-based idle timeout
+    const idleTimeout = IDLE_TIMEOUT_SECONDS[role] ?? IDLE_TIMEOUT_SECONDS.employee;
+    if (ageSeconds > idleTimeout) {
+      if (isApi) {
+        return addSecurityHeaders(
+          NextResponse.json(
+            { success: false, error: "Session expired (idle timeout)", code: "SESSION_EXPIRED_IDLE" },
+            { status: 401 },
+          ),
+        );
+      }
+      return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
+    }
+
+    // Sensitive action freshness check — require recent session for high-risk ops
+    if (isApi && MUTATION_METHODS.has(req.method)) {
+      const actionKey = `${req.method}:${path}`;
+      // Check exact match then prefix match
+      let maxAge: number | undefined;
+      if (SENSITIVE_ACTION_MAX_AGE[actionKey]) {
+        maxAge = SENSITIVE_ACTION_MAX_AGE[actionKey];
+      } else {
+        for (const [pattern, age] of Object.entries(SENSITIVE_ACTION_MAX_AGE)) {
+          const [patMethod, patPath] = pattern.split(":");
+          if (patMethod === req.method && path.startsWith(patPath)) {
+            maxAge = age;
+            break;
+          }
+        }
+      }
+
+      if (maxAge && ageSeconds > maxAge) {
+        return addSecurityHeaders(
+          NextResponse.json(
+            {
+              success: false,
+              error: "This action requires a fresh session. Please sign out and sign back in.",
+              code: "SESSION_TOO_OLD_FOR_SENSITIVE_ACTION",
+            },
+            { status: 403 },
+          ),
+        );
+      }
     }
   }
 

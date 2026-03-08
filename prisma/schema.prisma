@@ -232,7 +232,7 @@ model CategoryScore {
   rawIndex      Float // 0-1 raw performance index
   score         Float // 3-8 clamped score
   configVersion String // scoring config version used
-  evidence      Json          @default("[]") // JSON array of evidence links (kept for backward compat with ScoreEvidence)
+  evidence      Json          @default("[]") // JSON array of evidence links — denormalized for fast reads
   metadata      Json          @default("{}") // JSON object with detailed metrics
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -255,7 +255,7 @@ model KnowledgeScore {
   overallRaw               Float    @default(0) // 1-10 average
   mappedScore              Float    @default(3) // 3-8 mapped
   notes                    String   @default("")
-  scoredBy                 String   @default("") // display name (legacy, kept for backward compat)
+  scoredBy                 String   @default("") // display name — prefer scoredById FK for lookups
   scoredById               String?  // FK to User who scored
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -313,7 +313,7 @@ model CommsThread {
   id                 String         @id @default(cuid())
   source             CommsSource    @default(email)
   sourceThreadRef    String // gmail thread id / slack channel+ts / jira issue key
-  participants       Json           @default("[]") // JSON array (kept for backward compat with ThreadParticipant)
+  participants       Json           @default("[]") // JSON array of { name, email, role } objects
   clientOrPartnerTag String         @default("")
   subject            String
   priority           ThreadPriority @default(P2)
@@ -327,7 +327,7 @@ model CommsThread {
   ttoDeadline        DateTime? // Time-to-Ownership deadline
   ttfaDeadline       DateTime? // Time-to-First-Action deadline
   tslaDeadline       DateTime? // Time-since-last-action deadline
-  linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs (kept for backward compat with ThreadLinkedRecord)
+  linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
 
   owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
   messages            CommsMessage[]
@@ -357,7 +357,7 @@ model CommsMessage {
   authorType  String // external, internal
   bodySnippet String
   bodyLink    String   @default("") // link to full content
-  attachments Json     @default("[]") // JSON: [{name, size, type}] (kept for backward compat with MessageAttachment)
+  attachments Json     @default("[]") // JSON: [{name, size, type}]
 
   thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   messageAttachments MessageAttachment[]
@@ -679,7 +679,7 @@ model Project {
   targetDate  DateTime?
   completedAt DateTime?
   progress    Int           @default(0) // 0-100 percentage
-  tags        Json          @default("[]") // JSON array of tags (kept for backward compat with ProjectTag)
+  tags        Json          @default("[]") // JSON array of tag strings
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -995,7 +995,7 @@ model StakingWallet {
   onChainBalance          Float? // for reconciliation
   platformBalance         Float? // internal representation
   varianceThreshold       Float     @default(0.01) // flag if variance > this
-  tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold (kept for backward compat with WalletTag)
+  tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold
   notes                   String    @default("")
   status                  String    @default("active") // active, unstaking, inactive
   createdAt               DateTime  @default(now())
