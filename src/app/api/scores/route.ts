@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
       rawIndex,
       score,
       configVersion: config.version,
-      evidence: JSON.stringify(evidence || []),
-      metadata: JSON.stringify(metadata || {}),
+      evidence: evidence || [],
+      metadata: metadata || {},
     });
 
     await createAuditEntry({

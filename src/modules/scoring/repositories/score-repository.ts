@@ -33,8 +33,8 @@ export interface UpsertScoreData {
   rawIndex: number;
   score: number;
   configVersion: string;
-  evidence?: string;
-  metadata?: string;
+  evidence?: unknown;
+  metadata?: unknown;
 }
 
 export interface ScoreRecord {
@@ -45,8 +45,8 @@ export interface ScoreRecord {
   rawIndex: number;
   score: number;
   configVersion: string;
-  evidence: string;
-  metadata: string;
+  evidence: unknown;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
   employee?: { id: string; name: string; role: string; team: string };
@@ -142,8 +142,8 @@ export const scoreRepository = {
         rawIndex: data.rawIndex,
         score: data.score,
         configVersion: data.configVersion,
-        evidence: data.evidence ?? "[]",
-        metadata: data.metadata ?? "{}",
+        evidence: data.evidence ?? [],
+        metadata: data.metadata ?? {},
       },
       update: {
         rawIndex: data.rawIndex,

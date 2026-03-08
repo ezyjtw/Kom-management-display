@@ -262,7 +262,7 @@ model KnowledgeScore {
 model ScoringConfig {
   id           String              @id @default(cuid())
   version      String              @unique
-  config       String // JSON: weights, targets, clamp rules, definitions
+  config       Json // weights, targets, clamp rules, definitions
   active       Boolean             @default(false)
   status       ScoringConfigStatus @default(draft)
   createdById  String
@@ -277,6 +277,9 @@ model ScoringConfig {
   createdByUser  User  @relation("ScoringConfigCreatedBy", fields: [createdById], references: [id])
   reviewedByUser User? @relation("ScoringConfigReviewedBy", fields: [reviewedById], references: [id])
   approvedByUser User? @relation("ScoringConfigApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([status])
+  @@index([active])
 }
 
 model EmployeeNote {

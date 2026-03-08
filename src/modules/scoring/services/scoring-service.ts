@@ -209,7 +209,7 @@ export const scoringService = {
       rawIndex,
       score,
       configVersion: config.version,
-      metadata: JSON.stringify(metrics),
+      metadata: metrics,
     });
 
     logger.info("scoringService.computeAndSaveScore", {
@@ -274,7 +274,12 @@ export const scoringService = {
       const dbConfig = await prisma.scoringConfig.findFirst({
         where: { version: score.configVersion },
       });
-      config = dbConfig ? JSON.parse(dbConfig.config) : await getActiveScoringConfig();
+      if (dbConfig) {
+        const raw = dbConfig.config;
+        config = (typeof raw === "string" ? JSON.parse(raw) : raw) as ScoringConfigData;
+      } else {
+        config = await getActiveScoringConfig();
+      }
     } catch {
       config = getDefaultScoringConfig();
     }
@@ -408,7 +413,7 @@ export const scoringService = {
     const record = await prisma.scoringConfig.create({
       data: {
         version: config.version,
-        config: JSON.stringify(config),
+        config: config as unknown as Record<string, unknown>,
         active: false,
         createdById: createdBy,
         notes: combinedNotes,
