@@ -78,14 +78,21 @@ async function loadEmployeeScores(
     orderBy: { startDate: "desc" },
   });
 
-  if (!latestPeriod) return [];
-
   // Build employee filter with role-based scope
   const employeeWhere: Record<string, unknown> = { active: true };
   if (user.role === "employee" && user.employeeId) {
     employeeWhere.id = user.employeeId;
   } else if (user.role === "lead" && user.team) {
     employeeWhere.team = user.team;
+  }
+
+  // If no scoring period exists, fall back to showing employees with default scores
+  if (!latestPeriod) {
+    const employees = await prisma.employee.findMany({ where: employeeWhere });
+    const config = await getActiveScoringConfig();
+    return employees.map((emp) =>
+      buildEmployeeOverview(emp, {}, {}, config.weights),
+    );
   }
 
   const [periodScores, previousPeriod] = await Promise.all([
@@ -213,6 +220,8 @@ async function loadOpsData(): Promise<OpsData | null> {
       activeAlerts,
       activeIncidents,
       criticalIncidents,
+      totalEmployees,
+      activeEmployees,
     ] = await Promise.all([
       prisma.commsThread.count({ where: { status: { notIn: ["Done", "Closed"] } } }),
       prisma.commsThread.count({
@@ -230,6 +239,8 @@ async function loadOpsData(): Promise<OpsData | null> {
       prisma.alert.count({ where: { status: "active" } }),
       prisma.incident.count({ where: { status: "active" } }),
       prisma.incident.count({ where: { status: "active", severity: "critical" } }),
+      prisma.employee.count(),
+      prisma.employee.count({ where: { active: true } }),
     ]);
 
     return {
@@ -239,7 +250,7 @@ async function loadOpsData(): Promise<OpsData | null> {
       incidents: { activeCount: activeIncidents, criticalCount: criticalIncidents, monitoringCount: 0 },
       dailyChecks: { exists: false, total: 0, passed: 0, issues: 0, pending: 0 },
       staking: { overdue: 0, approaching: 0 },
-      coverage: { total: 0, active: 0, onQueues: 0, onBreak: 0 },
+      coverage: { total: totalEmployees, active: activeEmployees, onQueues: 0, onBreak: 0 },
     };
   } catch {
     return null;

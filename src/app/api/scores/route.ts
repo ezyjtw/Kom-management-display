@@ -50,7 +50,32 @@ export async function GET(request: NextRequest) {
       return apiSuccess([]);
     }
     if (!latestPeriod) {
-      return apiSuccess([]);
+      // No scoring periods yet — return employees with default scores
+      const { prisma } = await import("@/lib/prisma");
+      const employeeWhere: Record<string, unknown> = { active: true };
+      if (authz.scope === "own" && (auth as { employeeId?: string }).employeeId) {
+        employeeWhere.id = (auth as { employeeId?: string }).employeeId;
+      } else if (authz.scope === "team" && (auth as { team?: string }).team) {
+        employeeWhere.team = (auth as { team?: string }).team;
+      }
+      const employees = await prisma.employee.findMany({ where: employeeWhere });
+      const config = await scoringService.getActiveScoringConfig();
+      const categories: Category[] = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
+      const fallbackOverviews = employees.map((emp) => {
+        const categoryScores = {} as Record<Category, number>;
+        const trends = {} as Record<string, { current: number; previous: number; delta: number; direction: string }>;
+        for (const cat of categories) {
+          categoryScores[cat] = 3;
+          trends[cat] = { current: 3, previous: 3, delta: 0, direction: "flat" };
+        }
+        const overallScore = scoringService.computeOverallScore(categoryScores, config.weights);
+        trends["overall"] = { current: overallScore, previous: overallScore, delta: 0, direction: "flat" };
+        return {
+          id: emp.id, name: emp.name, role: emp.role, team: emp.team,
+          region: emp.region ?? "", overallScore, categoryScores, trends, flags: [],
+        };
+      });
+      return apiSuccess(fallbackOverviews);
     }
 
     const [previousPeriod, periodScoresResult, config] = await Promise.all([
