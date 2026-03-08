@@ -1,0 +1,27 @@
+{
+  "_comment": "Reviewed security audit exceptions. Each entry documents a known vulnerability that has been assessed and accepted with mitigations in place. Review quarterly or when upgrading major dependencies.",
+  "_lastReviewedAt": "2026-03-08",
+  "_reviewedBy": "Security team",
+  "accepted": [
+    {
+      "package": "next",
+      "advisory": "https://github.com/advisories/GHSA-9g9p-9gw9-jx7f",
+      "severity": "high",
+      "title": "Next.js DoS via Image Optimizer remotePatterns",
+      "mitigation": "Our remotePatterns config uses explicit hostnames only (no wildcards). The vulnerable code path requires overly permissive patterns with protocol wildcards. Not exploitable in our configuration.",
+      "acceptedAt": "2026-03-08",
+      "fixAvailable": "next@16.x (breaking change — requires Next.js 16 migration)",
+      "reviewDate": "2026-06-08"
+    },
+    {
+      "package": "next",
+      "advisory": "https://github.com/advisories/GHSA-h25m-26qc-wcjf",
+      "severity": "high",
+      "title": "Next.js HTTP request deserialization DoS via insecure RSC",
+      "mitigation": "Requires 'insecure' React Server Components usage patterns. Our RSC usage follows Next.js recommended patterns with no user-controlled deserialization of arbitrary payloads. Rate limiting is in place at the infrastructure level.",
+      "acceptedAt": "2026-03-08",
+      "fixAvailable": "next@16.x (breaking change — requires Next.js 16 migration)",
+      "reviewDate": "2026-06-08"
+    }
+  ]
+}
