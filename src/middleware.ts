@@ -41,7 +41,39 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  return NextResponse.next();
+  // Route-level role restrictions
+  const role = token.role as string;
+  const path = req.nextUrl.pathname;
+  const isApi = path.startsWith("/api/");
+
+  // Admin-only routes
+  const adminOnlyPaths = ["/admin", "/api/users"];
+  for (const restricted of adminOnlyPaths) {
+    if (path.startsWith(restricted) && role !== "admin") {
+      if (isApi) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+  }
+
+  // Admin + lead routes
+  const adminLeadPaths = ["/api/scoring-config", "/api/export"];
+  for (const restricted of adminLeadPaths) {
+    if (path.startsWith(restricted) && !["admin", "lead"].includes(role)) {
+      if (isApi) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+  }
+
+  // Auditor: read-only (block POST/PUT/PATCH/DELETE)
+  if (role === "auditor" && isApi && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return NextResponse.json({ error: "Auditors have read-only access" }, { status: 403 });
+  }
+
+  // Add request ID header for correlation
+  const requestId = crypto.randomUUID().substring(0, 8);
+  const response = NextResponse.next();
+  response.headers.set("x-request-id", requestId);
+  return response;
 }
 
 export const config = {
