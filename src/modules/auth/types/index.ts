@@ -26,7 +26,13 @@ export type Resource =
   | "export"
   | "audit_log"
   | "user"
-  | "branding";
+  | "branding"
+  | "transaction_confirmation"
+  | "feature_flag"
+  | "session"
+  | "background_job"
+  | "report"
+  | "metrics";
 
 export type Action =
   | "view"
@@ -77,6 +83,12 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     audit_log:        { actions: ["view"], scope: "all" },
     user:             { actions: ["view", "create", "update", "delete"], scope: "all" },
     branding:         { actions: ["view", "update"], scope: "all" },
+    transaction_confirmation: { actions: ["view", "create", "acknowledge", "approve", "escalate"], scope: "all" },
+    feature_flag:     { actions: ["view", "create", "update", "delete", "configure"], scope: "all" },
+    session:          { actions: ["view", "delete"], scope: "all" },
+    background_job:   { actions: ["view", "create", "configure"], scope: "all" },
+    report:           { actions: ["view", "create", "export"], scope: "all" },
+    metrics:          { actions: ["view"], scope: "all" },
   },
   lead: {
     employee:         { actions: ["view", "update"], scope: "team" },
@@ -98,6 +110,12 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     audit_log:        { actions: ["view"], scope: "team" },
     user:             { actions: ["view"], scope: "team" },
     branding:         { actions: ["view"], scope: "all" },
+    transaction_confirmation: { actions: ["view", "acknowledge", "approve", "escalate"], scope: "team" },
+    feature_flag:     { actions: ["view"], scope: "all" },
+    session:          { actions: ["view", "delete"], scope: "own" },
+    background_job:   { actions: ["view"], scope: "all" },
+    report:           { actions: ["view", "create", "export"], scope: "team" },
+    metrics:          { actions: ["view"], scope: "all" },
   },
   employee: {
     employee:         { actions: ["view_own"], scope: "own" },
@@ -119,6 +137,12 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     audit_log:        { actions: [], scope: "none" },
     user:             { actions: [], scope: "none" },
     branding:         { actions: ["view"], scope: "all" },
+    transaction_confirmation: { actions: ["view", "acknowledge"], scope: "own" },
+    feature_flag:     { actions: ["view"], scope: "all" },
+    session:          { actions: ["view", "delete"], scope: "own" },
+    background_job:   { actions: [], scope: "none" },
+    report:           { actions: ["view"], scope: "own" },
+    metrics:          { actions: [], scope: "none" },
   },
   auditor: {
     employee:         { actions: ["view"], scope: "all" },
@@ -140,6 +164,12 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     audit_log:        { actions: ["view"], scope: "all" },
     user:             { actions: ["view"], scope: "all" },
     branding:         { actions: ["view"], scope: "all" },
+    transaction_confirmation: { actions: ["view"], scope: "all" },
+    feature_flag:     { actions: ["view"], scope: "all" },
+    session:          { actions: ["view"], scope: "all" },
+    background_job:   { actions: ["view"], scope: "all" },
+    report:           { actions: ["view", "export"], scope: "all" },
+    metrics:          { actions: ["view"], scope: "all" },
   },
 };
 
@@ -164,4 +194,10 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   audit_log: [],
   user: ["password"],
   branding: [],
+  transaction_confirmation: ["emailSentTo", "slackChannel"],
+  feature_flag: [],
+  session: ["sessionToken", "ipAddress"],
+  background_job: [],
+  report: [],
+  metrics: [],
 };
