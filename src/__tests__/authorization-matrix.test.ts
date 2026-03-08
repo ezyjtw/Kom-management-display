@@ -41,6 +41,8 @@ const ALL_RESOURCES: Resource[] = [
   "alert", "project", "incident", "travel_rule_case", "daily_check",
   "staking_wallet", "settlement", "screening", "usdc_ramp",
   "token_review", "export", "audit_log", "user", "branding",
+  "transaction_confirmation", "feature_flag", "session",
+  "background_job", "report", "metrics",
 ];
 
 // ─── Admin: can do everything ───
@@ -209,11 +211,11 @@ describe("Auditor is read-only (can only view)", () => {
     expect(result.scope).toBe("all");
   });
 
-  it("auditor has only view actions per resource (plus export for export resource)", () => {
+  it("auditor has only view actions per resource (plus export for export/report resources)", () => {
     for (const resource of ALL_RESOURCES) {
       const perm = AUTHORIZATION_MATRIX.auditor[resource];
       expect(perm).toBeDefined();
-      if (resource === "export") {
+      if (resource === "export" || resource === "report") {
         expect(perm!.actions).toEqual(expect.arrayContaining(["view", "export"]));
       } else {
         expect(perm!.actions).toEqual(["view"]);
@@ -436,5 +438,138 @@ describe("Field masking for sensitive fields", () => {
     const data = { id: "1", walletAddress: "0xAB" };
     const result = maskSensitiveFields(data, "staking_wallet", "employee");
     expect(result.walletAddress).toBe("****");
+  });
+
+  it("masks session tokens and IP addresses for non-admin", () => {
+    const data = { id: "1", sessionToken: "eyJhbGciOiJIUzI1NiJ9.abc", ipAddress: "192.168.1.100" };
+    const result = maskSensitiveFields(data, "session", "lead");
+    expect(result.sessionToken).toContain("*");
+    expect(result.ipAddress).toContain("*");
+  });
+
+  it("masks transaction confirmation email and slack channel", () => {
+    const data = { id: "1", emailSentTo: "ops@custody.io", slackChannel: "#custody-ops" };
+    const result = maskSensitiveFields(data, "transaction_confirmation", "employee");
+    expect(result.emailSentTo).toContain("*");
+    expect(result.slackChannel).toContain("*");
+  });
+});
+
+// ─── New resource permissions ───
+
+describe("New resource permissions", () => {
+  const admin = makeUser({ role: "admin" });
+  const lead = makeUser({ role: "lead" });
+  const employee = makeUser({ role: "employee" });
+  const auditor = makeUser({ role: "auditor" });
+
+  describe("transaction_confirmation", () => {
+    it("admin can create and approve confirmations", () => {
+      expect(checkAuthorization(admin, "transaction_confirmation", "create").allowed).toBe(true);
+      expect(checkAuthorization(admin, "transaction_confirmation", "approve").allowed).toBe(true);
+    });
+
+    it("lead can acknowledge confirmations with team scope", () => {
+      const result = checkAuthorization(lead, "transaction_confirmation", "acknowledge");
+      expect(result.allowed).toBe(true);
+      expect(result.scope).toBe("team");
+    });
+
+    it("employee can only view and acknowledge own confirmations", () => {
+      expect(checkAuthorization(employee, "transaction_confirmation", "view").allowed).toBe(true);
+      expect(checkAuthorization(employee, "transaction_confirmation", "acknowledge").allowed).toBe(true);
+      expect(checkAuthorization(employee, "transaction_confirmation", "approve").allowed).toBe(false);
+      expect(checkAuthorization(employee, "transaction_confirmation", "create").allowed).toBe(false);
+    });
+
+    it("auditor can only view confirmations", () => {
+      expect(checkAuthorization(auditor, "transaction_confirmation", "view").allowed).toBe(true);
+      expect(checkAuthorization(auditor, "transaction_confirmation", "approve").allowed).toBe(false);
+    });
+  });
+
+  describe("feature_flag", () => {
+    it("admin can configure and delete feature flags", () => {
+      expect(checkAuthorization(admin, "feature_flag", "configure").allowed).toBe(true);
+      expect(checkAuthorization(admin, "feature_flag", "delete").allowed).toBe(true);
+    });
+
+    it("lead and employee can only view feature flags", () => {
+      expect(checkAuthorization(lead, "feature_flag", "view").allowed).toBe(true);
+      expect(checkAuthorization(lead, "feature_flag", "create").allowed).toBe(false);
+      expect(checkAuthorization(employee, "feature_flag", "view").allowed).toBe(true);
+      expect(checkAuthorization(employee, "feature_flag", "update").allowed).toBe(false);
+    });
+  });
+
+  describe("session", () => {
+    it("admin can view and delete any session", () => {
+      const result = checkAuthorization(admin, "session", "view");
+      expect(result.allowed).toBe(true);
+      expect(result.scope).toBe("all");
+    });
+
+    it("lead and employee can only manage own sessions", () => {
+      expect(checkAuthorization(lead, "session", "view").scope).toBe("own");
+      expect(checkAuthorization(employee, "session", "delete").allowed).toBe(true);
+      expect(checkAuthorization(employee, "session", "delete").scope).toBe("own");
+    });
+
+    it("auditor can view all sessions", () => {
+      expect(checkAuthorization(auditor, "session", "view").allowed).toBe(true);
+      expect(checkAuthorization(auditor, "session", "view").scope).toBe("all");
+      expect(checkAuthorization(auditor, "session", "delete").allowed).toBe(false);
+    });
+  });
+
+  describe("background_job", () => {
+    it("admin can create and configure jobs", () => {
+      expect(checkAuthorization(admin, "background_job", "create").allowed).toBe(true);
+      expect(checkAuthorization(admin, "background_job", "configure").allowed).toBe(true);
+    });
+
+    it("employee cannot access background jobs", () => {
+      expect(checkAuthorization(employee, "background_job", "view").allowed).toBe(false);
+    });
+
+    it("lead can only view jobs", () => {
+      expect(checkAuthorization(lead, "background_job", "view").allowed).toBe(true);
+      expect(checkAuthorization(lead, "background_job", "create").allowed).toBe(false);
+    });
+  });
+
+  describe("report", () => {
+    it("admin can create and export reports", () => {
+      expect(checkAuthorization(admin, "report", "create").allowed).toBe(true);
+      expect(checkAuthorization(admin, "report", "export").allowed).toBe(true);
+    });
+
+    it("lead can create reports with team scope", () => {
+      const result = checkAuthorization(lead, "report", "create");
+      expect(result.allowed).toBe(true);
+      expect(result.scope).toBe("team");
+    });
+
+    it("employee can only view own reports", () => {
+      expect(checkAuthorization(employee, "report", "view").allowed).toBe(true);
+      expect(checkAuthorization(employee, "report", "view").scope).toBe("own");
+      expect(checkAuthorization(employee, "report", "create").allowed).toBe(false);
+    });
+
+    it("auditor can view and export reports", () => {
+      expect(checkAuthorization(auditor, "report", "export").allowed).toBe(true);
+    });
+  });
+
+  describe("metrics", () => {
+    it("admin, lead, and auditor can view metrics", () => {
+      expect(checkAuthorization(admin, "metrics", "view").allowed).toBe(true);
+      expect(checkAuthorization(lead, "metrics", "view").allowed).toBe(true);
+      expect(checkAuthorization(auditor, "metrics", "view").allowed).toBe(true);
+    });
+
+    it("employee cannot view metrics", () => {
+      expect(checkAuthorization(employee, "metrics", "view").allowed).toBe(false);
+    });
   });
 });

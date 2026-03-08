@@ -122,6 +122,36 @@ class IntegrationRegistry {
 
     return { events: allEvents, errors };
   }
+
+  /**
+   * Detect stale integrations — those whose last successful sync
+   * is older than the given threshold (default: 30 minutes).
+   * Useful for monitoring dashboards and alerts.
+   */
+  getStaleIntegrations(thresholdMs = 30 * 60 * 1000): IntegrationHealth[] {
+    const now = Date.now();
+    return this.getAllHealth().filter((health) => {
+      if (!health.configured || health.status === "unconfigured") return false;
+      if (!health.lastSuccessfulSync) return true; // never synced = stale
+      return now - health.lastSuccessfulSync.getTime() > thresholdMs;
+    });
+  }
+
+  /**
+   * Get a summary of all integrations grouped by health status.
+   */
+  getHealthSummary(): Record<IntegrationHealth["status"], SourceSystem[]> {
+    const summary: Record<IntegrationHealth["status"], SourceSystem[]> = {
+      healthy: [],
+      degraded: [],
+      down: [],
+      unconfigured: [],
+    };
+    for (const health of this.getAllHealth()) {
+      summary[health.status].push(health.source);
+    }
+    return summary;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,4 +181,18 @@ export async function syncAll(
   opts?: Record<SourceSystem, Record<string, unknown>>,
 ) {
   return integrationRegistry.syncAll(opts);
+}
+
+/**
+ * Convenience: get integrations that haven't synced within the threshold.
+ */
+export function getStaleIntegrations(thresholdMs?: number): IntegrationHealth[] {
+  return integrationRegistry.getStaleIntegrations(thresholdMs);
+}
+
+/**
+ * Convenience: get health summary grouped by status.
+ */
+export function getHealthSummary() {
+  return integrationRegistry.getHealthSummary();
 }

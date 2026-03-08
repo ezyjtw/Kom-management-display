@@ -123,6 +123,13 @@ enum TeamName {
   Settlements
 }
 
+enum Region {
+  Global
+  EMEA
+  APAC
+  Americas
+}
+
 enum TimePeriodType {
   week
   month
@@ -145,7 +152,7 @@ model Employee {
   email     String       @unique
   role      EmployeeRole // Analyst, Senior, Lead, Manager
   team      TeamName // TransactionOperations, AdminOperations, DataOperations, StakingOps, Settlements
-  region    String       @default("Global")
+  region    Region       @default(Global)
   active    Boolean      @default(true)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
