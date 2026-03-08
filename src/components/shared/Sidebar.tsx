@@ -31,6 +31,10 @@ import {
   FileSearch,
   Coins,
   BookUser,
+  ShieldCheck,
+  Cog,
+  Flag,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
@@ -54,6 +58,7 @@ const navSections = [
       { href: "/staking", label: "Staking Ops", icon: Layers },
       { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
       { href: "/approvals", label: "Approvals Queue", icon: UserCheck },
+      { href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
       { href: "/screening", label: "Screening", icon: ScanSearch },
       { href: "/tokens", label: "Token Review", icon: Coins },
       { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
@@ -79,6 +84,9 @@ const navSections = [
       { href: "/admin/alerts", label: "Alerts", icon: Bell },
       { href: "/admin/audit", label: "Audit Log", icon: Shield, adminOnly: true },
       { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/admin/jobs", label: "Background Jobs", icon: Cog, adminOnly: true },
+      { href: "/admin/feature-flags", label: "Feature Flags", icon: Flag, adminOnly: true },
+      { href: "/admin/sessions", label: "Sessions", icon: Monitor, adminOnly: true },
     ],
   },
 ];
