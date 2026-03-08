@@ -16,6 +16,33 @@ export async function POST() {
   try {
     const results: string[] = [];
 
+    // ── Ensure PostgreSQL enum types exist (safety net for databases missing migration 0014) ──
+    const enumDefs: [string, string[]][] = [
+      ["UserRole", ["admin", "lead", "employee", "auditor"]],
+      ["EmployeeRole", ["Analyst", "Senior", "Lead", "Manager"]],
+      ["TeamName", ["TransactionOperations", "AdminOperations", "DataOperations", "StakingOps", "Settlements"]],
+      ["Region", ["Global", "EMEA", "APAC", "Americas"]],
+    ];
+    for (const [name, values] of enumDefs) {
+      const valueList = values.map((v) => `'${v}'`).join(", ");
+      await prisma.$executeRawUnsafe(
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '${name}') THEN CREATE TYPE "${name}" AS ENUM (${valueList}); END IF; END $$;`
+      );
+    }
+
+    // Convert TEXT columns to enum types if they're still TEXT
+    const textToEnum: [string, string, string][] = [
+      ["User", "role", "UserRole"],
+      ["Employee", "role", "EmployeeRole"],
+      ["Employee", "team", "TeamName"],
+      ["Employee", "region", "Region"],
+    ];
+    for (const [table, column, enumName] of textToEnum) {
+      await prisma.$executeRawUnsafe(
+        `DO $$ BEGIN ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE "${enumName}" USING "${column}"::"${enumName}"; EXCEPTION WHEN others THEN NULL; END $$;`
+      );
+    }
+
     // ── Employees ──
     const employeeData: { name: string; email: string; role: EmployeeRole; team: TeamName; region: Region }[] = [
       { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },
