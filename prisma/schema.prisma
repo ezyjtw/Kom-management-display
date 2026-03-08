@@ -200,11 +200,12 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee               Employee?       @relation(fields: [employeeId], references: [id])
-  workflowEvents         WorkflowEvent[] @relation("WorkflowPerformedBy")
-  createdScoringConfigs  ScoringConfig[] @relation("ScoringConfigCreatedBy")
-  reviewedScoringConfigs ScoringConfig[] @relation("ScoringConfigReviewedBy")
-  approvedScoringConfigs ScoringConfig[] @relation("ScoringConfigApprovedBy")
+  employee               Employee?        @relation(fields: [employeeId], references: [id])
+  workflowEvents         WorkflowEvent[]  @relation("WorkflowPerformedBy")
+  createdScoringConfigs  ScoringConfig[]  @relation("ScoringConfigCreatedBy")
+  reviewedScoringConfigs ScoringConfig[]  @relation("ScoringConfigReviewedBy")
+  approvedScoringConfigs ScoringConfig[]  @relation("ScoringConfigApprovedBy")
+  scoredKnowledgeScores  KnowledgeScore[] @relation("KnowledgeScoreScorer")
 }
 
 // ─── Scoring System ───
@@ -254,19 +255,21 @@ model KnowledgeScore {
   overallRaw               Float    @default(0) // 1-10 average
   mappedScore              Float    @default(3) // 3-8 mapped
   notes                    String   @default("")
-  scoredBy                 String // user who scored
+  scoredBy                 String   @default("") // display name (legacy, kept for backward compat)
+  scoredById               String?  // FK to User who scored
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
   employee Employee   @relation(fields: [employeeId], references: [id])
   period   TimePeriod @relation(fields: [periodId], references: [id])
+  scorer   User?      @relation("KnowledgeScoreScorer", fields: [scoredById], references: [id])
 
   @@unique([employeeId, periodId])
 }
 
 // NOTE: Only one ScoringConfig should be active at a time (active=true).
-// Prisma does not support partial unique indexes, so this constraint
-// must be enforced at the application level.
+// Enforced at the DB level via a partial unique index in migration 0013,
+// and at the application level in PUT /api/scores/config. See ADR-004.
 model ScoringConfig {
   id           String              @id @default(cuid())
   version      String              @unique
