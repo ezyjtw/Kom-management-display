@@ -30,6 +30,7 @@ import {
   ScanSearch,
   FileSearch,
   Coins,
+  BookUser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
@@ -66,6 +67,7 @@ const navSections = [
       { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/rca", label: "RCA Tracker", icon: FileSearch },
       { href: "/clients", label: "Client Issues", icon: Users },
+      { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/briefing", label: "AI Briefing", icon: Sparkles },
     ],
