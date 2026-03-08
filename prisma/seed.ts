@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, CommsSource, ThreadPriority, ThreadStatus, ProjectStatus, DailyCheckStatus, EmployeeRole, TeamName, TimePeriodType, ScoreCategory } from "@prisma/client";
+import { PrismaClient, UserRole, CommsSource, ThreadPriority, ThreadStatus, ProjectStatus, DailyCheckStatus, EmployeeRole, TeamName, TimePeriodType, ScoreCategory, Region } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -9,25 +9,25 @@ async function main() {
   // Create employees (upsert to be idempotent)
   // Transaction Operations has 3 sub-teams, each with a lead and juniors
   // Locations: London (EMEA), Hong Kong (APAC), Jersey (EMEA)
-  const employeeData: { name: string; email: string; role: EmployeeRole; team: TeamName; region: string }[] = [
+  const employeeData: { name: string; email: string; role: EmployeeRole; team: TeamName; region: Region }[] = [
     // Transaction Operations — Leads & Seniors
-    { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "APAC" },       // Hong Kong
-    { name: "Carol Davies", email: "carol@ops.com", role: EmployeeRole.Lead, team: TeamName.TransactionOperations, region: "EMEA" },        // London — overall team lead
-    { name: "Grace Thompson", email: "grace@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "EMEA" },     // London — sub-team lead
-    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "APAC" },     // Hong Kong — sub-team lead
+    { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },       // Hong Kong
+    { name: "Carol Davies", email: "carol@ops.com", role: EmployeeRole.Lead, team: TeamName.TransactionOperations, region: Region.EMEA },        // London — overall team lead
+    { name: "Grace Thompson", email: "grace@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.EMEA },     // London — sub-team lead
+    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },     // Hong Kong — sub-team lead
     // Transaction Operations — Analysts (juniors who rotate)
-    { name: "Liam O'Brien", email: "liam@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },      // London — late shift / WFH
-    { name: "Maria Santos", email: "maria@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },      // London
-    { name: "Nikhil Patel", email: "nikhil@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },     // Jersey
-    { name: "Sophie Laurent", email: "sophie@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },   // Jersey
-    { name: "Tom Nakamura", email: "tom@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "APAC" },        // Hong Kong
-    { name: "Yuki Tanaka", email: "yuki@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "APAC" },        // Hong Kong
+    { name: "Liam O'Brien", email: "liam@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },      // London — late shift / WFH
+    { name: "Maria Santos", email: "maria@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },      // London
+    { name: "Nikhil Patel", email: "nikhil@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },     // Jersey
+    { name: "Sophie Laurent", email: "sophie@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },   // Jersey
+    { name: "Tom Nakamura", email: "tom@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Hong Kong
+    { name: "Yuki Tanaka", email: "yuki@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Hong Kong
     // Admin Operations
-    { name: "Bob Martinez", email: "bob@ops.com", role: EmployeeRole.Analyst, team: TeamName.AdminOperations, region: "Americas" },
-    { name: "Eva Kowalski", email: "eva@ops.com", role: EmployeeRole.Senior, team: TeamName.AdminOperations, region: "EMEA" },
+    { name: "Bob Martinez", email: "bob@ops.com", role: EmployeeRole.Analyst, team: TeamName.AdminOperations, region: Region.Americas },
+    { name: "Eva Kowalski", email: "eva@ops.com", role: EmployeeRole.Senior, team: TeamName.AdminOperations, region: Region.EMEA },
     // Data Operations
-    { name: "David Park", email: "david@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: "APAC" },
-    { name: "Frank Osei", email: "frank@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: "EMEA" },
+    { name: "David Park", email: "david@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: Region.APAC },
+    { name: "Frank Osei", email: "frank@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: Region.EMEA },
   ];
 
   const employees = await Promise.all(
@@ -414,15 +414,15 @@ async function main() {
   const holidayData = [
     { date: new Date("2026-01-01"), name: "New Year's Day", region: "Global" },
     { date: new Date("2026-04-03"), name: "Good Friday", region: "Global" },
-    { date: new Date("2026-04-06"), name: "Easter Monday", region: "EMEA" },
-    { date: new Date("2026-05-04"), name: "Early May Bank Holiday", region: "EMEA" },
-    { date: new Date("2026-05-25"), name: "Spring Bank Holiday", region: "EMEA" },
-    { date: new Date("2026-07-04"), name: "Independence Day", region: "Americas" },
-    { date: new Date("2026-08-31"), name: "Summer Bank Holiday", region: "EMEA" },
+    { date: new Date("2026-04-06"), name: "Easter Monday", region: Region.EMEA },
+    { date: new Date("2026-05-04"), name: "Early May Bank Holiday", region: Region.EMEA },
+    { date: new Date("2026-05-25"), name: "Spring Bank Holiday", region: Region.EMEA },
+    { date: new Date("2026-07-04"), name: "Independence Day", region: Region.Americas },
+    { date: new Date("2026-08-31"), name: "Summer Bank Holiday", region: Region.EMEA },
     { date: new Date("2026-12-25"), name: "Christmas Day", region: "Global" },
-    { date: new Date("2026-12-26"), name: "Boxing Day", region: "EMEA" },
-    { date: new Date("2026-01-26"), name: "Republic Day", region: "APAC" },
-    { date: new Date("2026-02-19"), name: "Chinese New Year", region: "APAC" },
+    { date: new Date("2026-12-26"), name: "Boxing Day", region: Region.EMEA },
+    { date: new Date("2026-01-26"), name: "Republic Day", region: Region.APAC },
+    { date: new Date("2026-02-19"), name: "Chinese New Year", region: Region.APAC },
   ];
 
   for (const h of holidayData) {
