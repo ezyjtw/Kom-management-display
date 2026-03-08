@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/activity
@@ -47,21 +49,18 @@ export async function GET(request: NextRequest) {
         take: 200, // cap to prevent large payloads
       });
 
-      return NextResponse.json({
-        success: true,
-        data: entries.map((e) => ({
-          id: e.id,
-          employeeId: e.employeeId,
-          employeeName: e.employee.name,
-          employeeTeam: e.employee.team,
-          region: e.employee.region,
-          activity: e.activity,
-          detail: e.detail,
-          startedAt: e.startedAt.toISOString(),
-          endedAt: e.endedAt?.toISOString() || null,
-          durationMin: e.durationMin,
-        })),
-      });
+      return apiSuccess(entries.map((e) => ({
+        id: e.id,
+        employeeId: e.employeeId,
+        employeeName: e.employee.name,
+        employeeTeam: e.employee.team,
+        region: e.employee.region,
+        activity: e.activity,
+        detail: e.detail,
+        startedAt: e.startedAt.toISOString(),
+        endedAt: e.endedAt?.toISOString() || null,
+        durationMin: e.durationMin,
+      })));
     }
 
     // Current status mode: fetch employees with their latest active (endedAt=null) entry.
@@ -108,10 +107,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    console.error("Activity GET error:", error);
-    return NextResponse.json({ success: false, error: "Failed to fetch activity" }, { status: 500 });
+    return handleApiError(error, "activity GET");
   }
 }
 
@@ -126,12 +124,15 @@ export async function GET(request: NextRequest) {
  * activity: one of project|bau|queue_monitoring|lunch|break|meeting|admin|training
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { employeeId, activity, detail } = body;
 
     if (!employeeId || !activity) {
-      return NextResponse.json({ success: false, error: "employeeId and activity are required" }, { status: 400 });
+      return apiValidationError("employeeId and activity are required");
     }
 
     // End any currently-active activity for this employee before starting a new one.
@@ -162,10 +163,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: newStatus }, { status: 201 });
+    return apiSuccess(newStatus, undefined, 201);
   } catch (error) {
-    console.error("Activity POST error:", error);
-    return NextResponse.json({ success: false, error: "Failed to start activity" }, { status: 500 });
+    return handleApiError(error, "activity POST");
   }
 }
 
@@ -178,6 +178,9 @@ export async function POST(request: NextRequest) {
  *   { employeeId } — end all active entries for that employee
  */
 export async function PATCH(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { id, employeeId } = body;
@@ -188,14 +191,14 @@ export async function PATCH(request: NextRequest) {
     if (id) {
       const entry = await prisma.activityStatus.findUnique({ where: { id } });
       if (!entry || entry.endedAt) {
-        return NextResponse.json({ success: false, error: "Activity not found or already ended" }, { status: 404 });
+        return apiNotFoundError("Activity not found or already ended");
       }
       const durationMin = Math.floor((now.getTime() - entry.startedAt.getTime()) / 60000);
       const updated = await prisma.activityStatus.update({
         where: { id },
         data: { endedAt: now, durationMin },
       });
-      return NextResponse.json({ success: true, data: updated });
+      return apiSuccess(updated);
     }
 
     // Mode 2: End all active entries for an employee (used by "End" button on the board)
@@ -210,12 +213,11 @@ export async function PATCH(request: NextRequest) {
           data: { endedAt: now, durationMin },
         });
       }
-      return NextResponse.json({ success: true, data: { ended: active.length } });
+      return apiSuccess({ ended: active.length });
     }
 
-    return NextResponse.json({ success: false, error: "id or employeeId required" }, { status: 400 });
+    return apiValidationError("id or employeeId required");
   } catch (error) {
-    console.error("Activity PATCH error:", error);
-    return NextResponse.json({ success: false, error: "Failed to end activity" }, { status: 500 });
+    return handleApiError(error, "activity PATCH");
   }
 }

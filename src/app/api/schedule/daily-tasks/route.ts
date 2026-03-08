@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/schedule/daily-tasks
@@ -57,12 +59,9 @@ export async function GET(request: NextRequest) {
       createdByName: t.createdBy.name,
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "daily-tasks GET");
   }
 }
 
@@ -71,6 +70,9 @@ export async function GET(request: NextRequest) {
  * Create a daily task.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -79,26 +81,17 @@ export async function POST(request: NextRequest) {
     const { date, team, assigneeId, title, description, priority, category } = body;
 
     if (!date || !team || !title) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: date, team, title" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: date, team, title");
     }
 
     const validPriorities = ["urgent", "high", "normal", "low"];
     if (priority && !validPriorities.includes(priority)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid priority. Must be one of: ${validPriorities.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid priority. Must be one of: ${validPriorities.join(", ")}`);
     }
 
     const validCategories = ["operational", "compliance", "client", "administrative"];
     if (category && !validCategories.includes(category)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid category. Must be one of: ${validCategories.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid category. Must be one of: ${validCategories.join(", ")}`);
     }
 
     const createdById = auth.employeeId || auth.id;
@@ -130,12 +123,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: task }, { status: 201 });
+    return apiSuccess(task, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "daily-tasks POST");
   }
 }
 
@@ -144,6 +134,9 @@ export async function POST(request: NextRequest) {
  * Update a task (status, assignee, etc). Body: { id, ...fields }
  */
 export async function PATCH(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -152,26 +145,17 @@ export async function PATCH(request: NextRequest) {
     const { id, status, assigneeId, priority, title, description } = body;
 
     if (!id) {
-      return NextResponse.json(
-        { success: false, error: "Missing task id" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing task id");
     }
 
     const validStatuses = ["pending", "in_progress", "completed", "skipped"];
     if (status !== undefined && !validStatuses.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
     }
 
     const validPriorities = ["urgent", "high", "normal", "low"];
     if (priority !== undefined && !validPriorities.includes(priority)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid priority. Must be one of: ${validPriorities.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid priority. Must be one of: ${validPriorities.join(", ")}`);
     }
 
     const updateData: Record<string, unknown> = {};
@@ -195,11 +179,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: task });
+    return apiSuccess(task);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "daily-tasks PATCH");
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 // Statuses that providers use to "close" tickets — if the ticket moves to one
 // of these and our RCA isn't done, it's a premature closure.
@@ -29,10 +31,7 @@ export async function GET(request: NextRequest) {
     const apiToken = process.env.JIRA_API_TOKEN;
 
     if (!baseUrl || !email || !apiToken) {
-      return NextResponse.json({
-        success: true,
-        data: { configured: false, message: "Jira not configured" },
-      });
+      return apiSuccess({ configured: false, message: "Jira not configured" });
     }
 
     // Find incidents to sync
@@ -56,10 +55,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (incidents.length === 0) {
-      return NextResponse.json({
-        success: true,
-        data: { configured: true, synced: 0, incidents: [] },
-      });
+      return apiSuccess({ configured: true, synced: 0, incidents: [] });
     }
 
     const jiraAuth = Buffer.from(`${email}:${apiToken}`).toString("base64");
@@ -156,16 +152,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        configured: true,
-        synced: results.length,
-        incidents: results,
-      },
+    return apiSuccess({
+      configured: true,
+      synced: results.length,
+      incidents: results,
     });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "rca/tickets GET");
   }
 }
 
@@ -183,15 +176,15 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { incidentId, action } = body;
 
     if (!incidentId || !action) {
-      return NextResponse.json(
-        { success: false, error: "incidentId and action are required" },
-        { status: 400 },
-      );
+      return apiValidationError("incidentId and action are required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -200,7 +193,7 @@ export async function POST(request: NextRequest) {
       case "link": {
         const { ticketRef, ticketUrl } = body;
         if (!ticketRef) {
-          return NextResponse.json({ success: false, error: "ticketRef is required" }, { status: 400 });
+          return apiValidationError("ticketRef is required");
         }
 
         // If no URL provided, try to construct from JIRA_BASE_URL
@@ -209,57 +202,59 @@ export async function POST(request: NextRequest) {
           url = `${process.env.JIRA_BASE_URL.replace(/\/$/, "")}/browse/${ticketRef}`;
         }
 
-        await prisma.incident.update({
-          where: { id: incidentId },
-          data: {
-            externalTicketRef: ticketRef,
-            externalTicketUrl: url,
-          },
-        });
+        await prisma.$transaction([
+          prisma.incident.update({
+            where: { id: incidentId },
+            data: {
+              externalTicketRef: ticketRef,
+              externalTicketUrl: url,
+            },
+          }),
+          prisma.externalTicketEvent.create({
+            data: {
+              incidentId,
+              event: "status_changed",
+              toStatus: "linked",
+              performedBy: actorId,
+              reason: `Linked external ticket ${ticketRef}`,
+            },
+          }),
+        ]);
 
-        await prisma.externalTicketEvent.create({
-          data: {
-            incidentId,
-            event: "status_changed",
-            toStatus: "linked",
-            performedBy: actorId,
-            reason: `Linked external ticket ${ticketRef}`,
-          },
-        });
-
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "dispute": {
         const { reason } = body;
         if (!reason) {
-          return NextResponse.json({ success: false, error: "reason is required for dispute" }, { status: 400 });
+          return apiValidationError("reason is required for dispute");
         }
 
-        await prisma.incident.update({
-          where: { id: incidentId },
-          data: {
-            externalTicketDisputed: true,
-            externalTicketDisputeReason: reason,
-          },
-        });
-
-        await prisma.externalTicketEvent.create({
-          data: {
-            incidentId,
-            event: "disputed",
-            performedBy: actorId,
-            reason,
-            jiraComment: body.jiraComment || "",
-          },
-        });
+        await prisma.$transaction([
+          prisma.incident.update({
+            where: { id: incidentId },
+            data: {
+              externalTicketDisputed: true,
+              externalTicketDisputeReason: reason,
+            },
+          }),
+          prisma.externalTicketEvent.create({
+            data: {
+              incidentId,
+              event: "disputed",
+              performedBy: actorId,
+              reason,
+              jiraComment: body.jiraComment || "",
+            },
+          }),
+        ]);
 
         // If Jira is configured and a comment was provided, post it to the ticket
         if (body.jiraComment) {
           await postJiraComment(incidentId, body.jiraComment);
         }
 
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "reopen_request": {
@@ -277,35 +272,36 @@ export async function POST(request: NextRequest) {
           await postJiraComment(incidentId, body.jiraComment);
         }
 
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       case "resolve_dispute": {
-        await prisma.incident.update({
-          where: { id: incidentId },
-          data: {
-            externalTicketDisputed: false,
-            externalTicketDisputeReason: "",
-          },
-        });
+        await prisma.$transaction([
+          prisma.incident.update({
+            where: { id: incidentId },
+            data: {
+              externalTicketDisputed: false,
+              externalTicketDisputeReason: "",
+            },
+          }),
+          prisma.externalTicketEvent.create({
+            data: {
+              incidentId,
+              event: "reopen_confirmed",
+              performedBy: actorId,
+              reason: body.reason || "Dispute resolved — ticket reopened or satisfactory",
+            },
+          }),
+        ]);
 
-        await prisma.externalTicketEvent.create({
-          data: {
-            incidentId,
-            event: "reopen_confirmed",
-            performedBy: actorId,
-            reason: body.reason || "Dispute resolved — ticket reopened or satisfactory",
-          },
-        });
-
-        return NextResponse.json({ success: true });
+        return apiSuccess(undefined);
       }
 
       default:
-        return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
+        return apiValidationError(`Unknown action: ${action}`);
     }
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "rca/tickets POST");
   }
 }
 

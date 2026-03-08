@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import type { ThreadPriority } from "@/types";
 
 export async function GET(
@@ -41,10 +43,7 @@ export async function GET(
     });
 
     if (!thread) {
-      return NextResponse.json(
-        { success: false, error: "Thread not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Thread");
     }
 
     const slaStatus = computeSlaStatus({
@@ -68,15 +67,9 @@ export async function GET(
         })
       : [];
 
-    return NextResponse.json({
-      success: true,
-      data: { ...thread, slaStatus, secondaryOwners },
-    });
+    return apiSuccess({ ...thread, slaStatus, secondaryOwners });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "GET /api/comms/threads/[id]");
   }
 }
 
@@ -86,6 +79,9 @@ export async function PATCH(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
 
   try {
     const body = await request.json();
@@ -100,10 +96,7 @@ export async function PATCH(
     });
 
     if (!thread) {
-      return NextResponse.json(
-        { success: false, error: "Thread not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Thread");
     }
 
     const isOwner = thread.ownerUserId === actorEmployeeId;
@@ -113,71 +106,47 @@ export async function PATCH(
 
     // RBAC: employees can only modify threads they own or collaborate on
     if (!isPrivileged && !isOwner && !isSecondary) {
-      return NextResponse.json(
-        { success: false, error: "You can only modify threads you own" },
-        { status: 403 }
-      );
+      return apiForbiddenError("You can only modify threads you own");
     }
 
     // RBAC: only lead/admin can reassign ownership via PATCH
     // (employees should use /take for self-assignment or /transfer)
     if (ownerUserId !== undefined && !isPrivileged) {
-      return NextResponse.json(
-        { success: false, error: "Only leads and admins can reassign ownership. Use take or transfer instead." },
-        { status: 403 }
-      );
+      return apiForbiddenError("Only leads and admins can reassign ownership. Use take or transfer instead.");
     }
 
     // RBAC: only lead/admin can change priority
     if (priority && priority !== thread.priority && !isPrivileged) {
-      return NextResponse.json(
-        { success: false, error: "Only leads and admins can change thread priority" },
-        { status: 403 }
-      );
+      return apiForbiddenError("Only leads and admins can change thread priority");
     }
 
     // RBAC: only lead/admin can change queue
     if (queue && queue !== thread.queue && !isPrivileged) {
-      return NextResponse.json(
-        { success: false, error: "Only leads and admins can change thread queue" },
-        { status: 403 }
-      );
+      return apiForbiddenError("Only leads and admins can change thread queue");
     }
 
     // Policy: closing/completing a thread requires a handover note or reason
     if (status && ["Done", "Closed"].includes(status) && !["Done", "Closed"].includes(thread.status)) {
       if (!handoverNote && !body.reason) {
-        return NextResponse.json(
-          { success: false, error: "A resolution note is required when closing a thread" },
-          { status: 400 }
-        );
+        return apiValidationError("A resolution note is required when closing a thread");
       }
     }
 
     // Policy: validate priority value
     const VALID_PRIORITIES = ["P0", "P1", "P2", "P3"];
     if (priority && !VALID_PRIORITIES.includes(priority)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
     }
 
     // Policy: validate queue value
     const VALID_QUEUES = ["Admin Operations", "Transaction Operations", "Data Operations"];
     if (queue && !VALID_QUEUES.includes(queue)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid queue. Must be one of: ${VALID_QUEUES.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid queue. Must be one of: ${VALID_QUEUES.join(", ")}`);
     }
 
     // Policy: validate linkedRecords is an array if provided
     if (linkedRecords !== undefined && !Array.isArray(linkedRecords)) {
-      return NextResponse.json(
-        { success: false, error: "linkedRecords must be an array" },
-        { status: 400 }
-      );
+      return apiValidationError("linkedRecords must be an array");
     }
 
     const data: Record<string, unknown> = {};
@@ -270,11 +239,8 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json({ success: true, data: updated });
+    return apiSuccess(updated);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "PATCH /api/comms/threads/[id]");
   }
 }

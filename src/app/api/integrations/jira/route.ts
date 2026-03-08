@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncJiraProject } from "@/lib/integrations/jira";
-import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireRole } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/integrations/jira
@@ -10,6 +12,9 @@ import { prisma } from "@/lib/prisma";
  * Body: { projectKey: string, queue?: string, jql?: string }
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -18,10 +23,7 @@ export async function POST(request: NextRequest) {
     const { projectKey, queue, jql } = body;
 
     if (!projectKey) {
-      return NextResponse.json(
-        { success: false, error: "projectKey is required" },
-        { status: 400 },
-      );
+      return apiValidationError("projectKey is required");
     }
 
     const result = await syncJiraProject(projectKey, queue, jql);
@@ -42,12 +44,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: result });
+    return apiSuccess(result);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "jira sync");
   }
 }
 
@@ -64,11 +63,8 @@ export async function GET() {
     !!process.env.JIRA_EMAIL &&
     !!process.env.JIRA_API_TOKEN;
 
-  return NextResponse.json({
-    success: true,
-    data: {
-      configured,
-      baseUrl: configured ? process.env.JIRA_BASE_URL : null,
-    },
+  return apiSuccess({
+    configured,
+    baseUrl: configured ? process.env.JIRA_BASE_URL : null,
   });
 }

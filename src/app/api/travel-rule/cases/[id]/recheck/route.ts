@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import {
   fetchTransfers,
   isNotabeneConfigured,
@@ -9,6 +9,8 @@ import {
   extractPartyName,
 } from "@/lib/integrations/notabene";
 import type { NotabeneTransfer, TravelRuleMatchStatus } from "@/types";
+import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/travel-rule/cases/:id/recheck
@@ -20,18 +22,18 @@ import type { NotabeneTransfer, TravelRuleMatchStatus } from "@/types";
  * Returns the updated match status and whether it can be auto-resolved.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     if (!isNotabeneConfigured()) {
-      return NextResponse.json(
-        { success: false, error: "Notabene is not configured" },
-        { status: 400 },
-      );
+      return apiValidationError("Notabene is not configured");
     }
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -39,17 +41,11 @@ export async function POST(
     });
 
     if (!travelCase) {
-      return NextResponse.json(
-        { success: false, error: "Case not found" },
-        { status: 404 },
-      );
+      return apiNotFoundError("Case");
     }
 
     if (travelCase.status === "Resolved") {
-      return NextResponse.json(
-        { success: false, error: "Case is already resolved" },
-        { status: 400 },
-      );
+      return apiValidationError("Case is already resolved");
     }
 
     // If we already have a Notabene transfer ID, fetch that specific transfer
@@ -132,24 +128,18 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        previousMatchStatus,
-        newMatchStatus,
-        improved,
-        canAutoResolve,
-        notabeneTransferId: matchedTransfer?.id ?? null,
-        notabeneStatus: matchedTransfer?.status ?? null,
-        originatorName,
-        beneficiaryName,
-      },
+    return apiSuccess({
+      previousMatchStatus,
+      newMatchStatus,
+      improved,
+      canAutoResolve,
+      notabeneTransferId: matchedTransfer?.id ?? null,
+      notabeneStatus: matchedTransfer?.status ?? null,
+      originatorName,
+      beneficiaryName,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/cases/[id]/recheck");
   }
 }
 

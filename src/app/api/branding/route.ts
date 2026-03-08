@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 const MAX_LOGO_SIZE = 512 * 1024; // 512 KB max for base64 logo
 
@@ -22,12 +24,9 @@ export async function GET() {
       logoData: "",
     };
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error, "Branding GET") },
-      { status: 500 },
-    );
+    return handleApiError(error, "branding GET");
   }
 }
 
@@ -40,6 +39,9 @@ export async function GET() {
  * logoData should be a base64 data URL, e.g. "data:image/png;base64,..."
  */
 export async function PATCH(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -49,18 +51,12 @@ export async function PATCH(request: NextRequest) {
 
     // Validate logo size if provided
     if (logoData && logoData.length > MAX_LOGO_SIZE) {
-      return NextResponse.json(
-        { success: false, error: "Logo file is too large. Maximum size is 512 KB." },
-        { status: 400 },
-      );
+      return apiValidationError("Logo file is too large. Maximum size is 512 KB.");
     }
 
     // Validate logo is a data URL if provided
     if (logoData && !logoData.startsWith("data:image/")) {
-      return NextResponse.json(
-        { success: false, error: "Logo must be a valid image (PNG, JPEG, or SVG)." },
-        { status: 400 },
-      );
+      return apiValidationError("Logo must be a valid image (PNG, JPEG, or SVG).");
     }
 
     const updateData: Record<string, unknown> = {};
@@ -93,11 +89,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: config });
+    return apiSuccess(config);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error, "Branding PATCH") },
-      { status: 500 },
-    );
+    return handleApiError(error, "branding PATCH");
   }
 }

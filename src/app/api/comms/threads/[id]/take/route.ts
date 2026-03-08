@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiNotFoundError, apiConflictError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import type { ThreadPriority } from "@/types";
 
 /**
@@ -9,11 +11,14 @@ import type { ThreadPriority } from "@/types";
  * Take ownership of a thread. Uses authenticated session user.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
 
   try {
     const thread = await prisma.commsThread.findUnique({
@@ -21,17 +26,11 @@ export async function POST(
     });
 
     if (!thread) {
-      return NextResponse.json(
-        { success: false, error: "Thread not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Thread");
     }
 
     if (thread.ownerUserId && auth.role !== "admin") {
-      return NextResponse.json(
-        { success: false, error: "Thread is already assigned. Use transfer instead." },
-        { status: 409 }
-      );
+      return apiConflictError("Thread is already assigned. Use transfer instead.");
     }
 
     const now = new Date();
@@ -74,11 +73,8 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return apiSuccess(updated);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "POST /api/comms/threads/[id]/take");
   }
 }

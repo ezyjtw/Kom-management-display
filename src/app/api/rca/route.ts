@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/rca
@@ -96,8 +97,8 @@ export async function GET(request: NextRequest) {
       disputed: data.filter((d) => d.externalTicketDisputed).length,
     };
 
-    return NextResponse.json({ success: true, data: { incidents: data, summary } });
+    return apiSuccess({ incidents: data, summary });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "rca GET");
   }
 }

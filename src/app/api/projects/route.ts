@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/projects
@@ -61,12 +63,9 @@ export async function GET(request: NextRequest) {
       updatedAt: p.updatedAt.toISOString(),
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "projects GET");
   }
 }
 
@@ -75,6 +74,9 @@ export async function GET(request: NextRequest) {
  * Create a new project.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -83,53 +85,51 @@ export async function POST(request: NextRequest) {
     const { name, description, team, leadId, status, priority, startDate, targetDate, tags } = body;
 
     if (!name || !team || !leadId) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: name, team, leadId" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: name, team, leadId");
     }
 
-    const project = await prisma.project.create({
-      data: {
-        name,
-        description: description || "",
-        team,
-        leadId,
-        status: status || "active",
-        priority: priority || "medium",
-        startDate: startDate ? new Date(startDate) : new Date(),
-        targetDate: targetDate ? new Date(targetDate) : null,
-        tags: JSON.stringify(tags || []),
-      },
-      include: {
-        lead: { select: { id: true, name: true } },
-      },
+    const project = await prisma.$transaction(async (tx) => {
+      const proj = await tx.project.create({
+        data: {
+          name,
+          description: description || "",
+          team,
+          leadId,
+          status: status || "active",
+          priority: priority || "medium",
+          startDate: startDate ? new Date(startDate) : new Date(),
+          targetDate: targetDate ? new Date(targetDate) : null,
+          tags: JSON.stringify(tags || []),
+        },
+        include: {
+          lead: { select: { id: true, name: true } },
+        },
+      });
+
+      // Auto-add lead as a member
+      await tx.projectMember.create({
+        data: {
+          projectId: proj.id,
+          employeeId: leadId,
+          role: "lead",
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: "project_created",
+          entityType: "project",
+          entityId: proj.id,
+          userId: auth.employeeId || auth.id,
+          details: JSON.stringify({ name, team, leadId }),
+        },
+      });
+
+      return proj;
     });
 
-    // Auto-add lead as a member
-    await prisma.projectMember.create({
-      data: {
-        projectId: project.id,
-        employeeId: leadId,
-        role: "lead",
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "project_created",
-        entityType: "project",
-        entityId: project.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ name, team, leadId }),
-      },
-    });
-
-    return NextResponse.json({ success: true, data: project }, { status: 201 });
+    return apiSuccess(project, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "projects POST");
   }
 }

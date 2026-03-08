@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/schedule/pto
@@ -45,12 +47,9 @@ export async function GET(request: NextRequest) {
       notes: r.notes,
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "pto GET");
   }
 }
 
@@ -59,6 +58,9 @@ export async function GET(request: NextRequest) {
  * Create a PTO record. Admin/lead can create for any employee.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 
@@ -67,26 +69,17 @@ export async function POST(request: NextRequest) {
     const { employeeId, startDate, endDate, type, status, notes } = body;
 
     if (!employeeId || !startDate || !endDate) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: employeeId, startDate, endDate" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: employeeId, startDate, endDate");
     }
 
     const validTypes = ["annual_leave", "sick", "wfh", "other"];
     if (type && !validTypes.includes(type)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid type. Must be one of: ${validTypes.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid type. Must be one of: ${validTypes.join(", ")}`);
     }
 
     const validStatuses = ["pending", "approved", "rejected"];
     if (status && !validStatuses.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
     }
 
     const record = await prisma.ptoRecord.create({
@@ -113,11 +106,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: record }, { status: 201 });
+    return apiSuccess(record, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "pto POST");
   }
 }

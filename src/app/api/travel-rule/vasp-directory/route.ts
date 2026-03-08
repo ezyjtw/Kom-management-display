@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/travel-rule/vasp-directory
@@ -14,12 +16,9 @@ export async function GET() {
     const contacts = await prisma.vaspContact.findMany({
       orderBy: { vaspName: "asc" },
     });
-    return NextResponse.json({ success: true, data: contacts });
+    return apiSuccess(contacts);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "GET /api/travel-rule/vasp-directory");
   }
 }
 
@@ -33,38 +32,36 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { vaspDid, vaspName, email, notes } = body;
 
     if (!vaspDid || !vaspName || !email) {
-      return NextResponse.json(
-        { success: false, error: "vaspDid, vaspName, and email are required" },
-        { status: 400 },
-      );
+      return apiValidationError("vaspDid, vaspName, and email are required");
     }
 
-    const contact = await prisma.vaspContact.upsert({
-      where: { vaspDid },
-      update: { vaspName, email, notes: notes || "" },
-      create: { vaspDid, vaspName, email, notes: notes || "" },
-    });
+    const [contact] = await prisma.$transaction([
+      prisma.vaspContact.upsert({
+        where: { vaspDid },
+        update: { vaspName, email, notes: notes || "" },
+        create: { vaspDid, vaspName, email, notes: notes || "" },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: "vasp_contact_upsert",
+          entityType: "vasp_contact",
+          entityId: "pending",
+          userId: auth.employeeId || auth.id,
+          details: JSON.stringify({ vaspDid, vaspName, email }),
+        },
+      }),
+    ]);
 
-    await prisma.auditLog.create({
-      data: {
-        action: "vasp_contact_upsert",
-        entityType: "vasp_contact",
-        entityId: contact.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ vaspDid, vaspName, email }),
-      },
-    });
-
-    return NextResponse.json({ success: true, data: contact });
+    return apiSuccess(contact);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/vasp-directory");
   }
 }

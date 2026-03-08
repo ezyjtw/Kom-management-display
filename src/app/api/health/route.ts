@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess } from "@/lib/api/response";
 
 export async function GET() {
   const start = Date.now();
@@ -34,5 +34,5 @@ export async function GET() {
   }
 
   const statusCode = health.status === "ok" ? 200 : 503;
-  return NextResponse.json(health, { status: statusCode });
+  return apiSuccess(health, undefined, statusCode);
 }

@@ -4,8 +4,8 @@
  * Readiness probe — confirms the app can serve requests.
  * Checks DB connectivity, migration state, and critical env vars.
  */
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess } from "@/lib/api/response";
 
 interface ReadinessCheck {
   name: string;
@@ -82,7 +82,7 @@ export async function GET() {
 
   const statusCode = overallStatus === "ready" ? 200 : 503;
 
-  return NextResponse.json(
+  return apiSuccess(
     {
       status: overallStatus,
       checks,
@@ -90,6 +90,7 @@ export async function GET() {
       version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || "dev",
       environment: process.env.NODE_ENV || "development",
     },
-    { status: statusCode },
+    undefined,
+    statusCode,
   );
 }

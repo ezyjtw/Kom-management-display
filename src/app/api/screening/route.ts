@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/screening
@@ -36,9 +38,9 @@ export async function GET(request: NextRequest) {
       openAlerts: entries.filter((e) => e.analyticsStatus === "open" || e.analyticsStatus === "under_review").length,
     };
 
-    return NextResponse.json({ success: true, data: { entries, summary } });
+    return apiSuccess({ entries, summary });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "screening GET");
   }
 }
 
@@ -50,12 +52,15 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { transactionId, asset } = body;
 
     if (!transactionId || !asset) {
-      return NextResponse.json({ success: false, error: "transactionId and asset are required" }, { status: 400 });
+      return apiValidationError("transactionId and asset are required");
     }
 
     const entry = await prisma.screeningEntry.create({
@@ -76,9 +81,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: entry }, { status: 201 });
+    return apiSuccess(entry, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "screening POST");
   }
 }
 
@@ -91,12 +96,15 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { id, ...fields } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "id is required" }, { status: 400 });
+      return apiValidationError("id is required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -116,22 +124,25 @@ export async function PATCH(request: NextRequest) {
       updateData.exceptionReason = fields.exceptionReason || "";
     }
 
-    const entry = await prisma.screeningEntry.update({ where: { id }, data: updateData });
+    const [entry] = await prisma.$transaction([
+      prisma.screeningEntry.update({ where: { id }, data: updateData }),
+      ...(fields.classification !== undefined
+        ? [
+            prisma.auditLog.create({
+              data: {
+                action: "screening_reclassified",
+                entityType: "screening",
+                entityId: id,
+                userId: actorId,
+                details: JSON.stringify({ classification: fields.classification }),
+              },
+            }),
+          ]
+        : []),
+    ]);
 
-    if (fields.classification !== undefined) {
-      await prisma.auditLog.create({
-        data: {
-          action: "screening_reclassified",
-          entityType: "screening",
-          entityId: id,
-          userId: actorId,
-          details: JSON.stringify({ classification: fields.classification }),
-        },
-      });
-    }
-
-    return NextResponse.json({ success: true, data: entry });
+    return apiSuccess(entry);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "screening PATCH");
   }
 }

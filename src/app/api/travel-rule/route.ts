@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
 import {
   fetchPendingTransactions,
@@ -19,6 +19,7 @@ import type {
   TravelRuleMatchStatus,
   TravelRuleOverview,
 } from "@/types";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 // ---------------------------------------------------------------------------
 // Matching logic
@@ -247,11 +248,8 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    return NextResponse.json({ success: true, data: overview });
+    return apiSuccess(overview);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "GET /api/travel-rule");
   }
 }

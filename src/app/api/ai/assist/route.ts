@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import {
   isAiEnabled,
   getProviderName,
@@ -11,6 +11,8 @@ import {
   researchToken,
   suggestTokensToOnboard,
 } from "@/lib/ai";
+import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/ai/assist
@@ -30,6 +32,9 @@ import {
  *   - "status":          Check if AI is enabled (no data needed)
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -38,25 +43,19 @@ export async function POST(request: NextRequest) {
     const { action, data } = body;
 
     if (!action) {
-      return NextResponse.json(
-        { success: false, error: "action is required" },
-        { status: 400 },
-      );
+      return apiValidationError("action is required");
     }
 
     // Status check — lets the UI know if AI features are available
     if (action === "status") {
-      return NextResponse.json({
-        success: true,
-        data: { enabled: isAiEnabled(), provider: getProviderName() },
-      });
+      return apiSuccess({ enabled: isAiEnabled(), provider: getProviderName() });
     }
 
     if (!isAiEnabled()) {
-      return NextResponse.json({
-        success: false,
-        error: "AI features not configured. Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_BASE_URL in environment.",
-      }, { status: 503 });
+      return apiError(
+        "AI features not configured. Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_BASE_URL in environment.",
+        503,
+      );
     }
 
     let suggestion: unknown = null;
@@ -91,33 +90,20 @@ export async function POST(request: NextRequest) {
         break;
 
       default:
-        return NextResponse.json(
-          { success: false, error: `Unknown action: ${action}` },
-          { status: 400 },
-        );
+        return apiValidationError(`Unknown action: ${action}`);
     }
 
     if (suggestion === null) {
-      return NextResponse.json({
-        success: false,
-        error: "AI failed to generate a response. Try again.",
-      }, { status: 502 });
+      return apiError("AI failed to generate a response. Try again.", 502);
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        action,
-        suggestion,
-        // Remind the client this is a suggestion, not an action
-        meta: { type: "suggestion", requiresApproval: true },
-      },
+    return apiSuccess({
+      action,
+      suggestion,
+      // Remind the client this is a suggestion, not an action
+      meta: { type: "suggestion", requiresApproval: true },
     });
   } catch (error) {
-    console.error("AI assist error:", error);
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "ai assist");
   }
 }

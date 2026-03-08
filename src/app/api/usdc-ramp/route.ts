@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/usdc-ramp
@@ -69,9 +71,9 @@ export async function GET(request: NextRequest) {
       checkerByName: t.checkerById ? nameMap[t.checkerById] || null : null,
     }));
 
-    return NextResponse.json({ success: true, data: { tickets: enriched, summary } });
+    return apiSuccess({ tickets: enriched, summary });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp GET") }, { status: 500 });
+    return handleApiError(error, "USDC ramp GET");
   }
 }
 
@@ -84,6 +86,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const {
@@ -93,30 +98,18 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!clientName || !direction || !amount) {
-      return NextResponse.json(
-        { success: false, error: "clientName, direction, and amount are required" },
-        { status: 400 },
-      );
+      return apiValidationError("clientName, direction, and amount are required");
     }
     if (direction !== "onramp" && direction !== "offramp") {
-      return NextResponse.json(
-        { success: false, error: "direction must be 'onramp' or 'offramp'" },
-        { status: 400 },
-      );
+      return apiValidationError("direction must be 'onramp' or 'offramp'");
     }
 
     if (isNaN(parseFloat(amount))) {
-      return NextResponse.json(
-        { success: false, error: "amount must be a valid number" },
-        { status: 400 },
-      );
+      return apiValidationError("amount must be a valid number");
     }
 
     if (fiatAmount && isNaN(parseFloat(fiatAmount))) {
-      return NextResponse.json(
-        { success: false, error: "fiatAmount must be a valid number" },
-        { status: 400 },
-      );
+      return apiValidationError("fiatAmount must be a valid number");
     }
 
     const ticket = await prisma.usdcRampRequest.create({
@@ -138,9 +131,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: ticket }, { status: 201 });
+    return apiSuccess(ticket, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp POST") }, { status: 500 });
+    return handleApiError(error, "USDC ramp POST");
   }
 }
 
@@ -165,12 +158,15 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { id, action, ...fields } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "id is required" }, { status: 400 });
+      return apiValidationError("id is required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -179,7 +175,7 @@ export async function PATCH(request: NextRequest) {
     switch (action) {
       case "advance_status":
         if (!fields.status) {
-          return NextResponse.json({ success: false, error: "status is required" }, { status: 400 });
+          return apiValidationError("status is required");
         }
         data.status = fields.status;
         if (fields.status === "completed") data.completedAt = new Date();
@@ -210,7 +206,7 @@ export async function PATCH(request: NextRequest) {
       case "add_evidence": {
         const ticket = await prisma.usdcRampRequest.findUnique({ where: { id } });
         if (!ticket) {
-          return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 });
+          return apiNotFoundError("Ticket");
         }
         let existing: string[] = [];
         try { existing = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
@@ -245,8 +241,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     const ticket = await prisma.usdcRampRequest.update({ where: { id }, data });
-    return NextResponse.json({ success: true, data: ticket });
+    return apiSuccess(ticket);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "USDC ramp PATCH") }, { status: 500 });
+    return handleApiError(error, "USDC ramp PATCH");
   }
 }

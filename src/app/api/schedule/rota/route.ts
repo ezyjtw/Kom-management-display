@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/schedule/rota
@@ -131,25 +133,19 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        subTeams: data,
-        holidays,
-        pto: ptoList.map((p) => ({
-          employeeId: p.employeeId,
-          employeeName: p.employeeName,
-          startDate: p.startDate.toISOString(),
-          endDate: p.endDate.toISOString(),
-          type: p.type,
-        })),
-      },
+    return apiSuccess({
+      subTeams: data,
+      holidays,
+      pto: ptoList.map((p) => ({
+        employeeId: p.employeeId,
+        employeeName: p.employeeName,
+        startDate: p.startDate.toISOString(),
+        endDate: p.endDate.toISOString(),
+        type: p.type,
+      })),
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "rota GET");
   }
 }
 
@@ -158,6 +154,9 @@ export async function GET(request: NextRequest) {
  * Create/update a rota assignment. Admin/lead only.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 
@@ -166,10 +165,7 @@ export async function POST(request: NextRequest) {
     const { subTeamId, employeeId, role, startDate, endDate, rotationCycle, shiftType, isWfh, location } = body;
 
     if (!subTeamId || !employeeId || !startDate || !endDate) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: subTeamId, employeeId, startDate, endDate" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: subTeamId, employeeId, startDate, endDate");
     }
 
     const assignment = await prisma.rotaAssignment.upsert({
@@ -215,11 +211,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: assignment }, { status: 201 });
+    return apiSuccess(assignment, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "rota POST");
   }
 }

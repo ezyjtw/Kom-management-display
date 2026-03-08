@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { TRAVEL_RULE_SLA } from "@/lib/sla";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 interface BulkRow {
   transactionId: string;
@@ -30,6 +32,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { action, rows, caseIds, ownerUserId } = body;
@@ -39,10 +44,7 @@ export async function POST(request: NextRequest) {
     // Skips rows that already have a case (deduplication via compound unique).
     if (action === "create_cases") {
       if (!Array.isArray(rows) || rows.length === 0) {
-        return NextResponse.json(
-          { success: false, error: "rows array is required for create_cases" },
-          { status: 400 },
-        );
+        return apiValidationError("rows array is required for create_cases");
       }
 
       const created: string[] = [];
@@ -101,20 +103,14 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({
-        success: true,
-        data: { created: created.length, skipped: skipped.length, ids: created },
-      });
+      return apiSuccess({ created: created.length, skipped: skipped.length, ids: created });
     }
 
     // assign: set ownerUserId and auto-transition status to "Investigating".
     // Uses $transaction to apply all updates atomically.
     if (action === "assign") {
       if (!Array.isArray(caseIds) || caseIds.length === 0 || !ownerUserId) {
-        return NextResponse.json(
-          { success: false, error: "caseIds and ownerUserId required for assign" },
-          { status: 400 },
-        );
+        return apiValidationError("caseIds and ownerUserId required for assign");
       }
 
       await prisma.$transaction(
@@ -150,20 +146,14 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({
-        success: true,
-        data: { updated: caseIds.length },
-      });
+      return apiSuccess({ updated: caseIds.length });
     }
 
     // mark_not_required: close cases as "Not Required" (e.g. internal transfers,
     // test transactions, or amounts below the travel rule threshold).
     if (action === "mark_not_required") {
       if (!Array.isArray(caseIds) || caseIds.length === 0) {
-        return NextResponse.json(
-          { success: false, error: "caseIds required for mark_not_required" },
-          { status: 400 },
-        );
+        return apiValidationError("caseIds required for mark_not_required");
       }
 
       await prisma.$transaction(
@@ -193,20 +183,11 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({
-        success: true,
-        data: { resolved: caseIds.length },
-      });
+      return apiSuccess({ resolved: caseIds.length });
     }
 
-    return NextResponse.json(
-      { success: false, error: "Invalid action. Must be create_cases, assign, or mark_not_required" },
-      { status: 400 },
-    );
+    return apiValidationError("Invalid action. Must be create_cases, assign, or mark_not_required");
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/cases/bulk");
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 export async function GET(
   _request: NextRequest,
@@ -29,18 +31,12 @@ export async function GET(
     });
 
     if (!employee) {
-      return NextResponse.json(
-        { success: false, error: "Employee not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Employee");
     }
 
-    return NextResponse.json({ success: true, data: employee });
+    return apiSuccess(employee);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "employee GET");
   }
 }
 
@@ -52,6 +48,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.sensitive);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -81,11 +80,8 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json({ success: true, data: employee });
+    return apiSuccess(employee);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "employee PATCH");
   }
 }

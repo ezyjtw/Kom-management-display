@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,12 +26,9 @@ export async function GET(request: NextRequest) {
       take: 50,
     });
 
-    return NextResponse.json({ success: true, data: alerts });
+    return apiSuccess(alerts);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "GET /api/comms/alerts");
   }
 }
 
@@ -37,22 +36,19 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { alertId, action } = body;
 
     if (!alertId || !action) {
-      return NextResponse.json(
-        { success: false, error: "Missing alertId or action" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing alertId or action");
     }
 
     if (!["acknowledge", "resolve"].includes(action)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid action. Must be acknowledge or resolve" },
-        { status: 400 }
-      );
+      return apiValidationError("Invalid action. Must be acknowledge or resolve");
     }
 
     const data: Record<string, unknown> = {};
@@ -83,11 +79,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: alert });
+    return apiSuccess(alert);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "PATCH /api/comms/alerts");
   }
 }

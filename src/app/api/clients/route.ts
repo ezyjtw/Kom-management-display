@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/clients
@@ -197,18 +198,12 @@ export async function GET(request: NextRequest) {
         .sort((a, b) => b.overdue - a.overdue || b.open - a.open),
     };
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        clients,
-        travelRule: travelRuleSummary,
-        period: { days, since: since.toISOString() },
-      },
+    return apiSuccess({
+      clients,
+      travelRule: travelRuleSummary,
+      period: { days, since: since.toISOString() },
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "clients GET");
   }
 }

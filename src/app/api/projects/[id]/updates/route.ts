@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/projects/[id]/updates
@@ -33,12 +35,9 @@ export async function GET(
       createdAt: u.createdAt.toISOString(),
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "project updates GET");
   }
 }
 
@@ -50,6 +49,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -59,53 +61,51 @@ export async function POST(
     const { content, type, progress } = body;
 
     if (!content) {
-      return NextResponse.json(
-        { success: false, error: "Missing required field: content" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required field: content");
     }
 
     const authorId = auth.employeeId || auth.id;
 
-    const update = await prisma.projectUpdate.create({
-      data: {
-        projectId: id,
-        authorId,
-        content,
-        type: type || "progress",
-        progress: progress !== undefined ? progress : null,
-      },
-      include: {
-        author: { select: { id: true, name: true } },
-      },
-    });
-
-    // Update project progress if provided
-    if (progress !== undefined) {
-      await prisma.project.update({
-        where: { id },
+    const update = await prisma.$transaction(async (tx) => {
+      const upd = await tx.projectUpdate.create({
         data: {
-          progress,
-          ...(progress >= 100 ? { status: "completed", completedAt: new Date() } : {}),
+          projectId: id,
+          authorId,
+          content,
+          type: type || "progress",
+          progress: progress !== undefined ? progress : null,
+        },
+        include: {
+          author: { select: { id: true, name: true } },
         },
       });
-    }
 
-    await prisma.auditLog.create({
-      data: {
-        action: "project_update_added",
-        entityType: "project",
-        entityId: id,
-        userId: authorId,
-        details: JSON.stringify({ type: type || "progress", progress }),
-      },
+      // Update project progress if provided
+      if (progress !== undefined) {
+        await tx.project.update({
+          where: { id },
+          data: {
+            progress,
+            ...(progress >= 100 ? { status: "completed", completedAt: new Date() } : {}),
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          action: "project_update_added",
+          entityType: "project",
+          entityId: id,
+          userId: authorId,
+          details: JSON.stringify({ type: type || "progress", progress }),
+        },
+      });
+
+      return upd;
     });
 
-    return NextResponse.json({ success: true, data: update }, { status: 201 });
+    return apiSuccess(update, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "project updates POST");
   }
 }

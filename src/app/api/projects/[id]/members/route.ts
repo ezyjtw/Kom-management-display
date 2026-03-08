@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/projects/[id]/members
@@ -10,6 +12,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -19,10 +24,7 @@ export async function POST(
     const { employeeId, role } = body;
 
     if (!employeeId) {
-      return NextResponse.json(
-        { success: false, error: "Missing required field: employeeId" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required field: employeeId");
     }
 
     const member = await prisma.projectMember.upsert({
@@ -40,11 +42,8 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ success: true, data: member }, { status: 201 });
+    return apiSuccess(member, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "project members POST");
   }
 }

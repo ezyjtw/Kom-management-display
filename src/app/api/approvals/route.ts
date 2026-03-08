@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { isKomainuConfigured, fetchPendingRequests } from "@/lib/integrations/komainu";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * Categorize a pending request into a swimlane and risk level.
@@ -37,10 +39,7 @@ export async function GET() {
 
   try {
     if (!isKomainuConfigured()) {
-      return NextResponse.json({
-        success: true,
-        data: { items: [], summary: { total: 0, autoApprove: 0, opsApproval: 0, complianceReview: 0 }, configured: false },
-      });
+      return apiSuccess({ items: [], summary: { total: 0, autoApprove: 0, opsApproval: 0, complianceReview: 0 }, configured: false });
     }
 
     const result = await fetchPendingRequests();
@@ -54,21 +53,18 @@ export async function GET() {
       return { ...req, lane, riskLevel, ageMinutes };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        items,
-        summary: {
-          total: items.length,
-          autoApprove: items.filter((i) => i.lane === "auto_approve").length,
-          opsApproval: items.filter((i) => i.lane === "ops_approval").length,
-          complianceReview: items.filter((i) => i.lane === "compliance_review").length,
-        },
-        configured: true,
+    return apiSuccess({
+      items,
+      summary: {
+        total: items.length,
+        autoApprove: items.filter((i) => i.lane === "auto_approve").length,
+        opsApproval: items.filter((i) => i.lane === "ops_approval").length,
+        complianceReview: items.filter((i) => i.lane === "compliance_review").length,
       },
+      configured: true,
     });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "approvals GET");
   }
 }
 
@@ -81,12 +77,15 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { requestId, action, notes } = body;
 
     if (!requestId || !action) {
-      return NextResponse.json({ success: false, error: "requestId and action are required" }, { status: 400 });
+      return apiValidationError("requestId and action are required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -97,28 +96,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Log the audit entry
-    await prisma.approvalAuditEntry.create({
-      data: {
-        requestId,
-        action,
-        performedById: actorId,
-        riskLevel: body.riskLevel || "medium",
-        notes: notes || "",
-      },
-    });
+    await prisma.$transaction([
+      prisma.approvalAuditEntry.create({
+        data: {
+          requestId,
+          action,
+          performedById: actorId,
+          riskLevel: body.riskLevel || "medium",
+          notes: notes || "",
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: `approval_${action}`,
+          entityType: "approval",
+          entityId: requestId,
+          userId: actorId,
+          details: JSON.stringify({ action, notes }),
+        },
+      }),
+    ]);
 
-    await prisma.auditLog.create({
-      data: {
-        action: `approval_${action}`,
-        entityType: "approval",
-        entityId: requestId,
-        userId: actorId,
-        details: JSON.stringify({ action, notes }),
-      },
-    });
-
-    return NextResponse.json({ success: true }, { status: 201 });
+    return apiSuccess(undefined, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "approvals POST");
   }
 }

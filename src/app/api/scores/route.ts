@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { createScoreSchema, validateBody } from "@/lib/validation";
 import { checkAuthorization, applyScopeFilter } from "@/modules/auth/services/authorization";
@@ -168,8 +169,8 @@ export async function POST(request: NextRequest) {
       rawIndex,
       score,
       configVersion: config.version,
-      evidence: evidence || [],
-      metadata: metadata || {},
+      evidence: (evidence || []) as Prisma.InputJsonValue,
+      metadata: (metadata || {}) as Prisma.InputJsonValue,
     });
 
     await createAuditEntry({

@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth-user";
 import type { IntegrationHealth } from "@/modules/integrations/types";
+import { apiSuccess } from "@/lib/api/response";
 
 // Integration health tracking (in-memory, populated by sync operations)
 const healthStore = new Map<string, IntegrationHealth>();
@@ -41,9 +42,5 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({
-    success: true,
-    data: integrations,
-    timestamp: new Date().toISOString(),
-  });
+  return apiSuccess(integrations, { timestamp: new Date().toISOString() });
 }

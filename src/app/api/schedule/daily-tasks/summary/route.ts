@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/schedule/daily-tasks/summary
@@ -100,18 +101,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        date: start.toISOString(),
-        holidays: holidays.map((h) => ({ name: h.name, region: h.region })),
-        teams: summary,
-      },
+    return apiSuccess({
+      date: start.toISOString(),
+      holidays: holidays.map((h) => ({ name: h.name, region: h.region })),
+      teams: summary,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "daily-tasks summary GET");
   }
 }
