@@ -410,7 +410,7 @@ describe("Session expiry enforcement", () => {
     const res = await middleware(req);
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.code).toBe("SESSION_EXPIRED");
+    expect(body.code).toBe("SESSION_EXPIRED_IDLE");
   });
 
   it("fresh admin session passes through", async () => {

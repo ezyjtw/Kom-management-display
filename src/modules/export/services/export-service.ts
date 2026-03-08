@@ -19,6 +19,17 @@ const ROW_LIMITS: Record<Role, number> = {
   auditor: 50_000,
 };
 
+/**
+ * Resources that require dual-control (maker-checker) for export.
+ * Exports of these resources must include an approver different from the requester.
+ * This enforces separation of duties for high-sensitivity data.
+ */
+const DUAL_CONTROL_RESOURCES: string[] = [
+  "audit_logs",
+  "settlements",
+  "travel_rule_cases",
+];
+
 /** Resources that each role can export. */
 const EXPORTABLE_RESOURCES: Record<Role, string[]> = {
   admin: [
@@ -76,6 +87,12 @@ export interface ExportRequest {
   columns?: string[];
   /** Maximum number of rows to export. Capped by role limit. */
   maxRows?: number;
+  /**
+   * For dual-control resources: the approving user's ID.
+   * Must be different from the requesting user. Required for
+   * audit_logs, settlements, and travel_rule_cases exports.
+   */
+  approvedBy?: string;
 }
 
 export interface ExportContext {
@@ -129,6 +146,21 @@ export const exportService = {
     // 1. Validate permissions
     validateExportPermissions(request.resource, context);
 
+    // 1b. Enforce dual-control for sensitive resources
+    if (DUAL_CONTROL_RESOURCES.includes(request.resource)) {
+      if (!request.approvedBy) {
+        throw new Error(
+          `Export of '${request.resource}' requires dual-control approval. ` +
+          `Provide an approvedBy user ID from a different authorized user.`,
+        );
+      }
+      if (request.approvedBy === context.userId) {
+        throw new Error(
+          "Dual-control violation: the approver must be different from the requester (maker-checker).",
+        );
+      }
+    }
+
     // 2. Determine row limit
     const roleLimit = ROW_LIMITS[context.userRole] ?? 0;
     const effectiveLimit = Math.min(request.maxRows ?? roleLimit, roleLimit);
@@ -157,7 +189,7 @@ export const exportService = {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `${request.resource}_export_${timestamp}.${request.format}`;
 
-    // 7. Audit the export
+    // 7. Audit the export (includes dual-control metadata when applicable)
     const auditLogId = await auditExport(request, context, data.length, watermark);
 
     logger.info("exportService.exportData", {
@@ -200,6 +232,13 @@ export const exportService = {
    */
   getExportableResources(role: Role): string[] {
     return EXPORTABLE_RESOURCES[role] ?? [];
+  },
+
+  /**
+   * Check if a resource requires dual-control (maker-checker) for export.
+   */
+  requiresDualControl(resource: string): boolean {
+    return DUAL_CONTROL_RESOURCES.includes(resource);
   },
 
   /**
@@ -506,6 +545,8 @@ async function auditExport(
           columns: request.columns ?? "all",
           watermark,
           userRole: context.userRole,
+          dualControl: DUAL_CONTROL_RESOURCES.includes(request.resource),
+          approvedBy: request.approvedBy ?? null,
         }),
       },
     });

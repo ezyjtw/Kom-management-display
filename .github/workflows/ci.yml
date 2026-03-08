@@ -61,7 +61,7 @@ jobs:
           if [ -f coverage/coverage-summary.json ]; then
             node -e "
               const c = require('./coverage/coverage-summary.json').total;
-              const thresholds = { lines: 50, branches: 40, functions: 45, statements: 50 };
+              const thresholds = { lines: 60, branches: 50, functions: 55, statements: 60 };
               let failed = false;
               for (const [key, min] of Object.entries(thresholds)) {
                 const pct = c[key].pct;
@@ -92,7 +92,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Dependency audit (critical blocks, high warns)
+      - name: Dependency audit (critical and high block)
         run: |
           # Fail on critical vulnerabilities
           npm audit --audit-level=critical 2>&1 || {
@@ -100,10 +100,11 @@ jobs:
             echo "ERROR: Critical vulnerabilities found. Fix or add reviewed exceptions to .nsprc."
             exit 1
           }
-          # Warn on high vulnerabilities (non-blocking)
+          # Fail on high vulnerabilities too — institutional grade requires this
           npm audit --audit-level=high 2>&1 || {
             echo ""
-            echo "WARNING: High-severity vulnerabilities found. Review and fix when possible."
+            echo "ERROR: High-severity vulnerabilities found. Fix before merging."
+            exit 1
           }
 
       - name: Check for secrets in code
@@ -184,6 +185,41 @@ jobs:
             fi
           done
           echo "All workflow actions verified"
+
+      - name: Verify sensitive action registry exists
+        run: |
+          echo "Checking sensitive action governance..."
+          if [ -f "src/modules/auth/services/sensitive-actions.ts" ]; then
+            echo "  OK: Sensitive action registry found"
+            # Verify key categories are defined
+            for category in config_change user_management data_export settlement_approval break_glass; do
+              if grep -q "$category" src/modules/auth/services/sensitive-actions.ts; then
+                echo "  OK: Category '$category' defined"
+              else
+                echo "  MISSING: Category '$category' not in sensitive action registry"
+                exit 1
+              fi
+            done
+          else
+            echo "ERROR: No sensitive action registry found"
+            exit 1
+          fi
+          echo "Sensitive action governance verified"
+
+      - name: Verify dual-control patterns exist
+        run: |
+          echo "Checking dual-control / maker-checker patterns..."
+          if grep -rq "requiresDualControl\|makerBy\|checkerBy\|dual.control" src/modules/ src/lib/; then
+            echo "  OK: Dual-control patterns found in modules"
+          else
+            echo "  WARNING: No dual-control patterns detected in modules"
+          fi
+          # Check export service has approval workflow
+          if grep -q "approval\|dual.*control\|maker.*checker" src/modules/export/services/export-service.ts; then
+            echo "  OK: Export service has governance controls"
+          else
+            echo "  WARNING: Export service may lack governance controls"
+          fi
 
   schema-check:
     name: Schema Validation
