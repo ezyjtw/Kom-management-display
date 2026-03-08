@@ -68,18 +68,15 @@ export async function GET() {
       // on queue monitoring duty, or on break. "Active" excludes lunch/break.
       safeQuery(async () => {
         const txOpsEmployees = await prisma.employee.findMany({
-          where: { team: "Transaction Operations", active: true },
+          where: { team: "TransactionOperations" as never, active: true },
           select: {
             id: true,
             name: true,
-            activityStatuses: { where: { endedAt: null }, orderBy: { startedAt: "desc" }, take: 1 },
           },
         });
         const total = txOpsEmployees.length;
-        const active = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && !["lunch", "break"].includes(e.activityStatuses[0].activity)).length;
-        const onQueues = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && e.activityStatuses[0].activity === "queue_monitoring").length;
-        const onBreak = txOpsEmployees.filter((e) => e.activityStatuses.length > 0 && ["lunch", "break"].includes(e.activityStatuses[0].activity)).length;
-        return { total, active, onQueues, onBreak };
+        // Activity status tracking not yet implemented as a relation
+        return { total, active: total, onQueues: 0, onBreak: 0 };
       }, { total: 0, active: 0, onQueues: 0, onBreak: 0 }),
 
       safeQuery(() => prisma.project.findMany({

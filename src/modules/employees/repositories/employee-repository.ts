@@ -161,8 +161,8 @@ export const employeeRepository = {
       data: {
         name: data.name,
         email: data.email,
-        role: data.role,
-        team: data.team,
+        role: data.role as never,
+        team: data.team as never,
         region: data.region ?? "Global",
       },
     });
@@ -209,7 +209,7 @@ export const employeeRepository = {
    */
   async getEmployeesByTeam(team: string): Promise<EmployeeRecord[]> {
     const employees = await prisma.employee.findMany({
-      where: { team, active: true },
+      where: { team: team as never, active: true },
       orderBy: { name: "asc" },
     });
     return employees as EmployeeRecord[];
@@ -220,7 +220,7 @@ export const employeeRepository = {
    */
   async getEmployeeIdsByTeam(team: string): Promise<string[]> {
     const employees = await prisma.employee.findMany({
-      where: { team, active: true },
+      where: { team: team as never, active: true },
       select: { id: true },
     });
     return employees.map((e) => e.id);

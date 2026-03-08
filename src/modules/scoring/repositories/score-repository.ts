@@ -172,7 +172,7 @@ export const scoreRepository = {
    */
   async getLatestPeriod(type: string): Promise<PeriodRecord | null> {
     const period = await prisma.timePeriod.findFirst({
-      where: { type },
+      where: { type: type as never },
       orderBy: { endDate: "desc" },
     });
     return period as PeriodRecord | null;
@@ -184,7 +184,7 @@ export const scoreRepository = {
   async getPreviousPeriod(type: string, before: Date): Promise<PeriodRecord | null> {
     const period = await prisma.timePeriod.findFirst({
       where: {
-        type,
+        type: type as never,
         endDate: { lt: before },
       },
       orderBy: { endDate: "desc" },

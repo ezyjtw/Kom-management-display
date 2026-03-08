@@ -40,7 +40,7 @@ export interface ScoringConfigRecord {
   version: string;
   config: string;
   active: boolean;
-  createdBy: string;
+  createdById: string;
   createdAt: Date;
   notes: string;
   /** Extended status stored in the notes field as JSON prefix. */
@@ -410,7 +410,7 @@ export const scoringService = {
         version: config.version,
         config: JSON.stringify(config),
         active: false,
-        createdBy,
+        createdById: createdBy,
         notes: combinedNotes,
       },
     });
@@ -751,12 +751,13 @@ function asNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function safeParseJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
+function safeParseJson<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "object") return value as T;
+  if (typeof value === "string") {
+    try { return JSON.parse(value) as T; } catch { return fallback; }
   }
+  return fallback;
 }
 
 function buildCategoryMap(

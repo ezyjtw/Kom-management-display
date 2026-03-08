@@ -17,11 +17,11 @@ export async function GET(request: NextRequest) {
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const end = new Date(start.getTime() + 86400000);
 
-    const teams = ["Transaction Operations", "Admin Operations", "Data Operations"];
+    const teams = ["TransactionOperations", "AdminOperations", "DataOperations"];
 
     // Get team leads
     const leads = await prisma.employee.findMany({
-      where: { role: "Lead", active: true },
+      where: { role: "Lead" as never, active: true },
       select: { id: true, name: true, team: true },
     });
 
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
 
       return {
         team,
-        teamLead: leadMap.get(team) || "Unassigned",
+        teamLead: leadMap.get(team as never) || "Unassigned",
         totalTasks: teamTasks.length,
         completedTasks: teamTasks.filter((t) => t.status === "completed").length,
         pendingTasks: teamTasks.filter((t) => t.status === "pending").length,

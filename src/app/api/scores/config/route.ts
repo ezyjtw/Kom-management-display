@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
           id: c.id,
           version: c.version,
           active: c.active,
-          createdBy: c.createdBy,
+          createdById: c.createdById,
           createdAt: c.createdAt,
           notes: c.notes,
         })),
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         version,
         config: typeof config === "string" ? config : JSON.stringify(config),
         active: false,
-        createdBy: auth.id,
+        createdById: auth.id,
         notes: notes || `Draft config created by ${auth.name}`,
       },
     });

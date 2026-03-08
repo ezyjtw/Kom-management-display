@@ -53,7 +53,7 @@ export async function GET(
 
     // Get recent periods
     const periods = await prisma.timePeriod.findMany({
-      where: { type: periodType },
+      where: { type: periodType as never },
       orderBy: { startDate: "desc" },
       take: limit,
     });
@@ -106,8 +106,8 @@ export async function GET(
         categoryDetails[cat] = {
           score: s?.score ?? 3,
           rawIndex: s?.rawIndex ?? 0,
-          evidence: s ? JSON.parse(s.evidence) : [],
-          metadata: s ? JSON.parse(s.metadata) : {},
+          evidence: s ? (typeof s.evidence === "string" ? JSON.parse(s.evidence) : s.evidence ?? []) : [],
+          metadata: s ? (typeof s.metadata === "string" ? JSON.parse(s.metadata) : s.metadata ?? {}) : {},
           configVersion: s?.configVersion ?? config.version,
         };
       }

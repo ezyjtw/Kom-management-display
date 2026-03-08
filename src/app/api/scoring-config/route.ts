@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         version,
         config: typeof config === "string" ? config : JSON.stringify(config),
         active: true,
-        createdBy: auth.name,
+        createdById: auth.id,
         notes: notes || "",
       },
     });

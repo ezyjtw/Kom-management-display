@@ -472,10 +472,11 @@ function buildPagination(opts: ThreadPagination): { skip: number; take: number }
   return { skip: (page - 1) * pageSize, take: pageSize };
 }
 
-function safeParseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [];
+function safeParseJson(value: unknown): unknown {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return []; }
   }
+  return [];
 }

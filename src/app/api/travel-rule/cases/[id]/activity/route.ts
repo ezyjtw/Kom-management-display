@@ -47,7 +47,7 @@ export async function GET(
     for (const entry of auditEntries) {
       let details: Record<string, unknown> = {};
       try {
-        details = JSON.parse(entry.details || "{}");
+        details = typeof entry.details === "string" ? JSON.parse(entry.details || "{}") : (entry.details as Record<string, unknown> ?? {});
       } catch {
         // ignore
       }
@@ -91,7 +91,7 @@ export async function GET(
         action: entry.action,
         description,
         actorName: entry.user?.name || "System",
-        details: entry.details,
+        details: typeof entry.details === "string" ? entry.details : JSON.stringify(entry.details),
         createdAt: entry.createdAt,
       });
     }

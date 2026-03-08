@@ -400,11 +400,13 @@ export const threadService = {
  *   - New: ["collab:id1", "watch:id2"]
  *   - Legacy: ["id1", "id2"] (treated as collaborators)
  */
-function parseSecondaryOwnerIds(raw: string): SecondaryParticipant[] {
+function parseSecondaryOwnerIds(raw: unknown): SecondaryParticipant[] {
   let parsed: string[];
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
+  if (Array.isArray(raw)) {
+    parsed = raw as string[];
+  } else if (typeof raw === "string") {
+    try { parsed = JSON.parse(raw); } catch { return []; }
+  } else {
     return [];
   }
 

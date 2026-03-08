@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, CommsSource, ThreadPriority, ThreadStatus, ProjectStatus, DailyCheckStatus } from "@prisma/client";
+import { PrismaClient, UserRole, CommsSource, ThreadPriority, ThreadStatus, ProjectStatus, DailyCheckStatus, EmployeeRole, TeamName, TimePeriodType, ScoreCategory } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -9,25 +9,25 @@ async function main() {
   // Create employees (upsert to be idempotent)
   // Transaction Operations has 3 sub-teams, each with a lead and juniors
   // Locations: London (EMEA), Hong Kong (APAC), Jersey (EMEA)
-  const employeeData = [
+  const employeeData: { name: string; email: string; role: EmployeeRole; team: TeamName; region: string }[] = [
     // Transaction Operations — Leads & Seniors
-    { name: "Alice Chen", email: "alice@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },       // Hong Kong
-    { name: "Carol Davies", email: "carol@ops.com", role: "Lead", team: "Transaction Operations", region: "EMEA" },        // London — overall team lead
-    { name: "Grace Thompson", email: "grace@ops.com", role: "Senior", team: "Transaction Operations", region: "EMEA" },     // London — sub-team lead
-    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: "Senior", team: "Transaction Operations", region: "APAC" },     // Hong Kong — sub-team lead
+    { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "APAC" },       // Hong Kong
+    { name: "Carol Davies", email: "carol@ops.com", role: EmployeeRole.Lead, team: TeamName.TransactionOperations, region: "EMEA" },        // London — overall team lead
+    { name: "Grace Thompson", email: "grace@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "EMEA" },     // London — sub-team lead
+    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: "APAC" },     // Hong Kong — sub-team lead
     // Transaction Operations — Analysts (juniors who rotate)
-    { name: "Liam O'Brien", email: "liam@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },      // London — late shift / WFH
-    { name: "Maria Santos", email: "maria@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },      // London
-    { name: "Nikhil Patel", email: "nikhil@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },     // Jersey
-    { name: "Sophie Laurent", email: "sophie@ops.com", role: "Analyst", team: "Transaction Operations", region: "EMEA" },   // Jersey
-    { name: "Tom Nakamura", email: "tom@ops.com", role: "Analyst", team: "Transaction Operations", region: "APAC" },        // Hong Kong
-    { name: "Yuki Tanaka", email: "yuki@ops.com", role: "Analyst", team: "Transaction Operations", region: "APAC" },        // Hong Kong
+    { name: "Liam O'Brien", email: "liam@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },      // London — late shift / WFH
+    { name: "Maria Santos", email: "maria@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },      // London
+    { name: "Nikhil Patel", email: "nikhil@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },     // Jersey
+    { name: "Sophie Laurent", email: "sophie@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "EMEA" },   // Jersey
+    { name: "Tom Nakamura", email: "tom@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "APAC" },        // Hong Kong
+    { name: "Yuki Tanaka", email: "yuki@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: "APAC" },        // Hong Kong
     // Admin Operations
-    { name: "Bob Martinez", email: "bob@ops.com", role: "Analyst", team: "Admin Operations", region: "Americas" },
-    { name: "Eva Kowalski", email: "eva@ops.com", role: "Senior", team: "Admin Operations", region: "EMEA" },
+    { name: "Bob Martinez", email: "bob@ops.com", role: EmployeeRole.Analyst, team: TeamName.AdminOperations, region: "Americas" },
+    { name: "Eva Kowalski", email: "eva@ops.com", role: EmployeeRole.Senior, team: TeamName.AdminOperations, region: "EMEA" },
     // Data Operations
-    { name: "David Park", email: "david@ops.com", role: "Analyst", team: "Data Operations", region: "APAC" },
-    { name: "Frank Osei", email: "frank@ops.com", role: "Analyst", team: "Data Operations", region: "EMEA" },
+    { name: "David Park", email: "david@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: "APAC" },
+    { name: "Frank Osei", email: "frank@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: "EMEA" },
   ];
 
   const employees = await Promise.all(
@@ -82,12 +82,12 @@ async function main() {
 
   // Create time periods
   const periodData = [
-    { type: "month", startDate: new Date("2026-01-01"), endDate: new Date("2026-01-31"), label: "2026-01" },
-    { type: "month", startDate: new Date("2026-02-01"), endDate: new Date("2026-02-28"), label: "2026-02" },
-    { type: "week", startDate: new Date("2026-02-16"), endDate: new Date("2026-02-22"), label: "2026-W08" },
-    { type: "week", startDate: new Date("2026-02-23"), endDate: new Date("2026-03-01"), label: "2026-W09" },
-    { type: "quarter", startDate: new Date("2025-10-01"), endDate: new Date("2025-12-31"), label: "2025-Q4" },
-    { type: "quarter", startDate: new Date("2026-01-01"), endDate: new Date("2026-03-31"), label: "2026-Q1" },
+    { type: TimePeriodType.month, startDate: new Date("2026-01-01"), endDate: new Date("2026-01-31"), label: "2026-01" },
+    { type: TimePeriodType.month, startDate: new Date("2026-02-01"), endDate: new Date("2026-02-28"), label: "2026-02" },
+    { type: TimePeriodType.week, startDate: new Date("2026-02-16"), endDate: new Date("2026-02-22"), label: "2026-W08" },
+    { type: TimePeriodType.week, startDate: new Date("2026-02-23"), endDate: new Date("2026-03-01"), label: "2026-W09" },
+    { type: TimePeriodType.quarter, startDate: new Date("2025-10-01"), endDate: new Date("2025-12-31"), label: "2025-Q4" },
+    { type: TimePeriodType.quarter, startDate: new Date("2026-01-01"), endDate: new Date("2026-03-31"), label: "2026-Q1" },
   ];
 
   const periods = await Promise.all(
@@ -103,7 +103,7 @@ async function main() {
   console.log(`Upserted ${periods.length} time periods`);
 
   // Seed category scores for each employee for the latest month
-  const categories = ["daily_tasks", "projects", "asset_actions", "quality", "knowledge"];
+  const categories: ScoreCategory[] = [ScoreCategory.daily_tasks, ScoreCategory.projects, ScoreCategory.asset_actions, ScoreCategory.quality, ScoreCategory.knowledge];
   const configVersion = "1.0.0";
 
   // Score data keyed by email for stability when employee array changes
@@ -384,6 +384,7 @@ async function main() {
   }
 
   // Seed scoring config
+  const adminUser = await prisma.user.findFirst({ where: { role: UserRole.admin } });
   await prisma.scoringConfig.upsert({
     where: { version: "1.0.0" },
     update: {},
@@ -396,7 +397,7 @@ async function main() {
         clampMax: 8,
       }),
       active: true,
-      createdBy: "system",
+      createdById: adminUser?.id ?? "system",
       notes: "Initial default configuration",
     },
   });

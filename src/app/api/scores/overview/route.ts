@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Get latest period
     const latestPeriod = await prisma.timePeriod.findFirst({
-      where: { type: periodType },
+      where: { type: periodType as never },
       orderBy: { startDate: "desc" },
     });
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         include: { employee: true },
       }),
       prisma.timePeriod.findFirst({
-        where: { type: periodType, startDate: { lt: latestPeriod.startDate } },
+        where: { type: periodType as never, startDate: { lt: latestPeriod.startDate } },
         orderBy: { startDate: "desc" },
       }),
     ]);

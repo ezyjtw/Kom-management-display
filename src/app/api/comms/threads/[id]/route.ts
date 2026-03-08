@@ -59,7 +59,8 @@ export async function GET(
     });
 
     // Resolve secondary owner names
-    const secondaryIds: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const rawSecondaryIds = thread.secondaryOwnerIds;
+    const secondaryIds: string[] = typeof rawSecondaryIds === "string" ? JSON.parse(rawSecondaryIds || "[]") : (rawSecondaryIds as string[] ?? []);
     const secondaryOwners = secondaryIds.length
       ? await prisma.employee.findMany({
           where: { id: { in: secondaryIds } },
@@ -106,7 +107,8 @@ export async function PATCH(
     }
 
     const isOwner = thread.ownerUserId === actorEmployeeId;
-    const secondaryIds: string[] = JSON.parse(thread.secondaryOwnerIds || "[]");
+    const patchRawSecondaryIds = thread.secondaryOwnerIds;
+    const secondaryIds: string[] = typeof patchRawSecondaryIds === "string" ? JSON.parse(patchRawSecondaryIds || "[]") : (patchRawSecondaryIds as string[] ?? []);
     const isSecondary = secondaryIds.includes(actorEmployeeId);
 
     // RBAC: employees can only modify threads they own or collaborate on
