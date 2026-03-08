@@ -28,6 +28,8 @@ import {
   Fuel,
   ArrowUpRight,
   ArrowDownRight,
+  Timer,
+  BarChart3,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -182,6 +184,24 @@ interface MarketData {
     isAlert: boolean;
   }>;
   gas: { low: number; average: number; high: number; isSpike: boolean };
+  btcNetwork: {
+    lastBlockTimestamp: number;
+    secondsSinceBlock: number;
+    feeEstimates: {
+      fastest: number;
+      halfHour: number;
+      hour: number;
+      economy: number;
+    };
+  };
+  openInterest: {
+    totalOI: number;
+    change24h: number;
+    btcOI: number;
+    btcOIChange: number;
+    ethOI: number;
+    ethOIChange: number;
+  };
   alerts: Array<{
     type: string;
     asset: string;
@@ -247,6 +267,22 @@ function Sparkline({ data, color, height = 24 }: { data: number[]; color: string
       </AreaChart>
     </ResponsiveContainer>
   );
+}
+
+// ─── Helpers ───
+
+function formatBlockTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function formatCompact(value: number): string {
+  if (value >= 1e12) return `${(value / 1e12).toFixed(1)}T`;
+  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(0)}K`;
+  return value.toFixed(0);
 }
 
 // ─── Main Page ───
@@ -368,7 +404,7 @@ export default function CommandCenterPage() {
               </span>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {market.prices.map((asset) => (
               <div key={asset.id} className={`rounded-lg p-2 ${asset.isAlert ? "bg-amber-500/5 border border-amber-500/20" : "bg-muted/30"}`}>
                 <div className="flex items-center justify-between mb-0.5">
@@ -387,6 +423,86 @@ export default function CommandCenterPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── BTC Network & Open Interest ── */}
+      {market && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* BTC Network Status */}
+          {market.btcNetwork && market.btcNetwork.feeEstimates.fastest > 0 && (
+            <div className="bg-card rounded-xl border border-border p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Timer size={14} className="text-orange-400" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BTC Network</span>
+                {market.btcNetwork.secondsSinceBlock > 0 && (
+                  <span className={`ml-auto text-xs font-medium ${market.btcNetwork.secondsSinceBlock > 1200 ? "text-amber-400" : market.btcNetwork.secondsSinceBlock > 1800 ? "text-red-400" : "text-muted-foreground"}`}>
+                    Last block: {formatBlockTime(market.btcNetwork.secondsSinceBlock)} ago
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Next Block</p>
+                  <p className="text-sm font-bold text-orange-400">{market.btcNetwork.feeEstimates.fastest}</p>
+                  <p className="text-[10px] text-muted-foreground">sat/vB</p>
+                </div>
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">~30 min</p>
+                  <p className="text-sm font-bold text-foreground">{market.btcNetwork.feeEstimates.halfHour}</p>
+                  <p className="text-[10px] text-muted-foreground">sat/vB</p>
+                </div>
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">~1 hour</p>
+                  <p className="text-sm font-bold text-foreground">{market.btcNetwork.feeEstimates.hour}</p>
+                  <p className="text-[10px] text-muted-foreground">sat/vB</p>
+                </div>
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Economy</p>
+                  <p className="text-sm font-bold text-foreground">{market.btcNetwork.feeEstimates.economy}</p>
+                  <p className="text-[10px] text-muted-foreground">sat/vB</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Open Interest */}
+          {market.openInterest && market.openInterest.totalOI > 0 && (
+            <div className="bg-card rounded-xl border border-border p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart3 size={14} className="text-purple-400" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Open Interest</span>
+                <span className={`ml-auto text-xs font-semibold flex items-center ${market.openInterest.change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {market.openInterest.change24h >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+                  {Math.abs(market.openInterest.change24h).toFixed(1)}% 24h
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Total OI</p>
+                  <p className="text-sm font-bold text-foreground">${formatCompact(market.openInterest.totalOI)}</p>
+                </div>
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">BTC OI</p>
+                  <p className="text-sm font-bold text-foreground">${formatCompact(market.openInterest.btcOI)}</p>
+                  {market.openInterest.btcOIChange !== 0 && (
+                    <p className={`text-[10px] font-medium ${market.openInterest.btcOIChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {market.openInterest.btcOIChange >= 0 ? "+" : ""}{market.openInterest.btcOIChange.toFixed(1)}%
+                    </p>
+                  )}
+                </div>
+                <div className="rounded-lg bg-muted/30 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">ETH OI</p>
+                  <p className="text-sm font-bold text-foreground">${formatCompact(market.openInterest.ethOI)}</p>
+                  {market.openInterest.ethOIChange !== 0 && (
+                    <p className={`text-[10px] font-medium ${market.openInterest.ethOIChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {market.openInterest.ethOIChange >= 0 ? "+" : ""}{market.openInterest.ethOIChange.toFixed(1)}%
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
