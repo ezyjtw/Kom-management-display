@@ -30,11 +30,12 @@ async function main() {
     { name: "Frank Osei", email: "frank@ops.com", role: EmployeeRole.Analyst, team: TeamName.DataOperations, region: Region.EMEA },
   ];
 
-  const employees = await Promise.all(
+  // Use a transaction to ensure Employees are created before Users reference them
+  const employees = await prisma.$transaction(
     employeeData.map((data) =>
       prisma.employee.upsert({
         where: { email: data.email },
-        update: { team: data.team },
+        update: { team: data.team, role: data.role, region: data.region, name: data.name },
         create: data,
       })
     )
@@ -72,11 +73,11 @@ async function main() {
     { email: "yuki@ops.com", name: "Yuki Tanaka", role: UserRole.employee, password: userPassword, employeeId: emp["yuki@ops.com"].id },
   ];
 
-  await Promise.all(
+  await prisma.$transaction(
     userData.map((data) =>
       prisma.user.upsert({
         where: { email: data.email },
-        update: {},
+        update: { employeeId: data.employeeId, name: data.name, role: data.role },
         create: data,
       })
     )
