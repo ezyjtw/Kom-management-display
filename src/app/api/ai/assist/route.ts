@@ -10,6 +10,12 @@ import {
   draftTravelRuleEmail,
   researchToken,
   suggestTokensToOnboard,
+  summariseDailyChecks,
+  analyseStakingAnomaly,
+  classifyScreeningRisk,
+  draftRcaSummary,
+  draftEscalationNote,
+  analyseStuckTransactions,
 } from "@/lib/ai";
 import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -29,6 +35,12 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
  *   - "draft_impact":    Draft incident operational impact text
  *   - "analyse_client":  Analyse client communication patterns
  *   - "draft_travel_email": Draft travel rule counterparty email
+ *   - "summarise_checks":  Generate Jira summary from daily check results
+ *   - "analyse_staking":   Explain staking reward anomalies
+ *   - "classify_screening": AI-assisted screening risk classification
+ *   - "draft_rca":         Draft RCA summary from incident data
+ *   - "draft_escalation":  Draft compliance escalation note
+ *   - "analyse_stuck_tx":  Analyse stuck transaction patterns
  *   - "status":          Check if AI is enabled (no data needed)
  */
 export async function POST(request: NextRequest) {
@@ -87,6 +99,30 @@ export async function POST(request: NextRequest) {
 
       case "suggest_tokens":
         suggestion = await suggestTokensToOnboard(data);
+        break;
+
+      case "summarise_checks":
+        suggestion = await summariseDailyChecks(data);
+        break;
+
+      case "analyse_staking":
+        suggestion = await analyseStakingAnomaly(data);
+        break;
+
+      case "classify_screening":
+        suggestion = await classifyScreeningRisk(data);
+        break;
+
+      case "draft_rca":
+        suggestion = await draftRcaSummary(data);
+        break;
+
+      case "draft_escalation":
+        suggestion = await draftEscalationNote(data);
+        break;
+
+      case "analyse_stuck_tx":
+        suggestion = await analyseStuckTransactions(data);
         break;
 
       default:
