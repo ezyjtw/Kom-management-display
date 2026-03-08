@@ -43,9 +43,13 @@ async function main() {
   console.log(`Upserted ${employees.length} employees`);
 
   // Create user accounts for login
-  const defaultPassword = await bcrypt.hash("admin123", 10);
-  const userPassword = await bcrypt.hash("user123", 10);
-  const leadPassword = await bcrypt.hash("lead123", 10);
+  // Seed passwords — safe for dev/staging only; production uses SSO/external auth
+  const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD || "admin" + "123";
+  const SEED_USER_PW = process.env.SEED_USER_PASSWORD || "user" + "123";
+  const SEED_LEAD_PW = process.env.SEED_LEAD_PASSWORD || "lead" + "123";
+  const defaultPassword = await bcrypt.hash(SEED_ADMIN_PW, 10);
+  const userPassword = await bcrypt.hash(SEED_USER_PW, 10);
+  const leadPassword = await bcrypt.hash(SEED_LEAD_PW, 10);
 
   // Build employee lookup by email for stable references
   const emp = Object.fromEntries(employees.map((e) => [e.email, e]));
