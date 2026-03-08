@@ -4,7 +4,7 @@
   "description": "Ops Team Management Dashboard with Comms & Ownership Module",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
