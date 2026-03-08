@@ -78,20 +78,36 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
     setError(null);
     try {
       const [scoresRes, opsRes] = await Promise.all([
-        fetch(`/api/scores?periodType=${periodType}`),
+        fetch(`/api/scores?periodType=${periodType}`).catch(() => null),
         fetch("/api/command-center").catch(() => null),
       ]);
-      const scoresJson = await scoresRes.json();
 
-      if (scoresJson.success) {
-        setEmployees(scoresJson.data || []);
-      } else {
-        setError(scoresJson.error || "Failed to load scores");
+      if (scoresRes) {
+        try {
+          const scoresJson = await scoresRes.json();
+          if (scoresJson.success) {
+            setEmployees(scoresJson.data || []);
+          } else {
+            console.warn("Scores API error:", scoresJson.error);
+            // Only show error if we have no existing employee data
+            if (employees.length === 0) {
+              setError(scoresJson.error || "Failed to load scores");
+            }
+          }
+        } catch {
+          console.warn("Failed to parse scores response");
+        }
+      } else if (employees.length === 0) {
+        setError("Network error — could not reach server");
       }
 
       if (opsRes) {
-        const opsJson = await opsRes.json();
-        if (opsJson.success) setOpsData(opsJson.data);
+        try {
+          const opsJson = await opsRes.json();
+          if (opsJson.success) setOpsData(opsJson.data);
+        } catch {
+          // Non-critical — keep existing ops data
+        }
       }
 
       setLastRefreshed(new Date());
@@ -101,7 +117,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
     } finally {
       setLoading(false);
     }
-  }, [periodType]);
+  }, [periodType, employees.length]);
 
   // Re-fetch when period changes (but not on initial mount — we have server data)
   const [hasMounted, setHasMounted] = useState(false);

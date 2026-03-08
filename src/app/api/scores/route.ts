@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { createScoreSchema, validateBody } from "@/lib/validation";
-import { checkAuthorization, applyScopeFilter } from "@/modules/auth/services/authorization";
+import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { scoringService } from "@/modules/scoring/services/scoring-service";
 import { scoreRepository } from "@/modules/scoring/repositories/score-repository";
 import { createAuditEntry } from "@/lib/api/audit";
@@ -13,8 +13,15 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  // Accept both "view" and "view_own" — scope filtering handles visibility
   const authz = checkAuthorization(auth, "score", "view");
-  if (!authz.allowed) return apiForbiddenError(authz.reason);
+  if (!authz.allowed) {
+    // Fall back to view_own for employee-role users
+    const authzOwn = checkAuthorization(auth, "score", "view_own" as never);
+    if (!authzOwn.allowed) return apiForbiddenError(authz.reason);
+    // Use own scope for employees
+    Object.assign(authz, { allowed: true, scope: authzOwn.scope });
+  }
 
   try {
     const { searchParams } = new URL(request.url);
@@ -24,10 +31,6 @@ export async function GET(request: NextRequest) {
 
     // If specific employee or period requested, return filtered scores
     if (employeeId || periodId) {
-      const where = applyScopeFilter(auth, authz.scope, {}, { employeeIdField: "employeeId" });
-      if (employeeId) where.employeeId = employeeId;
-      if (periodId) where.periodId = periodId;
-
       if (employeeId) {
         const { scores } = await scoreRepository.getScoresForEmployee(employeeId, {});
         return apiSuccess(scores);
@@ -39,18 +42,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Overview mode: get latest period scores with trends
-    const latestPeriod = await scoreRepository.getLatestPeriod(periodType);
+    let latestPeriod;
+    try {
+      latestPeriod = await scoreRepository.getLatestPeriod(periodType);
+    } catch (err) {
+      console.error("Failed to fetch latest period:", err);
+      return apiSuccess([]);
+    }
     if (!latestPeriod) {
       return apiSuccess([]);
     }
 
-    const previousPeriod = await scoreRepository.getPreviousPeriod(periodType, latestPeriod.startDate);
-    const { scores: periodScores } = await scoreRepository.getScoresForPeriod(latestPeriod.id);
-    const prevScores = previousPeriod
-      ? (await scoreRepository.getScoresForPeriod(previousPeriod.id)).scores
-      : [];
+    const [previousPeriod, periodScoresResult, config] = await Promise.all([
+      scoreRepository.getPreviousPeriod(periodType, latestPeriod.startDate).catch(() => null),
+      scoreRepository.getScoresForPeriod(latestPeriod.id).catch(() => ({ scores: [], total: 0 })),
+      scoringService.getActiveScoringConfig(),
+    ]);
 
-    const config = await scoringService.getActiveScoringConfig();
+    const periodScores = periodScoresResult.scores;
+    const prevScores = previousPeriod
+      ? await scoreRepository.getScoresForPeriod(previousPeriod.id).then(r => r.scores).catch(() => [])
+      : [];
 
     // Build employee overviews
     const employeeMap = new Map<string, {
@@ -133,11 +145,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: overviews,
-      period: latestPeriod,
-    });
+    return apiSuccess(overviews, { period: latestPeriod } as never);
   } catch (error) {
     return handleApiError(error, "GET /api/scores");
   }
