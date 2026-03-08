@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireRole } from "@/lib/auth-user";
+import { apiPaginated, handleApiError } from "@/lib/api/response";
 
 const MAX_PAGE_SIZE = 100;
 
@@ -38,17 +39,8 @@ export async function GET(request: NextRequest) {
       prisma.auditLog.count({ where }),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      data: logs,
-      total,
-      page,
-      pageSize,
-    });
+    return apiPaginated(logs, { page, pageSize, total });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "audit GET");
   }
 }

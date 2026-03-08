@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import {
   approveRequest,
   fetchRequest,
   fetchTransaction,
   isKomainuConfigured,
 } from "@/lib/integrations/komainu";
+import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/travel-rule/cases/:id/approve-api
@@ -27,12 +29,12 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     if (!isKomainuConfigured()) {
-      return NextResponse.json(
-        { success: false, error: "Komainu API is not configured" },
-        { status: 400 },
-      );
+      return apiValidationError("Komainu API is not configured");
     }
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -40,10 +42,7 @@ export async function POST(
     });
 
     if (!travelCase) {
-      return NextResponse.json(
-        { success: false, error: "Case not found" },
-        { status: 404 },
-      );
+      return apiNotFoundError("Case");
     }
 
     const body = await request.json();
@@ -77,100 +76,93 @@ export async function POST(
 
       // Auto-update case status if approval completed
       if (isApproved && travelCase.status === "PendingResponse") {
-        await prisma.travelRuleCase.update({
-          where: { id: params.id },
-          data: { status: "Investigating" },
-        });
-        await prisma.auditLog.create({
-          data: {
-            action: "travel_rule_case_updated",
-            entityType: "travel_rule_case",
-            entityId: params.id,
-            userId: actorId,
-            details: JSON.stringify({
-              description: "API approval confirmed — transaction approved",
-              txStatus,
-              requestStatus,
-            }),
-          },
-        });
+        await prisma.$transaction([
+          prisma.travelRuleCase.update({
+            where: { id: params.id },
+            data: { status: "Investigating" },
+          }),
+          prisma.auditLog.create({
+            data: {
+              action: "travel_rule_case_updated",
+              entityType: "travel_rule_case",
+              entityId: params.id,
+              userId: actorId,
+              details: JSON.stringify({
+                description: "API approval confirmed — transaction approved",
+                txStatus,
+                requestStatus,
+              }),
+            },
+          }),
+        ]);
       }
 
       if (isFailed && travelCase.status === "PendingResponse") {
-        await prisma.travelRuleCase.update({
-          where: { id: params.id },
-          data: { status: "Investigating" },
-        });
-        await prisma.auditLog.create({
-          data: {
-            action: "travel_rule_case_updated",
-            entityType: "travel_rule_case",
-            entityId: params.id,
-            userId: actorId,
-            details: JSON.stringify({
-              description: `API approval failed — ${requestStatus !== "unknown" ? requestStatus : txStatus}`,
-              txStatus,
-              requestStatus,
-            }),
-          },
-        });
+        await prisma.$transaction([
+          prisma.travelRuleCase.update({
+            where: { id: params.id },
+            data: { status: "Investigating" },
+          }),
+          prisma.auditLog.create({
+            data: {
+              action: "travel_rule_case_updated",
+              entityType: "travel_rule_case",
+              entityId: params.id,
+              userId: actorId,
+              details: JSON.stringify({
+                description: `API approval failed — ${requestStatus !== "unknown" ? requestStatus : txStatus}`,
+                txStatus,
+                requestStatus,
+              }),
+            },
+          }),
+        ]);
       }
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          txStatus,
-          requestStatus,
-          isApproved,
-          isFailed,
-          caseStatus: isApproved || isFailed ? "Investigating" : travelCase.status,
-        },
+      return apiSuccess({
+        txStatus,
+        requestStatus,
+        isApproved,
+        isFailed,
+        caseStatus: isApproved || isFailed ? "Investigating" : travelCase.status,
       });
     }
 
     // ── Submit approval action ──
     if (!body.requestId) {
-      return NextResponse.json(
-        { success: false, error: "requestId is required" },
-        { status: 400 },
-      );
+      return apiValidationError("requestId is required");
     }
 
     // Call the Komainu API to approve
     const approvalResult = await approveRequest(body.requestId);
 
     // Set case to AwaitingApproval
-    const updated = await prisma.travelRuleCase.update({
-      where: { id: params.id },
-      data: { status: "PendingResponse" },
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.travelRuleCase.update({
+        where: { id: params.id },
+        data: { status: "PendingResponse" },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: "travel_rule_case_updated",
+          entityType: "travel_rule_case",
+          entityId: params.id,
+          userId: actorId,
+          details: JSON.stringify({
+            description: `API approval submitted for request ${body.requestId}`,
+            requestId: body.requestId,
+            komainuStatus: approvalResult.status,
+          }),
+        },
+      }),
+    ]);
 
-    await prisma.auditLog.create({
-      data: {
-        action: "travel_rule_case_updated",
-        entityType: "travel_rule_case",
-        entityId: params.id,
-        userId: actorId,
-        details: JSON.stringify({
-          description: `API approval submitted for request ${body.requestId}`,
-          requestId: body.requestId,
-          komainuStatus: approvalResult.status,
-        }),
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...updated,
-        requestId: body.requestId,
-        komainuStatus: approvalResult.status,
-      },
+    return apiSuccess({
+      ...updated,
+      requestId: body.requestId,
+      komainuStatus: approvalResult.status,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/cases/[id]/approve-api");
   }
 }

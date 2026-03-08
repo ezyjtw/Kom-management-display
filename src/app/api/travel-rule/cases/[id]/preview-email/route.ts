@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { buildHtmlEmail } from "@/lib/travel-rule-email";
+import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/travel-rule/cases/:id/preview-email
@@ -18,15 +20,15 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { recipientEmail, recipientName } = body;
 
     if (!recipientEmail) {
-      return NextResponse.json(
-        { success: false, error: "recipientEmail is required" },
-        { status: 400 },
-      );
+      return apiValidationError("recipientEmail is required");
     }
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -34,10 +36,7 @@ export async function POST(
     });
 
     if (!travelCase) {
-      return NextResponse.json(
-        { success: false, error: "Case not found" },
-        { status: 404 },
-      );
+      return apiNotFoundError("Case");
     }
 
     const html = buildHtmlEmail({
@@ -49,19 +48,13 @@ export async function POST(
 
     const subject = `Travel Rule Information Request — ${travelCase.asset} ${travelCase.direction} ${travelCase.transactionId}`;
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        subject,
-        recipientEmail,
-        recipientName: recipientName || "",
-        html,
-      },
+    return apiSuccess({
+      subject,
+      recipientEmail,
+      recipientName: recipientName || "",
+      html,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/cases/[id]/preview-email");
   }
 }

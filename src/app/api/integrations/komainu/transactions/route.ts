@@ -4,7 +4,8 @@ import {
   fetchPendingRequests,
   isKomainuConfigured,
 } from "@/lib/integrations/komainu";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/integrations/komainu/transactions
@@ -21,15 +22,12 @@ export async function GET(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   if (!isKomainuConfigured()) {
-    return NextResponse.json({
-      success: true,
-      data: {
-        pendingTransactions: [],
-        pendingRequests: [],
-        transactionCount: 0,
-        requestCount: 0,
-        configured: false,
-      },
+    return apiSuccess({
+      pendingTransactions: [],
+      pendingRequests: [],
+      transactionCount: 0,
+      requestCount: 0,
+      configured: false,
     });
   }
 
@@ -45,22 +43,16 @@ export async function GET(request: NextRequest) {
       fetchPendingRequests({ page, pageSize, type }),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        pendingTransactions: txResult.data,
-        pendingRequests: reqResult.data,
-        transactionCount: txResult.count,
-        requestCount: reqResult.count,
-        transactionHasNext: txResult.has_next,
-        requestHasNext: reqResult.has_next,
-        configured: true,
-      },
+    return apiSuccess({
+      pendingTransactions: txResult.data,
+      pendingRequests: reqResult.data,
+      transactionCount: txResult.count,
+      requestCount: reqResult.count,
+      transactionHasNext: txResult.has_next,
+      requestHasNext: reqResult.has_next,
+      configured: true,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "komainu transactions");
   }
 }

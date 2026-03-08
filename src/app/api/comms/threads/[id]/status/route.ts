@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 const VALID_STATUSES = [
   "Unassigned",
@@ -23,22 +25,19 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { status, reason } = body;
 
     if (!status) {
-      return NextResponse.json(
-        { success: false, error: "status is required" },
-        { status: 400 }
-      );
+      return apiValidationError("status is required");
     }
 
     if (!VALID_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` },
-        { status: 400 }
-      );
+      return apiValidationError(`Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`);
     }
 
     const thread = await prisma.commsThread.findUnique({
@@ -46,10 +45,7 @@ export async function POST(
     });
 
     if (!thread) {
-      return NextResponse.json(
-        { success: false, error: "Thread not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Thread");
     }
 
     // RBAC: only thread owner or lead/admin can change status
@@ -58,19 +54,13 @@ export async function POST(
     const isPrivileged = ["admin", "lead"].includes(auth.role);
 
     if (!isOwner && !isPrivileged) {
-      return NextResponse.json(
-        { success: false, error: "Only the thread owner or a lead/admin can change status" },
-        { status: 403 }
-      );
+      return apiForbiddenError("Only the thread owner or a lead/admin can change status");
     }
 
     // Policy: closing requires a resolution note
     if (["Done", "Closed"].includes(status) && !["Done", "Closed"].includes(thread.status)) {
       if (!reason) {
-        return NextResponse.json(
-          { success: false, error: "A resolution note is required when closing a thread" },
-          { status: 400 }
-        );
+        return apiValidationError("A resolution note is required when closing a thread");
       }
     }
 
@@ -110,11 +100,8 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return apiSuccess(updated);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "POST /api/comms/threads/[id]/status");
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 function computeRewardHealth(wallet: { expectedNextRewardAt: Date | null; lastRewardAt: Date | null }): string {
   if (!wallet.expectedNextRewardAt) return "no_data";
@@ -49,22 +51,19 @@ export async function GET(request: NextRequest) {
     });
 
     const active = data.filter((w) => w.status === "active");
-    return NextResponse.json({
-      success: true,
-      data: {
-        wallets: data,
-        summary: {
-          total: data.length,
-          active: active.length,
-          overdue: active.filter((w) => w.rewardHealth === "overdue").length,
-          approaching: active.filter((w) => w.rewardHealth === "approaching").length,
-          coldStaking: data.filter((w) => w.isColdStaking).length,
-          reconciliationFlags: data.filter((w) => w.varianceFlag).length,
-        },
+    return apiSuccess({
+      wallets: data,
+      summary: {
+        total: data.length,
+        active: active.length,
+        overdue: active.filter((w) => w.rewardHealth === "overdue").length,
+        approaching: active.filter((w) => w.rewardHealth === "approaching").length,
+        coldStaking: data.filter((w) => w.isColdStaking).length,
+        reconciliationFlags: data.filter((w) => w.varianceFlag).length,
       },
     });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "staking GET");
   }
 }
 
@@ -76,15 +75,15 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { walletAddress, asset, rewardModel } = body;
 
     if (!walletAddress || !asset || !rewardModel) {
-      return NextResponse.json(
-        { success: false, error: "walletAddress, asset, and rewardModel are required" },
-        { status: 400 },
-      );
+      return apiValidationError("walletAddress, asset, and rewardModel are required");
     }
 
     const wallet = await prisma.stakingWallet.create({
@@ -108,9 +107,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: wallet }, { status: 201 });
+    return apiSuccess(wallet, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "staking POST");
   }
 }
 
@@ -122,12 +121,15 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { id, ...fields } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "id is required" }, { status: 400 });
+      return apiValidationError("id is required");
     }
 
     const updateData: Record<string, unknown> = {};
@@ -147,8 +149,8 @@ export async function PATCH(request: NextRequest) {
     if (fields.status !== undefined) updateData.status = fields.status;
 
     const wallet = await prisma.stakingWallet.update({ where: { id }, data: updateData });
-    return NextResponse.json({ success: true, data: wallet });
+    return apiSuccess(wallet);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "staking PATCH");
   }
 }

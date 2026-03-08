@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import type { ThreadPriority } from "@/types";
 
 /**
@@ -15,6 +17,9 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { newOwnerId, reason, handoverNote } = body;
@@ -24,10 +29,7 @@ export async function POST(
     });
 
     if (!thread) {
-      return NextResponse.json(
-        { success: false, error: "Thread not found" },
-        { status: 404 }
-      );
+      return apiNotFoundError("Thread");
     }
 
     // Only owner, admin, or lead can transfer
@@ -36,20 +38,14 @@ export async function POST(
       thread.ownerUserId !== actorId &&
       !["admin", "lead"].includes(auth.role)
     ) {
-      return NextResponse.json(
-        { success: false, error: "Only the thread owner or a lead/admin can transfer ownership" },
-        { status: 403 }
-      );
+      return apiForbiddenError("Only the thread owner or a lead/admin can transfer ownership");
     }
 
     // Validate new owner exists
     if (newOwnerId) {
       const emp = await prisma.employee.findUnique({ where: { id: newOwnerId }, select: { id: true } });
       if (!emp) {
-        return NextResponse.json(
-          { success: false, error: "Invalid employee ID" },
-          { status: 400 },
-        );
+        return apiValidationError("Invalid employee ID");
       }
     }
 
@@ -133,11 +129,8 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return apiSuccess(updated);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "POST /api/comms/threads/[id]/transfer");
   }
 }

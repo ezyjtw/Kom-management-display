@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/settlements
@@ -75,9 +77,9 @@ export async function GET(request: NextRequest) {
       checkerByName: s.checkerById ? nameMap[s.checkerById] || null : null,
     }));
 
-    return NextResponse.json({ success: true, data: { settlements: enriched, summary } });
+    return apiSuccess({ settlements: enriched, summary });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements GET") }, { status: 500 });
+    return handleApiError(error, "settlements GET");
   }
 }
 
@@ -90,6 +92,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const {
@@ -99,17 +104,11 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!settlementRef || !clientName || !asset || !amount || !direction) {
-      return NextResponse.json(
-        { success: false, error: "settlementRef, clientName, asset, amount, and direction are required" },
-        { status: 400 },
-      );
+      return apiValidationError("settlementRef, clientName, asset, amount, and direction are required");
     }
 
     if (isNaN(parseFloat(amount))) {
-      return NextResponse.json(
-        { success: false, error: "amount must be a valid number" },
-        { status: 400 },
-      );
+      return apiValidationError("amount must be a valid number");
     }
 
     const settlement = await prisma.oesSettlement.create({
@@ -128,9 +127,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: settlement }, { status: 201 });
+    return apiSuccess(settlement, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements POST") }, { status: 500 });
+    return handleApiError(error, "settlements POST");
   }
 }
 
@@ -154,12 +153,15 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { id, action, ...fields } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "id is required" }, { status: 400 });
+      return apiValidationError("id is required");
     }
 
     const actorId = auth.employeeId || auth.id;
@@ -220,8 +222,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     const settlement = await prisma.oesSettlement.update({ where: { id }, data });
-    return NextResponse.json({ success: true, data: settlement });
+    return apiSuccess(settlement);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Settlements PATCH") }, { status: 500 });
+    return handleApiError(error, "settlements PATCH");
   }
 }

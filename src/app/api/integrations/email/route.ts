@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncEmailInbox } from "@/lib/integrations/email";
-import { requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireRole } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/integrations/email
  * Trigger a sync of the configured email inbox. Admin only.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -32,12 +37,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: result });
+    return apiSuccess(result);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "email sync");
   }
 }
 
@@ -54,15 +56,12 @@ export async function GET() {
     !!process.env.IMAP_USER &&
     !!process.env.IMAP_PASSWORD;
 
-  return NextResponse.json({
-    success: true,
-    data: {
-      configured,
-      inbox: configured ? process.env.IMAP_USER : null,
-      smtpConfigured:
-        !!process.env.SMTP_HOST &&
-        !!process.env.SMTP_USER &&
-        !!process.env.SMTP_PASSWORD,
-    },
+  return apiSuccess({
+    configured,
+    inbox: configured ? process.env.IMAP_USER : null,
+    smtpConfigured:
+      !!process.env.SMTP_HOST &&
+      !!process.env.SMTP_USER &&
+      !!process.env.SMTP_PASSWORD,
   });
 }

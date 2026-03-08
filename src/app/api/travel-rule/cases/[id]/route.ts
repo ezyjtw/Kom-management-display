@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { sendTravelRuleEmail } from "@/lib/travel-rule-email";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/travel-rule/cases/:id
@@ -19,10 +21,7 @@ export async function GET(
     });
 
     if (!travelCase) {
-      return NextResponse.json(
-        { success: false, error: "Case not found" },
-        { status: 404 },
-      );
+      return apiNotFoundError("Case");
     }
 
     // Resolve owner name
@@ -43,15 +42,9 @@ export async function GET(
       vaspContact = null;
     }
 
-    return NextResponse.json({
-      success: true,
-      data: { ...travelCase, ownerName },
-    });
+    return apiSuccess({ ...travelCase, ownerName });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "GET /api/travel-rule/cases/[id]");
   }
 }
 
@@ -71,6 +64,9 @@ export async function PATCH(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const actorId = auth.employeeId || auth.id;
@@ -80,29 +76,20 @@ export async function PATCH(
     });
 
     if (!travelCase) {
-      return NextResponse.json(
-        { success: false, error: "Case not found" },
-        { status: 404 },
-      );
+      return apiNotFoundError("Case");
     }
 
     // RBAC: owner, lead, admin can update
     const isPrivileged = ["admin", "lead"].includes(auth.role);
     const isOwner = travelCase.ownerUserId === actorId;
     if (!isPrivileged && !isOwner && travelCase.ownerUserId) {
-      return NextResponse.json(
-        { success: false, error: "Only the assigned owner or a lead/admin can update this case" },
-        { status: 403 },
-      );
+      return apiForbiddenError("Only the assigned owner or a lead/admin can update this case");
     }
 
     // Handle send_email action
     if (body.action === "send_email") {
       if (!body.recipientEmail) {
-        return NextResponse.json(
-          { success: false, error: "recipientEmail is required" },
-          { status: 400 },
-        );
+        return apiValidationError("recipientEmail is required");
       }
 
       await sendTravelRuleEmail({
@@ -112,31 +99,32 @@ export async function PATCH(
         senderName: auth.name || "Ops Team",
       });
 
-      const updated = await prisma.travelRuleCase.update({
-        where: { id: params.id },
-        data: {
-          status: "PendingResponse",
-          emailSentTo: body.recipientEmail,
-          emailSentAt: new Date(),
-        },
-      });
+      const [updated] = await prisma.$transaction([
+        prisma.travelRuleCase.update({
+          where: { id: params.id },
+          data: {
+            status: "PendingResponse",
+            emailSentTo: body.recipientEmail,
+            emailSentAt: new Date(),
+          },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "travel_rule_email_sent",
+            entityType: "travel_rule_case",
+            entityId: params.id,
+            userId: actorId,
+            details: JSON.stringify({
+              description: `Email sent to ${body.recipientEmail}`,
+              recipientEmail: body.recipientEmail,
+              matchStatus: travelCase.matchStatus,
+              transactionId: travelCase.transactionId,
+            }),
+          },
+        }),
+      ]);
 
-      await prisma.auditLog.create({
-        data: {
-          action: "travel_rule_email_sent",
-          entityType: "travel_rule_case",
-          entityId: params.id,
-          userId: actorId,
-          details: JSON.stringify({
-            description: `Email sent to ${body.recipientEmail}`,
-            recipientEmail: body.recipientEmail,
-            matchStatus: travelCase.matchStatus,
-            transactionId: travelCase.transactionId,
-          }),
-        },
-      });
-
-      return NextResponse.json({ success: true, data: updated });
+      return apiSuccess(updated);
     }
 
     // Build update data
@@ -152,10 +140,7 @@ export async function PATCH(
           select: { name: true },
         });
         if (!emp) {
-          return NextResponse.json(
-            { success: false, error: "Invalid employee ID" },
-            { status: 400 },
-          );
+          return apiValidationError("Invalid employee ID");
         }
         newOwnerName = emp.name;
       }
@@ -195,7 +180,7 @@ export async function PATCH(
     }
 
     if (Object.keys(data).length === 0) {
-      return NextResponse.json({ success: true, data: travelCase });
+      return apiSuccess(travelCase);
     }
 
     const updated = await prisma.travelRuleCase.update({
@@ -215,11 +200,8 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json({ success: true, data: updated });
+    return apiSuccess(updated);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "PATCH /api/travel-rule/cases/[id]");
   }
 }
