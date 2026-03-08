@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, isExcessiveBouncing, computeTravelRuleAging } from "@/lib/sla";
 import { requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/alerts/generate
@@ -13,16 +15,19 @@ import { requireRole } from "@/lib/auth-user";
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    return NextResponse.json({ success: false, error: "CRON_SECRET not configured" }, { status: 500 });
+    return apiError("CRON_SECRET not configured", 500);
   }
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return apiError("Unauthorized", 401, "AUTH_REQUIRED");
   }
   return generateAlerts();
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
   return generateAlerts();
@@ -257,19 +262,13 @@ async function generateAlerts() {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        threadsScanned: threads.length,
-        travelRuleCasesScanned: openCases.length,
-        alertsCreated,
-        timestamp: now.toISOString(),
-      },
+    return apiSuccess({
+      threadsScanned: threads.length,
+      travelRuleCasesScanned: openCases.length,
+      alertsCreated,
+      timestamp: now.toISOString(),
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: "An internal error occurred" },
-      { status: 500 }
-    );
+    return handleApiError(error, "alert generation");
   }
 }

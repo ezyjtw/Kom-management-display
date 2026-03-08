@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/market-data
@@ -88,20 +89,14 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        prices: priceData,
-        gas: gasData,
-        alerts,
-        fetchedAt: new Date().toISOString(),
-      },
+    return apiSuccess({
+      prices: priceData,
+      gas: gasData,
+      alerts,
+      fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error, "Market data") },
-      { status: 500 },
-    );
+    return handleApiError(error, "market data");
   }
 }
 

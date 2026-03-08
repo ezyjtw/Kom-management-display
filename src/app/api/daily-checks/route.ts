@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 const DEFAULT_CHECK_ITEMS = [
   { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count" },
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!run) {
-      return NextResponse.json({ success: true, data: null });
+      return apiSuccess(null);
     }
 
     // Get operator name
@@ -49,21 +51,18 @@ export async function GET(request: NextRequest) {
     } catch { /* */ }
 
     const items = run.items;
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...run,
-        operatorName,
-        progress: {
-          total: items.length,
-          completed: items.filter((i) => i.status !== "pending").length,
-          passed: items.filter((i) => i.status === "pass").length,
-          issues: items.filter((i) => i.status === "issues_found").length,
-        },
+    return apiSuccess({
+      ...run,
+      operatorName,
+      progress: {
+        total: items.length,
+        completed: items.filter((i) => i.status !== "pending").length,
+        passed: items.filter((i) => i.status === "pass").length,
+        issues: items.filter((i) => i.status === "issues_found").length,
       },
     });
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "daily-checks GET");
   }
 }
 
@@ -75,6 +74,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   try {
     const actorId = auth.employeeId || auth.id;
     const today = new Date();
@@ -85,10 +87,7 @@ export async function POST(request: NextRequest) {
       where: { date: start },
     });
     if (existing) {
-      return NextResponse.json(
-        { success: false, error: "A check run already exists for today" },
-        { status: 409 },
-      );
+      return apiConflictError("A check run already exists for today");
     }
 
     const run = await prisma.dailyCheckRun.create({
@@ -106,9 +105,9 @@ export async function POST(request: NextRequest) {
       include: { items: true },
     });
 
-    return NextResponse.json({ success: true, data: run }, { status: 201 });
+    return apiSuccess(run, undefined, 201);
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "daily-checks POST");
   }
 }
 
@@ -120,6 +119,9 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
 
   try {
     const body = await request.json();
@@ -146,7 +148,7 @@ export async function PATCH(request: NextRequest) {
         await prisma.dailyCheckRun.update({ where: { id: run.id }, data: { completedAt: new Date() } });
       }
 
-      return NextResponse.json({ success: true, data: item });
+      return apiSuccess(item);
     }
 
     if (body.runId) {
@@ -155,11 +157,11 @@ export async function PATCH(request: NextRequest) {
         where: { id: runId },
         data: { jiraSummary: jiraSummary || "" },
       });
-      return NextResponse.json({ success: true, data: run });
+      return apiSuccess(run);
     }
 
-    return NextResponse.json({ success: false, error: "itemId or runId required" }, { status: 400 });
+    return apiValidationError("itemId or runId required");
   } catch (error) {
-    return NextResponse.json({ success: false, error: safeErrorMessage(error) }, { status: 500 });
+    return handleApiError(error, "daily-checks PATCH");
   }
 }

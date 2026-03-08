@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { TRAVEL_RULE_SLA } from "@/lib/sla";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/travel-rule/cases
@@ -43,12 +45,9 @@ export async function GET(request: NextRequest) {
       take: 200,
     });
 
-    return NextResponse.json({ success: true, data: cases });
+    return apiSuccess(cases);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "GET /api/travel-rule/cases");
   }
 }
 
@@ -59,6 +58,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
 
   try {
     const body = await request.json();
@@ -76,10 +78,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!transactionId || !matchStatus) {
-      return NextResponse.json(
-        { success: false, error: "transactionId and matchStatus are required" },
-        { status: 400 },
-      );
+      return apiValidationError("transactionId and matchStatus are required");
     }
 
     // Uniqueness is enforced by transactionId + matchStatus compound key.
@@ -92,49 +91,47 @@ export async function POST(request: NextRequest) {
     });
 
     if (existing) {
-      return NextResponse.json({ success: true, data: existing });
+      return apiSuccess(existing);
     }
 
     // SLA deadline is createdAt + 48 hours — displayed on the case detail page
     const now = new Date();
     const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
 
-    const travelCase = await prisma.travelRuleCase.create({
-      data: {
-        transactionId,
-        txHash: txHash || "",
-        direction: direction || "",
-        asset: asset || "",
-        amount: amount || 0,
-        senderAddress: senderAddress || "",
-        receiverAddress: receiverAddress || "",
-        matchStatus,
-        notabeneTransferId: notabeneTransferId || null,
-        ownerUserId: ownerUserId || null,
-        status: ownerUserId ? "Investigating" : "Open",
-        slaDeadline,
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "travel_rule_case_created",
-        entityType: "travel_rule_case",
-        entityId: travelCase.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({
+    const [travelCase] = await prisma.$transaction([
+      prisma.travelRuleCase.create({
+        data: {
           transactionId,
+          txHash: txHash || "",
+          direction: direction || "",
+          asset: asset || "",
+          amount: amount || 0,
+          senderAddress: senderAddress || "",
+          receiverAddress: receiverAddress || "",
           matchStatus,
+          notabeneTransferId: notabeneTransferId || null,
           ownerUserId: ownerUserId || null,
-        }),
-      },
-    });
+          status: ownerUserId ? "Investigating" : "Open",
+          slaDeadline,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: "travel_rule_case_created",
+          entityType: "travel_rule_case",
+          entityId: "pending",
+          userId: auth.employeeId || auth.id,
+          details: JSON.stringify({
+            transactionId,
+            matchStatus,
+            ownerUserId: ownerUserId || null,
+          }),
+        },
+      }),
+    ]);
 
-    return NextResponse.json({ success: true, data: travelCase }, { status: 201 });
+    return apiSuccess(travelCase, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "POST /api/travel-rule/cases");
   }
 }

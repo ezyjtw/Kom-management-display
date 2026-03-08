@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/schedule/holidays
@@ -38,12 +40,9 @@ export async function GET(request: NextRequest) {
       region: h.region,
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "holidays GET");
   }
 }
 
@@ -52,6 +51,9 @@ export async function GET(request: NextRequest) {
  * Create a public holiday. Admin only.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -60,10 +62,7 @@ export async function POST(request: NextRequest) {
     const { date, name, region } = body;
 
     if (!date || !name) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: date, name" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: date, name");
     }
 
     const holiday = await prisma.publicHoliday.upsert({
@@ -81,11 +80,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: holiday }, { status: 201 });
+    return apiSuccess(holiday, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "holidays POST");
   }
 }

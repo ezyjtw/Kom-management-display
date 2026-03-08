@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
+import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * GET /api/schedule/on-call
@@ -44,12 +46,9 @@ export async function GET(request: NextRequest) {
       shiftType: s.shiftType,
     }));
 
-    return NextResponse.json({ success: true, data });
+    return apiSuccess(data);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "on-call GET");
   }
 }
 
@@ -58,6 +57,9 @@ export async function GET(request: NextRequest) {
  * Create or update on-call assignment. Admin/lead only.
  */
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
+  if (limited) return limited;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 
@@ -66,10 +68,7 @@ export async function POST(request: NextRequest) {
     const { employeeId, date, team, shiftType } = body;
 
     if (!employeeId || !date || !team) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: employeeId, date, team" },
-        { status: 400 }
-      );
+      return apiValidationError("Missing required fields: employeeId, date, team");
     }
 
     // Check if employee has PTO on that date
@@ -83,10 +82,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (ptoConflict) {
-      return NextResponse.json(
-        { success: false, error: "Employee has approved PTO on this date" },
-        { status: 409 }
-      );
+      return apiConflictError("Employee has approved PTO on this date");
     }
 
     const schedule = await prisma.onCallSchedule.upsert({
@@ -119,11 +115,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: schedule }, { status: 201 });
+    return apiSuccess(schedule, undefined, 201);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error, "on-call POST");
   }
 }
