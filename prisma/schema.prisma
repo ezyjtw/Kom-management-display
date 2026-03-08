@@ -175,6 +175,7 @@ model Employee {
   reportedIncidents       Incident[]        @relation("IncidentReporter")
   resolvedIncidents       Incident[]        @relation("IncidentResolver")
   rcaResponsibleIncidents Incident[]        @relation("RcaResponsible")
+  clientContactsCreated   ClientContactPreference[] @relation("ClientContactCreatedBy")
   user                    User?
 
   @@index([team, active])
@@ -505,6 +506,44 @@ model VaspContact {
   notes     String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── Client Contact Preferences ───
+
+model ClientContactPreference {
+  id                String   @id @default(cuid())
+  clientName        String   @unique // Matches CommsThread.clientOrPartnerTag
+  displayName       String   @default("") // Friendly name for UI
+  preferredChannel  String   @default("email") // email | slack | phone | portal
+  primaryEmail      String   @default("")
+  secondaryEmail    String   @default("")
+  slackChannel      String   @default("") // e.g. #client-acme
+  phoneNumber       String   @default("")
+  timezone          String   @default("UTC") // IANA timezone
+  businessHoursStart String  @default("09:00")
+  businessHoursEnd  String   @default("17:00")
+  businessDays      String   @default("mon,tue,wed,thu,fri") // CSV of days
+  language          String   @default("en")
+  // Travel rule specific
+  vaspDid           String   @default("") // Links to VaspContact if applicable
+  travelRuleContact String   @default("") // Dedicated TR contact email
+  // Escalation
+  escalationEmail   String   @default("") // For urgent/P0 matters
+  escalationPhone   String   @default("")
+  // Metadata
+  notes             String   @default("")
+  tags              String   @default("[]") // JSON array of tags
+  active            Boolean  @default(true)
+  lastContactedAt   DateTime?
+  createdById       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  createdBy Employee @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
+
+  @@index([clientName])
+  @@index([preferredChannel])
+  @@index([active])
 }
 
 model CaseNote {
