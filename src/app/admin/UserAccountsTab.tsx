@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus } from "lucide-react";
+import { UserPlus, AlertTriangle } from "lucide-react";
 
 export interface UserAccount {
   id: string;
@@ -14,10 +14,11 @@ export interface UserAccount {
 
 interface UserAccountsTabProps {
   users: UserAccount[];
+  employeeIds?: Set<string>;
   onUserCreated: (user: UserAccount) => void;
 }
 
-export default function UserAccountsTab({ users, onUserCreated }: UserAccountsTabProps) {
+export default function UserAccountsTab({ users, employeeIds, onUserCreated }: UserAccountsTabProps) {
   const [newUserForm, setNewUserForm] = useState({ name: "", email: "", role: "employee", password: "" });
 
   async function createUser() {
@@ -73,7 +74,18 @@ export default function UserAccountsTab({ users, onUserCreated }: UserAccountsTa
                       {u.role}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{u.employeeId || "\u2014"}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {u.employeeId ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs truncate max-w-[160px]">{u.employeeId}</span>
+                        {employeeIds && !employeeIds.has(u.employeeId) && (
+                          <span title="Linked employee record not found">
+                            <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+                          </span>
+                        )}
+                      </span>
+                    ) : "\u2014"}
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "\u2014"}
                   </td>

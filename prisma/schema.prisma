@@ -200,7 +200,7 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee               Employee?        @relation(fields: [employeeId], references: [id])
+  employee               Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   workflowEvents         WorkflowEvent[]  @relation("WorkflowPerformedBy")
   createdScoringConfigs  ScoringConfig[]  @relation("ScoringConfigCreatedBy")
   reviewedScoringConfigs ScoringConfig[]  @relation("ScoringConfigReviewedBy")

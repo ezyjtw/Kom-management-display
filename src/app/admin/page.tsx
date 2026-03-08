@@ -133,10 +133,19 @@ export default function AdminPage() {
 
       {activeTab === "weights" && config && <ScoringWeightsTab config={config} onUpdateWeight={updateWeight} />}
       {activeTab === "targets" && config && <RoleTargetsTab config={config} />}
-      {activeTab === "employees" && <EmployeesTab employees={employees} />}
+      {activeTab === "employees" && (
+        <EmployeesTab
+          employees={employees}
+          orphanedUserCount={users.filter((u) => u.employeeId && !employees.some((e) => e.id === u.employeeId)).length}
+        />
+      )}
       {activeTab === "knowledge" && <KnowledgeScoringTab employees={employees} />}
       {activeTab === "users" && (
-        <UserAccountsTab users={users} onUserCreated={(u) => setUsers((prev) => [...prev, u])} />
+        <UserAccountsTab
+          users={users}
+          employeeIds={new Set(employees.map((e) => e.id))}
+          onUserCreated={(u) => setUsers((prev) => [...prev, u])}
+        />
       )}
       {activeTab === "integrations" && (
         <IntegrationsTab slackStatus={slackStatus} emailStatus={emailStatus} />
