@@ -31,6 +31,7 @@ import {
   FileSearch,
   Coins,
   BookUser,
+  Scale,
   ShieldCheck,
   Cog,
   Flag,
@@ -75,6 +76,7 @@ const navSections = [
       { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/briefing", label: "AI Briefing", icon: Sparkles },
+      { href: "/compliance-bot", label: "Compliance Bot", icon: Scale },
     ],
   },
   {
