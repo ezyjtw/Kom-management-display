@@ -4,6 +4,24 @@ import { Plus, ArrowRight, TrendingUp, Shield, ExternalLink, Sparkles, RefreshCw
 import type { TokenEntry } from "./types";
 import { STATUS_FLOW, SIGNAL_TYPE_LABELS, MARKET_CAP_LABELS, VENDOR_STATUS_COLORS, VENDOR_STATUS_LABELS, JURISDICTION_LABELS } from "./types";
 
+/** Render a value that may be a string or an object as readable text */
+function renderField(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    // For objects, render each key-value pair as "Key: value" lines
+    const entries = Object.entries(value as Record<string, unknown>);
+    return entries
+      .map(([k, v]) => {
+        const label = k.replace(/([A-Z])/g, " $1").replace(/[_-]/g, " ").trim();
+        const val = typeof v === "object" && v !== null ? JSON.stringify(v, null, 2) : String(v ?? "");
+        return `${label}: ${val}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 interface TokenDetailPanelProps {
   token: TokenEntry;
   showSignalForm: string | null;
@@ -320,7 +338,7 @@ export function TokenDetailPanel({
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <p className="text-xs font-semibold text-foreground mb-1">Risk Assessment</p>
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                      {typeof r.riskAssessment === "object" ? JSON.stringify(r.riskAssessment, null, 2) : String(r.riskAssessment)}
+                      {renderField(r.riskAssessment)}
                     </p>
                   </div>
                 )}
@@ -356,25 +374,25 @@ export function TokenDetailPanel({
                 {!!r.custodyFeasibility && (
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <p className="text-xs font-semibold text-foreground mb-1">Custody Feasibility</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.custodyFeasibility)}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{renderField(r.custodyFeasibility)}</p>
                   </div>
                 )}
                 {!!r.institutionalDemand && (
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <p className="text-xs font-semibold text-foreground mb-1">Institutional Demand</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.institutionalDemand)}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{renderField(r.institutionalDemand)}</p>
                   </div>
                 )}
                 {!!r.stakingInfo && r.stakingInfo !== "Not applicable" && (
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <p className="text-xs font-semibold text-foreground mb-1">Staking Info</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.stakingInfo)}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{renderField(r.stakingInfo)}</p>
                   </div>
                 )}
                 {!!r.chainAnalysis && (
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <p className="text-xs font-semibold text-foreground mb-1">Chain Analysis</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(r.chainAnalysis)}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{renderField(r.chainAnalysis)}</p>
                   </div>
                 )}
               </div>
