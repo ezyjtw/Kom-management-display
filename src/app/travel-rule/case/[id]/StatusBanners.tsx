@@ -68,7 +68,7 @@ export function StatusBanners({
             Awaiting API Approval
           </h3>
           <p className="text-xs text-muted-foreground mb-3">
-            An API approval has been submitted for this transaction. The Komainu API is processing the request.
+            An API approval has been submitted for this transaction. The Custody API is processing the request.
           </p>
           <button
             onClick={onCheckApprovalStatus}

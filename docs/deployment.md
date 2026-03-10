@@ -36,8 +36,8 @@ SMTP_PORT=587
 SMTP_USER=ops@your-org.com
 SMTP_PASSWORD=<app-password>
 
-KOMAINU_API_KEY=<key>
-KOMAINU_API_URL=https://api.komainu.com
+CUSTODY_API_KEY=<key>
+CUSTODY_API_URL=https://api.custody-provider.com
 
 NOTABENE_API_KEY=<key>
 NOTABENE_VASP_DID=did:ethr:0x...
@@ -65,7 +65,7 @@ ANTHROPIC_API_KEY=<for-ai-assist>
 | `JIRA_*` | No | Jira Cloud integration credentials |
 | `SLACK_*` | No | Slack bot token and signing secret for webhook verification |
 | `IMAP_*` / `SMTP_*` | No | Email integration (IMAP for inbound, SMTP for outbound) |
-| `KOMAINU_*` | No | Komainu custody API integration |
+| `CUSTODY_*` | No | Custody API integration |
 | `NOTABENE_*` | No | Notabene travel rule integration |
 | `FIREBLOCKS_*` | No | Fireblocks wallet/transaction integration |
 | `ANTHROPIC_API_KEY` | No | AI assistant features |

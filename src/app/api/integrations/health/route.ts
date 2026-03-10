@@ -16,13 +16,13 @@ export async function GET() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
-  const sources = ["jira", "slack", "email", "fireblocks", "komainu", "notabene"] as const;
+  const sources = ["jira", "slack", "email", "fireblocks", "custody", "notabene"] as const;
   const envChecks: Record<string, string[]> = {
     jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
     email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
     fireblocks: ["FIREBLOCKS_API_KEY"],
-    komainu: ["KOMAINU_API_KEY"],
+    custody: ["CUSTODY_API_KEY"],
     notabene: ["NOTABENE_API_KEY"],
   };
 

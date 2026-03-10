@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-The platform ingests data from 7+ external systems: Jira, Confluence, Slack, Email (IMAP), Fireblocks, Komainu, and Notabene. Each has different APIs, auth mechanisms, rate limits, and data shapes.
+The platform ingests data from 7+ external systems: Jira, Confluence, Slack, Email (IMAP), Fireblocks, Custody, and Notabene. Each has different APIs, auth mechanisms, rate limits, and data shapes.
 
 ## Decision
 Use a **normalized event model** with **integration adapters** and an **async job queue**.

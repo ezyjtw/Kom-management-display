@@ -1184,7 +1184,7 @@ async function main() {
         {
           walletAddress: "adaStake001",
           asset: "ADA",
-          validator: "Komainu Pool",
+          validator: "Custody Pool",
           stakedAmount: 50000.0,
           rewardModel: "rebate",
           clientName: "Client Alpha",

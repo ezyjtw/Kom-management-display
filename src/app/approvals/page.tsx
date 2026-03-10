@@ -82,7 +82,7 @@ export default function ApprovalsPage() {
         </h1>
         <div className="bg-card rounded-xl border border-border p-8 text-center">
           <UserCheck size={40} className="mx-auto mb-3 text-muted-foreground" />
-          <p className="text-muted-foreground">Komainu API not configured. Set KOMAINU_API_BASE_URL, KOMAINU_API_USER, and KOMAINU_API_SECRET to enable.</p>
+          <p className="text-muted-foreground">Custody API not configured. Set CUSTODY_API_BASE_URL, CUSTODY_API_USER, and CUSTODY_API_SECRET to enable.</p>
         </div>
       </div>
     );

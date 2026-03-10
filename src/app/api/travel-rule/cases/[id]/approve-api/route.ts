@@ -5,22 +5,22 @@ import {
   approveRequest,
   fetchRequest,
   fetchTransaction,
-  isKomainuConfigured,
-} from "@/lib/integrations/komainu";
+  isCustodyConfigured,
+} from "@/lib/integrations/custody";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
 /**
  * POST /api/travel-rule/cases/:id/approve-api
  *
- * Submits an API approval for the Komainu transaction linked to this case.
+ * Submits an API approval for the custody transaction linked to this case.
  * Sets the case status to "PendingResponse" while the API processes.
  *
  * Body: { requestId: string }
- *   The Komainu request ID to approve.
+ *   The custody request ID to approve.
  *
  * Or: { action: "check_status" }
- *   Polls the current Komainu request/transaction status.
+ *   Polls the current custody request/transaction status.
  */
 export async function POST(
   request: NextRequest,
@@ -33,8 +33,8 @@ export async function POST(
   if (limited) return limited;
 
   try {
-    if (!isKomainuConfigured()) {
-      return apiValidationError("Komainu API is not configured");
+    if (!isCustodyConfigured()) {
+      return apiValidationError("Custody API is not configured");
     }
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -50,7 +50,7 @@ export async function POST(
 
     // ── Check status action ──
     if (body.action === "check_status") {
-      // Check the Komainu transaction status
+      // Check the custody transaction status
       let txStatus = "unknown";
       let requestStatus = "unknown";
 
@@ -133,7 +133,7 @@ export async function POST(
       return apiValidationError("requestId is required");
     }
 
-    // Call the Komainu API to approve
+    // Call the Custody API to approve
     const approvalResult = await approveRequest(body.requestId);
 
     // Set case to AwaitingApproval
@@ -151,7 +151,7 @@ export async function POST(
           details: JSON.stringify({
             description: `API approval submitted for request ${body.requestId}`,
             requestId: body.requestId,
-            komainuStatus: approvalResult.status,
+            custodyStatus: approvalResult.status,
           }),
         },
       }),
@@ -160,7 +160,7 @@ export async function POST(
     return apiSuccess({
       ...updated,
       requestId: body.requestId,
-      komainuStatus: approvalResult.status,
+      custodyStatus: approvalResult.status,
     });
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/cases/[id]/approve-api");

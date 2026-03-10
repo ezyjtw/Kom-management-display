@@ -28,7 +28,7 @@
 │ thread    │          │ thread-repo  │         │ email/IMAP   │
 │ alert     │          │ employee-repo│         │ jira         │
 │ employee  │          │              │         │ fireblocks   │
-│ travel    │          └──────┬───────┘         │ komainu      │
+│ travel    │          └──────┬───────┘         │ custody      │
 │ incident  │                 │                 │ notabene     │
 │ export    │                 ▼                 └──────┬───────┘
 └───────────┘          ┌──────────────┐                │
@@ -75,7 +75,7 @@
 │  modules/integrations/adapters/slack-adapter.ts          │
 │  modules/integrations/adapters/email-adapter.ts          │
 │  modules/integrations/adapters/fireblocks-adapter.ts     │
-│  modules/integrations/adapters/komainu-adapter.ts        │
+│  modules/integrations/adapters/custody-adapter.ts        │
 │  modules/integrations/adapters/notabene-adapter.ts       │
 ├─────────────────────────────────────────────────────────┤
 │                   Infrastructure                          │
@@ -180,7 +180,7 @@ PostgreSQL (persistence + audit log triggers)
 ## Integration Flow
 
 ```
-External System (Jira / Slack / Email / Fireblocks / Komainu / Notabene)
+External System (Jira / Slack / Email / Fireblocks / Custody / Notabene)
   │
   ▼
 Adapter.sync()  ─── verifyWebhookSignature() (for push-based integrations)

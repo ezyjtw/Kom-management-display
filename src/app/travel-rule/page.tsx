@@ -23,7 +23,7 @@ type FilterTab = "all" | "unmatched" | "missing_originator" | "missing_beneficia
 /**
  * Travel Rule Reconciliation page.
  *
- * Fetches Komainu transactions and Notabene transfers, shows reconciliation
+ * Fetches custody transactions and Notabene transfers, shows reconciliation
  * gaps (unmatched, missing originator/beneficiary), and provides:
  *   - Single-case creation (click "Open Case" on a row)
  *   - Bulk operations (select rows → create cases / assign / mark not required)
@@ -165,7 +165,7 @@ export default function TravelRulePage() {
     missingBeneficiary: 0,
   };
 
-  const configured = data?.configured ?? { komainu: false, notabene: false };
+  const configured = data?.configured ?? { custody: false, notabene: false };
 
   // Filter rows
   let filteredRows: TravelRuleReconciliationRow[] = data?.rows ?? [];
@@ -208,7 +208,7 @@ export default function TravelRulePage() {
             Travel Rule Reconciliation
           </h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            Real-time matching of Komainu transactions against Notabene travel
+            Real-time matching of custody transactions against Notabene travel
             rule transfers
           </p>
         </div>
@@ -233,16 +233,16 @@ export default function TravelRulePage() {
       </div>
 
       {/* Config warnings */}
-      {!configured.komainu && !loading && (
+      {!configured.custody && !loading && (
         <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
           <AlertCircle size={20} className="text-amber-400 shrink-0" />
           <div>
             <p className="text-sm font-medium text-amber-400">
-              Komainu API not configured
+              Custody API not configured
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Set KOMAINU_API_BASE_URL, KOMAINU_API_USER, and
-              KOMAINU_API_SECRET to fetch transactions.
+              Set CUSTODY_API_BASE_URL, CUSTODY_API_USER, and
+              CUSTODY_API_SECRET to fetch transactions.
             </p>
           </div>
         </div>

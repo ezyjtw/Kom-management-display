@@ -221,7 +221,7 @@ export const revokeSessionSchema = z.object({
 export const enqueueJobSchema = z.object({
   type: z.enum([
     "sync_slack", "sync_email", "sync_jira", "check_sla",
-    "check_staking", "poll_komainu", "check_confirmations", "cleanup_sessions",
+    "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
   ]),
   payload: z.record(z.string(), z.unknown()).default({}),
 });

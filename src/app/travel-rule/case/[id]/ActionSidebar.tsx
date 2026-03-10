@@ -134,8 +134,8 @@ export function ActionSidebar(props: ActionSidebarProps) {
             {/* API Approval */}
             {props.showApproveApi ? (
               <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-                <p className="text-xs font-medium text-foreground">Approve via Komainu API</p>
-                <p className="text-xs text-muted-foreground">Enter the Komainu request ID to approve this transaction via API.</p>
+                <p className="text-xs font-medium text-foreground">Approve via Custody API</p>
+                <p className="text-xs text-muted-foreground">Enter the custody request ID to approve this transaction via API.</p>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Request ID</label>
                   <input

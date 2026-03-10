@@ -477,7 +477,7 @@ model WalletTag {
 
 model TravelRuleCase {
   id                 String                    @id @default(cuid())
-  transactionId      String // Komainu transaction ID
+  transactionId      String // Custody transaction ID
   txHash             String                    @default("")
   direction          String // IN, OUT
   asset              String
@@ -770,7 +770,7 @@ model Alert {
 model Incident {
   id                          String                @id @default(cuid())
   title                       String // e.g. "Fireblocks signing service degraded"
-  provider                    String // Fireblocks, Ledger, GX, Komainu, Notabene, etc.
+  provider                    String // Fireblocks, Ledger, GX, Custody, Notabene, etc.
   severity                    IncidentSeverity      @default(medium)
   status                      IncidentStatus        @default(active)
   description                 String                @default("")
@@ -780,7 +780,7 @@ model Incident {
   reportedById                String // employee who raised it
   resolvedById                String?
   linkedThreadIds             Json                  @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds        Json                  @default("[]") // JSON array of transaction IDs (Komainu)
+  linkedTransactionIds        Json                  @default("[]") // JSON array of transaction IDs (custody)
   // ─── RCA Tracker Fields ───
   rcaStatus                   String                @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
   rcaDocumentRef              String                @default("") // link to RCA document
@@ -1048,7 +1048,7 @@ model DailyCheckItem {
 
 model ScreeningEntry {
   id                     String    @id @default(cuid())
-  transactionId          String    @unique // Komainu transaction ID
+  transactionId          String    @unique // Custody transaction ID
   txHash                 String    @default("")
   asset                  String
   amount                 Float     @default(0)
@@ -1075,7 +1075,7 @@ model ScreeningEntry {
 
 model ApprovalAuditEntry {
   id            String   @id @default(cuid())
-  requestId     String // Komainu request ID
+  requestId     String // Custody request ID
   action        String // approved, escalated, flagged_stuck
   performedById String
   riskLevel     String   @default("medium") // low, medium, high
@@ -1262,8 +1262,8 @@ enum ConfirmationStatus {
 
 model TransactionConfirmation {
   id                String             @id @default(cuid())
-  transactionId     String // Komainu transaction ID
-  requestId         String? // Komainu request ID (if applicable)
+  transactionId     String // Custody transaction ID
+  requestId         String? // Custody request ID (if applicable)
   riskLevel         TransactionRiskLevel @default(medium)
   asset             String
   amount            Float
@@ -1331,7 +1331,7 @@ enum JobStatus {
 
 model BackgroundJob {
   id          String    @id @default(cuid())
-  type        String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_komainu
+  type        String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_custody
   status      JobStatus @default(pending)
   payload     Json      @default("{}") // job-specific configuration
   result      Json?     // job output

@@ -16,7 +16,7 @@ import type { TravelRuleReconciliationRow, TravelRuleMatchStatus } from "@/types
 import { formatDistanceToNow } from "date-fns";
 
 /**
- * ReconciliationTable displays Komainu transactions matched against Notabene
+ * ReconciliationTable displays custody transactions matched against Notabene
  * travel rule transfers. Rows are sorted by urgency (unmatched first).
  *
  * When `onSelectionChange` is provided, checkboxes appear on non-matched rows

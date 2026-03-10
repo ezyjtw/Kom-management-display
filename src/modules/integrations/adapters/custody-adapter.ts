@@ -1,7 +1,7 @@
 /**
- * Komainu custody integration adapter.
+ * Custody integration adapter.
  *
- * Wraps the existing Komainu API client from src/lib/integrations/komainu.ts
+ * Wraps the existing Custody API client from src/lib/integrations/custody.ts
  * behind the IntegrationAdapter interface with health tracking.
  */
 
@@ -14,10 +14,10 @@ import type {
 } from "@/modules/integrations/types";
 
 // ---------------------------------------------------------------------------
-// Komainu types (mirrors src/lib/integrations/komainu.ts)
+// Custody types (mirrors src/lib/integrations/custody.ts)
 // ---------------------------------------------------------------------------
 
-interface KomainuConfig {
+interface CustodyConfig {
   baseUrl: string;
   apiUser: string;
   apiSecret: string;
@@ -28,7 +28,7 @@ interface TokenCache {
   expiresAt: number;
 }
 
-interface KomainuTransaction {
+interface CustodyTransaction {
   id: string;
   wallet_id: string;
   direction: "IN" | "OUT" | "FLAT";
@@ -49,7 +49,7 @@ interface KomainuTransaction {
   account: string;
 }
 
-interface KomainuRequest {
+interface CustodyRequest {
   id: string;
   type: string;
   status: "CREATED" | "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED" | "BLOCKED";
@@ -64,7 +64,7 @@ interface KomainuRequest {
   account: string;
 }
 
-interface KomainuPagedResponse<T> {
+interface CustodyPagedResponse<T> {
   page: number;
   count: number;
   has_next: boolean;
@@ -77,15 +77,15 @@ interface KomainuPagedResponse<T> {
 
 let tokenCache: TokenCache | null = null;
 
-function getConfig(): KomainuConfig | null {
-  const baseUrl = process.env.KOMAINU_API_BASE_URL || process.env.KOMAINU_API_URL;
-  const apiUser = process.env.KOMAINU_API_USER || process.env.KOMAINU_API_KEY;
-  const apiSecret = process.env.KOMAINU_API_SECRET;
+function getConfig(): CustodyConfig | null {
+  const baseUrl = process.env.CUSTODY_API_BASE_URL || process.env.CUSTODY_API_URL;
+  const apiUser = process.env.CUSTODY_API_USER || process.env.CUSTODY_API_KEY;
+  const apiSecret = process.env.CUSTODY_API_SECRET;
   if (!baseUrl || !apiUser || !apiSecret) return null;
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiUser, apiSecret };
 }
 
-async function getAccessToken(config: KomainuConfig): Promise<string> {
+async function getAccessToken(config: CustodyConfig): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.accessToken;
   }
@@ -100,7 +100,7 @@ async function getAccessToken(config: KomainuConfig): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Komainu auth failed: ${res.status}`);
+    throw new Error(`Custody auth failed: ${res.status}`);
   }
 
   const data = await res.json();
@@ -113,8 +113,8 @@ async function getAccessToken(config: KomainuConfig): Promise<string> {
   return tokenCache.accessToken;
 }
 
-async function komainuGet<T>(
-  config: KomainuConfig,
+async function custodyGet<T>(
+  config: CustodyConfig,
   path: string,
   params?: Record<string, string>,
 ): Promise<T> {
@@ -134,7 +134,7 @@ async function komainuGet<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`Komainu API error: ${res.status} ${res.statusText}`);
+    throw new Error(`Custody API error: ${res.status} ${res.statusText}`);
   }
 
   return res.json() as Promise<T>;
@@ -148,7 +148,7 @@ function sleep(ms: number): Promise<void> {
 // Mapping
 // ---------------------------------------------------------------------------
 
-function mapTransactionToEvent(tx: KomainuTransaction): NormalizedEvent {
+function mapTransactionToEvent(tx: CustodyTransaction): NormalizedEvent {
   const payload: NormalizedPayload = {
     subject: `${tx.direction} ${tx.amount} ${tx.asset}`,
     body: tx.note || undefined,
@@ -177,8 +177,8 @@ function mapTransactionToEvent(tx: KomainuTransaction): NormalizedEvent {
   if (tx.status === "PENDING") eventType = "approval_requested";
 
   return {
-    id: `komainu-tx-${tx.id}-${tx.status}`,
-    sourceSystem: "komainu",
+    id: `custody-tx-${tx.id}-${tx.status}`,
+    sourceSystem: "custody",
     sourceId: tx.id,
     entityType: "transaction",
     eventType,
@@ -189,7 +189,7 @@ function mapTransactionToEvent(tx: KomainuTransaction): NormalizedEvent {
   };
 }
 
-function mapRequestToEvent(req: KomainuRequest): NormalizedEvent {
+function mapRequestToEvent(req: CustodyRequest): NormalizedEvent {
   const payload: NormalizedPayload = {
     subject: `${req.type} request (${req.entity})`,
     status: req.status.toLowerCase(),
@@ -211,8 +211,8 @@ function mapRequestToEvent(req: KomainuRequest): NormalizedEvent {
   if (["CANCELLED", "EXPIRED", "BLOCKED"].includes(req.status)) eventType = "closed";
 
   return {
-    id: `komainu-req-${req.id}-${req.status}`,
-    sourceSystem: "komainu",
+    id: `custody-req-${req.id}-${req.status}`,
+    sourceSystem: "custody",
     sourceId: req.id,
     entityType: "approval",
     eventType,
@@ -227,8 +227,8 @@ function mapRequestToEvent(req: KomainuRequest): NormalizedEvent {
 // Adapter
 // ---------------------------------------------------------------------------
 
-export class KomainuAdapter implements IntegrationAdapter {
-  readonly source = "komainu" as const;
+export class CustodyAdapter implements IntegrationAdapter {
+  readonly source = "custody" as const;
 
   private lastSuccessfulSync: Date | null = null;
   private lastFailure: Date | null = null;
@@ -242,14 +242,14 @@ export class KomainuAdapter implements IntegrationAdapter {
   async sync(opts?: Record<string, unknown>): Promise<NormalizedEvent[]> {
     const config = getConfig();
     if (!config) {
-      logger.warn("Komainu adapter not configured, skipping sync");
+      logger.warn("Custody adapter not configured, skipping sync");
       return [];
     }
 
     const maxRetries = 3;
 
     try {
-      logger.info("Komainu sync starting");
+      logger.info("Custody sync starting");
       const events: NormalizedEvent[] = [];
 
       // Fetch pending transactions with retry
@@ -258,7 +258,7 @@ export class KomainuAdapter implements IntegrationAdapter {
           const txParams: Record<string, string> = {
             status: (opts?.transactionStatus as string) ?? "PENDING",
           };
-          const txResult = await komainuGet<KomainuPagedResponse<KomainuTransaction>>(
+          const txResult = await custodyGet<CustodyPagedResponse<CustodyTransaction>>(
             config,
             "/v1/custody/transactions",
             txParams,
@@ -270,7 +270,7 @@ export class KomainuAdapter implements IntegrationAdapter {
         } catch (err) {
           if (attempt === maxRetries) throw err;
           const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-          logger.warn("Komainu transaction fetch retry", { attempt, backoff });
+          logger.warn("Custody transaction fetch retry", { attempt, backoff });
           await sleep(backoff);
         }
       }
@@ -281,7 +281,7 @@ export class KomainuAdapter implements IntegrationAdapter {
           const reqParams: Record<string, string> = {
             status: (opts?.requestStatus as string) ?? "PENDING",
           };
-          const reqResult = await komainuGet<KomainuPagedResponse<KomainuRequest>>(
+          const reqResult = await custodyGet<CustodyPagedResponse<CustodyRequest>>(
             config,
             "/v1/requests",
             reqParams,
@@ -293,21 +293,21 @@ export class KomainuAdapter implements IntegrationAdapter {
         } catch (err) {
           if (attempt === maxRetries) throw err;
           const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-          logger.warn("Komainu request fetch retry", { attempt, backoff });
+          logger.warn("Custody request fetch retry", { attempt, backoff });
           await sleep(backoff);
         }
       }
 
       this.lastSuccessfulSync = new Date();
       this.failureCount = 0;
-      logger.info("Komainu sync completed", { events: events.length });
+      logger.info("Custody sync completed", { events: events.length });
       return events;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.lastFailure = new Date();
       this.lastFailureMessage = message;
       this.failureCount++;
-      logger.error("Komainu sync failed", {
+      logger.error("Custody sync failed", {
         error: message,
         failureCount: this.failureCount,
       });

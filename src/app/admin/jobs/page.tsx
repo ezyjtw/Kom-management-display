@@ -44,7 +44,7 @@ const JOB_LABELS: Record<string, string> = {
   sync_jira: "Jira Sync",
   check_sla: "SLA Monitor",
   check_staking: "Staking Heartbeat",
-  poll_komainu: "Komainu Poll",
+  poll_custody: "Custody Poll",
   check_confirmations: "Confirmation Expiry",
   cleanup_sessions: "Session Cleanup",
 };

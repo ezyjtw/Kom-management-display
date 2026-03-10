@@ -13,7 +13,7 @@ Every inbound data point is mapped to this format (defined in `src/modules/integ
 ```typescript
 interface NormalizedEvent {
   id: string;              // Unique event ID
-  sourceSystem: SourceSystem;  // "jira" | "slack" | "email" | "fireblocks" | "komainu" | "notabene" | "manual" | "system"
+  sourceSystem: SourceSystem;  // "jira" | "slack" | "email" | "fireblocks" | "custody" | "notabene" | "manual" | "system"
   sourceId: string;        // Source-system-specific ID (for deduplication)
   entityType: EntityType;  // "thread" | "message" | "ticket" | "transaction" | "transfer" | "alert" | "document" | "comment" | "approval"
   eventType: EventType;    // "created" | "updated" | "status_changed" | "assigned" | "commented" | "resolved" | "closed" | "reopened" | "escalated" | etc.
@@ -79,17 +79,17 @@ Polls Jira for issue updates using JQL queries. Maps Jira issues to tickets and 
 
 Pulls transaction data from Fireblocks for wallet operations monitoring. Maps transactions and vault operations into normalized events.
 
-### Komainu (`komainu-adapter.ts`)
+### Custody (`custody-adapter.ts`)
 
 | Property | Value |
 |----------|-------|
-| Source system | `komainu` |
+| Source system | `custody` |
 | Auth | API key |
 | Sync mode | Pull (API polling) |
 | Entity types | `transaction`, `approval` |
-| Env vars | `KOMAINU_API_KEY`, `KOMAINU_API_URL` |
+| Env vars | `CUSTODY_API_KEY`, `CUSTODY_API_URL` |
 
-Integrates with Komainu custody platform. Pulls custody operations and approval workflows.
+Integrates with Custody custody platform. Pulls custody operations and approval workflows.
 
 ### Notabene (`notabene-adapter.ts`)
 

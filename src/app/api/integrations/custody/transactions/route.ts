@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   fetchPendingTransactions,
   fetchPendingRequests,
-  isKomainuConfigured,
-} from "@/lib/integrations/komainu";
+  isCustodyConfigured,
+} from "@/lib/integrations/custody";
 import { requireAuth } from "@/lib/auth-user";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
- * GET /api/integrations/komainu/transactions
- * Fetch pending transactions and pending requests from the Komainu API.
+ * GET /api/integrations/custody/transactions
+ * Fetch pending transactions and pending requests from the Custody API.
  *
  * Query params:
  *   page - page number (default 1)
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  if (!isKomainuConfigured()) {
+  if (!isCustodyConfigured()) {
     return apiSuccess({
       pendingTransactions: [],
       pendingRequests: [],
@@ -53,6 +53,6 @@ export async function GET(request: NextRequest) {
       configured: true,
     });
   } catch (error) {
-    return handleApiError(error, "komainu transactions");
+    return handleApiError(error, "custody transactions");
   }
 }
