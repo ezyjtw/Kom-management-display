@@ -1129,6 +1129,22 @@ model TokenReview {
   aiResearchResult   String              @default("") // JSON: full AI research output
   aiResearchedAt     DateTime? // when AI research was last run
   aiRecommendation   String              @default("") // approve, approve_with_conditions, further_review, reject
+  // Token listing checklist fields
+  jiraTicket         String              @default("") // Jira ticket reference
+  complianceDoc      String              @default("") // link to compliance document
+  launchDate         String              @default("") // token launch date
+  founders           String              @default("") // founder(s) names
+  website            String              @default("") // project website URL
+  supportedNetworks  String              @default("") // JSON array of supported networks
+  whitepaper         String              @default("") // whitepaper URL
+  explorer           String              @default("") // block explorer URL
+  blockchainAnalytics String             @default("unknown") // pre_growth, emerging, mature
+  travelRuleNotabene Boolean             @default(false) // Notabene travel rule compliance
+  priceFeedCoingecko Boolean             @default(false) // CoinGecko price feed available
+  consensusMechanism String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
+  privacyToken       Boolean             @default(false) // whether this is a privacy token
+  // Per-jurisdiction compliance guidance
+  jurisdictionStatus String              @default("") // JSON: per-jurisdiction compliance status & guidance
   // Metadata
   marketCapTier      String              @default("unknown") // mega, large, mid, small, micro, unknown
   notes              String              @default("")

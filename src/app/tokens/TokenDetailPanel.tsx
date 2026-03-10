@@ -1,15 +1,20 @@
 "use client";
 
-import { Plus, ArrowRight, TrendingUp, Shield, ExternalLink, Sparkles, RefreshCw, Clock, Globe, CheckCircle2, XCircle, AlertCircle, HelpCircle } from "lucide-react";
-import type { TokenEntry } from "./types";
-import { STATUS_FLOW, SIGNAL_TYPE_LABELS, MARKET_CAP_LABELS, VENDOR_STATUS_COLORS, VENDOR_STATUS_LABELS, JURISDICTION_LABELS } from "./types";
+import { Plus, ArrowRight, TrendingUp, Shield, ExternalLink, Sparkles, RefreshCw, Clock, Globe, CheckCircle2, XCircle, AlertCircle, HelpCircle, FileText, Users, Link, Cpu, Eye, BarChart3 } from "lucide-react";
+import type { TokenEntry, JurisdictionGuidance } from "./types";
+import {
+  STATUS_FLOW, SIGNAL_TYPE_LABELS, MARKET_CAP_LABELS,
+  VENDOR_STATUS_COLORS, VENDOR_STATUS_LABELS, JURISDICTION_LABELS,
+  BLOCKCHAIN_ANALYTICS_LABELS, BLOCKCHAIN_ANALYTICS_COLORS,
+  CONSENSUS_LABELS, JURISDICTION_STATUS_COLORS, JURISDICTION_STATUS_LABELS,
+  DEFAULT_JURISDICTION_GUIDANCE,
+} from "./types";
 
 /** Render a value that may be a string or an object as readable text */
 function renderField(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
   if (typeof value === "object") {
-    // For objects, render each key-value pair as "Key: value" lines
     const entries = Object.entries(value as Record<string, unknown>);
     return entries
       .map(([k, v]) => {
@@ -84,6 +89,92 @@ function renderRegulatoryBreakdown(regulatoryConsiderations: unknown) {
   );
 }
 
+/** Render the per-jurisdiction compliance guidance panel */
+function renderJurisdictionGuidance(token: TokenEntry) {
+  const hasCustomStatus = token.jurisdictionStatus && Object.keys(token.jurisdictionStatus).length > 0;
+  const allJurisdictions = Object.keys(DEFAULT_JURISDICTION_GUIDANCE);
+
+  return (
+    <div className="space-y-3">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+        <Globe size={12} /> Per-Jurisdiction Compliance Guidance
+        {token.privacyToken && (
+          <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded font-normal">
+            Privacy Token - Heightened Scrutiny
+          </span>
+        )}
+      </h4>
+      <div className="grid grid-cols-1 gap-2">
+        {allJurisdictions.map((jKey) => {
+          const defaults = DEFAULT_JURISDICTION_GUIDANCE[jKey];
+          const custom = hasCustomStatus ? (token.jurisdictionStatus[jKey] as JurisdictionGuidance | undefined) : undefined;
+          const status = custom?.status || "unknown";
+
+          return (
+            <div key={jKey} className={`p-3 rounded-lg border ${JURISDICTION_STATUS_COLORS[status] || JURISDICTION_STATUS_COLORS.unknown}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">{JURISDICTION_LABELS[jKey] || jKey}</span>
+                  <span className="text-[10px] text-muted-foreground">{defaults.regulator}</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${JURISDICTION_STATUS_COLORS[status] || JURISDICTION_STATUS_COLORS.unknown}`}>
+                  {JURISDICTION_STATUS_LABELS[status] || status}
+                </span>
+              </div>
+              {custom?.classification && (
+                <p className="text-xs text-foreground mb-1">
+                  <span className="text-muted-foreground">Classification:</span> {custom.classification}
+                </p>
+              )}
+              {!custom?.classification && (
+                <p className="text-xs text-muted-foreground mb-1">
+                  <span className="text-foreground">Default classification:</span> {defaults.defaultClassification}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase">Key Requirements:</p>
+                <ul className="text-xs text-muted-foreground space-y-0.5">
+                  {(custom?.requirements && custom.requirements.length > 0 ? custom.requirements : defaults.keyRequirements).map((req, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5 shrink-0">&#8226;</span>
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {custom?.notes && (
+                <p className="text-xs text-muted-foreground mt-1.5 p-1.5 bg-background/30 rounded">
+                  <span className="font-medium text-foreground">Notes:</span> {custom.notes}
+                </p>
+              )}
+              {token.privacyToken && jKey === "Japan" && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} /> Privacy tokens have been delisted from Japanese registered exchanges.
+                </p>
+              )}
+              {token.privacyToken && jKey === "EU" && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} /> MiCA traceability requirements may conflict with privacy features.
+                </p>
+              )}
+              {token.privacyToken && jKey === "US" && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} /> Privacy tokens face heightened FinCEN/OFAC scrutiny. Several exchanges have delisted.
+                </p>
+              )}
+              {token.privacyToken && jKey === "UK" && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} /> FCA has signalled concerns about unhosted wallet transfers for privacy tokens.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function TokenDetailPanel({
   token,
   showSignalForm,
@@ -102,6 +193,128 @@ export function TokenDetailPanel({
 }: TokenDetailPanelProps) {
   return (
     <div className="border-t border-border p-4 space-y-4">
+      {/* Token Listing Checklist */}
+      <div className="p-3 bg-muted/10 rounded-lg border border-border/50 space-y-3">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+          <FileText size={12} /> Token Listing Checklist
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs">
+          <div>
+            <span className="text-muted-foreground">Token Ticker:</span>{" "}
+            <span className="text-foreground font-medium">{token.symbol}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Jira Ticket:</span>{" "}
+            <span className="text-foreground">{token.jiraTicket || <span className="text-muted-foreground/50 italic">Not set</span>}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Compliance Doc:</span>{" "}
+            {token.complianceDoc ? (
+              <a href={token.complianceDoc} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+                View <ExternalLink size={8} />
+              </a>
+            ) : <span className="text-muted-foreground/50 italic">Not set</span>}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Contract Address:</span>{" "}
+            <span className="text-foreground font-mono text-[10px]">{token.contractAddress ? `${token.contractAddress.substring(0, 12)}...` : "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Launch Date:</span>{" "}
+            <span className="text-foreground">{token.launchDate || <span className="text-muted-foreground/50 italic">Unknown</span>}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Users size={10} className="text-muted-foreground" />
+            <span className="text-muted-foreground">Founder(s):</span>{" "}
+            <span className="text-foreground truncate">{token.founders || <span className="text-muted-foreground/50 italic">Unknown</span>}</span>
+          </div>
+          <div>
+            <Globe size={10} className="inline text-muted-foreground mr-0.5" />
+            <span className="text-muted-foreground">Website:</span>{" "}
+            {token.website ? (
+              <a href={token.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+                Visit <ExternalLink size={8} />
+              </a>
+            ) : <span className="text-muted-foreground/50 italic">Not set</span>}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Networks:</span>{" "}
+            <span className="text-foreground">{token.supportedNetworks && token.supportedNetworks.length > 0 ? token.supportedNetworks.join(", ") : token.network || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Whitepaper:</span>{" "}
+            {token.whitepaper ? (
+              <a href={token.whitepaper} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+                View <ExternalLink size={8} />
+              </a>
+            ) : <span className="text-muted-foreground/50 italic">Not set</span>}
+          </div>
+          <div>
+            <Link size={10} className="inline text-muted-foreground mr-0.5" />
+            <span className="text-muted-foreground">Explorer:</span>{" "}
+            {token.explorer ? (
+              <a href={token.explorer} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+                View <ExternalLink size={8} />
+              </a>
+            ) : <span className="text-muted-foreground/50 italic">Not set</span>}
+          </div>
+        </div>
+
+        {/* Platform & Analytics Checklist */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs pt-2 border-t border-border/30">
+          <div>
+            <span className="text-muted-foreground">Platforms:</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${token.fireblocksSupport === "supported" ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+                {token.fireblocksSupport === "supported" ? <CheckCircle2 size={8} /> : <XCircle size={8} />} Fireblocks
+              </span>
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${token.ledgerSupport === "supported" ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+                {token.ledgerSupport === "supported" ? <CheckCircle2 size={8} /> : <XCircle size={8} />} Ledger
+              </span>
+            </div>
+          </div>
+          <div>
+            <span className="text-muted-foreground flex items-center gap-1"><BarChart3 size={10} /> Blockchain Analytics:</span>
+            <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${BLOCKCHAIN_ANALYTICS_COLORS[token.blockchainAnalytics] || BLOCKCHAIN_ANALYTICS_COLORS.unknown}`}>
+              {BLOCKCHAIN_ANALYTICS_LABELS[token.blockchainAnalytics] || token.blockchainAnalytics}
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Travel Rule:</span>
+            <span className={`block mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${token.travelRuleNotabene ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+              {token.travelRuleNotabene ? <CheckCircle2 size={8} /> : <XCircle size={8} />} Notabene
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Price Feed:</span>
+            <span className={`block mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${token.priceFeedCoingecko ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+              {token.priceFeedCoingecko ? <CheckCircle2 size={8} /> : <XCircle size={8} />} CoinGecko
+            </span>
+          </div>
+        </div>
+
+        {/* Consensus & Privacy */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs pt-2 border-t border-border/30">
+          <div>
+            <Cpu size={10} className="inline text-muted-foreground mr-0.5" />
+            <span className="text-muted-foreground">Consensus:</span>{" "}
+            <span className="text-foreground">{CONSENSUS_LABELS[token.consensusMechanism] || token.consensusMechanism || "N/A"}</span>
+          </div>
+          <div>
+            <Eye size={10} className="inline text-muted-foreground mr-0.5" />
+            <span className="text-muted-foreground">Privacy Token:</span>{" "}
+            <span className={token.privacyToken ? "text-red-400 font-medium" : "text-emerald-400"}>
+              {token.privacyToken ? "Yes" : "No"}
+            </span>
+            {token.privacyToken && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded">
+                High compliance risk
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left: Details & Compliance */}
         <div className="space-y-3">
@@ -252,6 +465,19 @@ export function TokenDetailPanel({
             </form>
           )}
         </div>
+      </div>
+
+      {/* Per-Jurisdiction Compliance Guidance */}
+      <div className="border-t border-border pt-4">
+        <button
+          onClick={() => onSetShowRegulatory(showRegulatory === `${token.id}_juris` ? null : `${token.id}_juris`)}
+          className="flex items-center gap-2 text-xs text-primary hover:underline mb-2"
+        >
+          <Globe size={12} />
+          {showRegulatory === `${token.id}_juris` ? "Hide" : "Show"} Per-Jurisdiction Compliance Guidance
+          {token.privacyToken && <span className="px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded">Privacy token warnings</span>}
+        </button>
+        {showRegulatory === `${token.id}_juris` && renderJurisdictionGuidance(token)}
       </div>
 
       {/* AI Research Panel */}

@@ -38,6 +38,10 @@ export async function GET(request: NextRequest) {
       try { if (t.vendorNotes) vendorNotes = JSON.parse(t.vendorNotes); } catch { /* */ }
       let aiResearchResult: Record<string, unknown> | null = null;
       try { if (t.aiResearchResult) aiResearchResult = JSON.parse(t.aiResearchResult); } catch { /* */ }
+      let supportedNetworks: string[] = [];
+      try { if (t.supportedNetworks) supportedNetworks = JSON.parse(t.supportedNetworks); } catch { /* */ }
+      let jurisdictionStatus: Record<string, unknown> = {};
+      try { if (t.jurisdictionStatus) jurisdictionStatus = JSON.parse(t.jurisdictionStatus); } catch { /* */ }
 
       return {
         id: t.id,
@@ -86,6 +90,21 @@ export async function GET(request: NextRequest) {
         marketCapTier: t.marketCapTier,
         notes: t.notes,
         createdAt: t.createdAt,
+        // Token listing checklist fields
+        jiraTicket: t.jiraTicket,
+        complianceDoc: t.complianceDoc,
+        launchDate: t.launchDate,
+        founders: t.founders,
+        website: t.website,
+        supportedNetworks,
+        whitepaper: t.whitepaper,
+        explorer: t.explorer,
+        blockchainAnalytics: t.blockchainAnalytics,
+        travelRuleNotabene: t.travelRuleNotabene,
+        priceFeedCoingecko: t.priceFeedCoingecko,
+        consensusMechanism: t.consensusMechanism,
+        privacyToken: t.privacyToken,
+        jurisdictionStatus,
       };
     });
 
@@ -170,6 +189,21 @@ export async function POST(request: NextRequest) {
             ledgerSupport: body.ledgerSupport || vendorDetection.ledgerSupport,
             notabeneSupport: body.notabeneSupport || vendorDetection.notabeneSupport,
             vendorNotes: JSON.stringify(vendorNotesAuto),
+            // Token listing checklist fields
+            jiraTicket: body.jiraTicket || "",
+            complianceDoc: body.complianceDoc || "",
+            launchDate: body.launchDate || "",
+            founders: body.founders || "",
+            website: body.website || "",
+            supportedNetworks: body.supportedNetworks ? JSON.stringify(body.supportedNetworks) : "",
+            whitepaper: body.whitepaper || "",
+            explorer: body.explorer || "",
+            blockchainAnalytics: body.blockchainAnalytics || "unknown",
+            travelRuleNotabene: body.travelRuleNotabene || false,
+            priceFeedCoingecko: body.priceFeedCoingecko || false,
+            consensusMechanism: body.consensusMechanism || "",
+            privacyToken: body.privacyToken || false,
+            jurisdictionStatus: body.jurisdictionStatus ? JSON.stringify(body.jurisdictionStatus) : "",
           },
         });
 
@@ -257,6 +291,10 @@ export async function POST(request: NextRequest) {
           "amlRiskAssessed", "stakingAvailable", "marketCapTier", "notes",
           "network", "contractAddress",
           "chainalysisSupport", "notabeneSupport", "fireblocksSupport", "ledgerSupport",
+          // Token listing checklist fields
+          "jiraTicket", "complianceDoc", "launchDate", "founders", "website",
+          "whitepaper", "explorer", "blockchainAnalytics",
+          "travelRuleNotabene", "priceFeedCoingecko", "consensusMechanism", "privacyToken",
         ];
         for (const field of allowedFields) {
           if (body[field] !== undefined) updateData[field] = body[field];
@@ -266,6 +304,12 @@ export async function POST(request: NextRequest) {
         }
         if (body.vendorNotes !== undefined) {
           updateData.vendorNotes = JSON.stringify(body.vendorNotes);
+        }
+        if (body.supportedNetworks !== undefined) {
+          updateData.supportedNetworks = JSON.stringify(body.supportedNetworks);
+        }
+        if (body.jurisdictionStatus !== undefined) {
+          updateData.jurisdictionStatus = JSON.stringify(body.jurisdictionStatus);
         }
 
         await prisma.tokenReview.update({
