@@ -7,7 +7,7 @@ import {
   VENDOR_STATUS_COLORS, VENDOR_STATUS_LABELS, JURISDICTION_LABELS,
   BLOCKCHAIN_ANALYTICS_LABELS, BLOCKCHAIN_ANALYTICS_COLORS,
   CONSENSUS_LABELS, JURISDICTION_STATUS_COLORS, JURISDICTION_STATUS_LABELS,
-  DEFAULT_JURISDICTION_GUIDANCE,
+  DEFAULT_JURISDICTION_GUIDANCE, LICENSED_JURISDICTIONS,
 } from "./types";
 
 /** Render a value that may be a string or an object as readable text */
@@ -94,18 +94,28 @@ function renderJurisdictionGuidance(token: TokenEntry) {
   const hasCustomStatus = token.jurisdictionStatus && Object.keys(token.jurisdictionStatus).length > 0;
   const allJurisdictions = Object.keys(DEFAULT_JURISDICTION_GUIDANCE);
 
+  // Sort licensed jurisdictions first
+  const sortedJurisdictions = [...allJurisdictions].sort((a, b) => {
+    const aLicensed = LICENSED_JURISDICTIONS.has(a) ? 0 : 1;
+    const bLicensed = LICENSED_JURISDICTIONS.has(b) ? 0 : 1;
+    return aLicensed - bLicensed;
+  });
+
   return (
     <div className="space-y-3">
       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
         <Globe size={12} /> Per-Jurisdiction Compliance Guidance
+        <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded font-normal">
+          Licensed: UK, EU, Jersey, VARA
+        </span>
         {token.privacyToken && (
-          <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded font-normal">
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded font-normal">
             Privacy Token - Heightened Scrutiny
           </span>
         )}
       </h4>
       <div className="grid grid-cols-1 gap-2">
-        {allJurisdictions.map((jKey) => {
+        {sortedJurisdictions.map((jKey) => {
           const defaults = DEFAULT_JURISDICTION_GUIDANCE[jKey];
           const custom = hasCustomStatus ? (token.jurisdictionStatus[jKey] as JurisdictionGuidance | undefined) : undefined;
           const status = custom?.status || "unknown";
@@ -116,6 +126,11 @@ function renderJurisdictionGuidance(token: TokenEntry) {
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-foreground">{JURISDICTION_LABELS[jKey] || jKey}</span>
                   <span className="text-[10px] text-muted-foreground">{defaults.regulator}</span>
+                  {LICENSED_JURISDICTIONS.has(jKey) && (
+                    <span className="px-1.5 py-0.5 text-[10px] bg-primary/15 text-primary rounded font-medium flex items-center gap-0.5">
+                      <Shield size={8} /> Licensed Custodian
+                    </span>
+                  )}
                 </div>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${JURISDICTION_STATUS_COLORS[status] || JURISDICTION_STATUS_COLORS.unknown}`}>
                   {JURISDICTION_STATUS_LABELS[status] || status}
@@ -165,6 +180,11 @@ function renderJurisdictionGuidance(token: TokenEntry) {
               {token.privacyToken && jKey === "UK" && (
                 <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                   <AlertCircle size={10} /> FCA has signalled concerns about unhosted wallet transfers for privacy tokens.
+                </p>
+              )}
+              {token.privacyToken && jKey === "Jersey" && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} /> JFSC AML/CFT Handbook requires enhanced due diligence; privacy tokens may conflict with traceability obligations.
                 </p>
               )}
             </div>

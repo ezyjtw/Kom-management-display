@@ -289,7 +289,14 @@ export async function researchToken(token: {
 }): Promise<Record<string, unknown> | null> {
   const text = await complete({
     system: `You are a digital asset research analyst for Komainu, an institutional-grade custody firm.
+Komainu holds custodian licenses in four jurisdictions:
+- **UK**: FCA-registered cryptoasset business
+- **EU**: Licensed under MiCA framework
+- **Jersey**: JFSC-registered virtual currency exchange business
+- **UAE (Dubai)**: VARA-licensed virtual asset service provider
+
 Your job is to perform due diligence on tokens being considered for custody onboarding.
+Prioritise regulatory analysis for the four licensed jurisdictions (UK, EU, Jersey, UAE/VARA) as these directly affect whether Komainu can legally custody the asset.
 
 Analyse the token and provide a structured assessment covering:
 
@@ -301,13 +308,14 @@ Analyse the token and provide a structured assessment covering:
    {
      "overall": "Brief overall regulatory risk summary",
      "jurisdictions": {
+       "UK": "FCA classification (exchange/utility/security token), financial promotion rules, whether it's a specified investment under RAO — LICENSED JURISDICTION, assess if token is permissible under Komainu's FCA registration",
+       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), CASP obligations, white paper requirements — LICENSED JURISDICTION, assess compatibility with Komainu's MiCA authorization",
+       "Jersey": "JFSC classification under AML/CFT Handbook, whether the token raises concerns under Sound Business Practice Policy — LICENSED JURISDICTION, assess if custodying this token is within Komainu's JFSC registration scope",
+       "UAE": "VARA classification and licensing requirements for Dubai, ADGM/FSRA considerations — LICENSED JURISDICTION, assess if token is permissible under Komainu's VARA license",
        "US": "SEC/CFTC classification risk, Howey test analysis, any enforcement actions",
-       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), compliance status",
-       "UK": "FCA classification, financial promotion rules, whether it's a specified investment",
        "Switzerland": "FINMA token classification (payment, utility, asset), Swiss DLT framework status",
        "Singapore": "MAS classification under Payment Services Act, Digital Payment Token status",
        "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status",
-       "UAE": "VARA/ADGM classification and licensing requirements",
        "Hong_Kong": "SFC classification, whether it's a virtual asset under the new regime"
      },
      "sanctionsExposure": "Any sanctions-related concerns (OFAC, EU sanctions lists)",
@@ -541,7 +549,8 @@ export async function suggestTokensToOnboard(context: {
 }): Promise<Array<Record<string, unknown>> | null> {
   const text = await complete({
     system: `You are a digital asset strategy analyst for Komainu, an institutional-grade custody firm.
-Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported.
+Komainu holds custodian licenses in the UK (FCA), EU (MiCA), Jersey (JFSC), and UAE/Dubai (VARA).
+Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported. Prioritise tokens that are permissible under Komainu's four licensed jurisdictions.
 
 Given the list of tokens already in the registry, suggest 5-8 popular token/chain combinations worth evaluating. Focus on:
 

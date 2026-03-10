@@ -134,6 +134,7 @@ export const JURISDICTION_LABELS: Record<string, string> = {
   US: "US (SEC/CFTC)",
   EU: "EU (MiCA)",
   UK: "UK (FCA)",
+  Jersey: "Jersey (JFSC)",
   Switzerland: "Switzerland (FINMA)",
   Singapore: "Singapore (MAS)",
   Japan: "Japan (JFSA)",
@@ -144,6 +145,9 @@ export const JURISDICTION_LABELS: Record<string, string> = {
   Australia: "Australia (ASIC)",
   Canada: "Canada (CSA/FINTRAC)",
 };
+
+/** Jurisdictions where the company holds a custodian license */
+export const LICENSED_JURISDICTIONS: Set<string> = new Set(["UK", "EU", "Jersey", "UAE"]);
 
 export const BLOCKCHAIN_ANALYTICS_LABELS: Record<string, string> = {
   pre_growth: "Pre-Growth",
@@ -220,6 +224,19 @@ export const DEFAULT_JURISDICTION_GUIDANCE: Record<string, { regulator: string; 
       "Travel Rule (from Sept 2023)",
       "Consumer Duty obligations",
       "Security tokens require FCA authorization under RAO",
+    ],
+  },
+  Jersey: {
+    regulator: "JFSC",
+    defaultClassification: "Virtual Currency (under POCL/AMLCFT Handbook)",
+    keyRequirements: [
+      "JFSC registration as a virtual currency exchange business",
+      "Compliance with AML/CFT Handbook (revised 2024)",
+      "Sound Business Practice Policy adherence",
+      "Ongoing supervisory reporting to JFSC",
+      "Fit & proper assessment for controllers and key persons",
+      "Travel Rule compliance under FATF guidance",
+      "Risk-based approach to client due diligence",
     ],
   },
   Switzerland: {
