@@ -314,7 +314,10 @@ Analyse the token and provide a structured assessment covering:
      "keyRisks": ["risk1", "risk2"]
    }
 
-4. **custodyFeasibility**: Technical considerations for custody — key management complexity, multi-sig support, hardware wallet compatibility (Ledger, Fireblocks), transaction signing requirements, any chain-specific quirks.
+4. **custodyFeasibility**: Technical considerations for custody — key management complexity, multi-sig support, hardware wallet compatibility. Specifically assess:
+   - **Ledger Enterprise** support: Ledger Enterprise (Vault) supports 15 blockchains (BTC, ETH, XRP, LTC, BCH, XLM, XTZ, DOT, ADA, SOL, POL, TRX, DOGE, ATOM, BASE) plus all ERC-20/ERC-721/ERC-1155 tokens. Reference: Ledger Enterprise API V1 "Currencies and Tokens" (GET /currencies, GET /currencies/tokens). Note: SOL supports Ed25519 only (no PDAs), BCH requires Legacy Format addresses, XTZ generates TZ2 format only, TRX requires 1 TRX activation.
+   - **Fireblocks** support: Fireblocks supports 150+ blockchains with asset types BASE_ASSET, ERC20, BEP20, SOL_ASSET, ALGO_ASSET, TRON_TRC20, XLM_ASSET. Reference: Fireblocks API "List Supported Assets" (GET /v1/supported_assets, GET /assets). Custom tokens can be added on supported networks. Check if the token has a known Fireblocks asset ID.
+   State whether each vendor supports this specific token/network combination.
 
 5. **institutionalDemand**: Assessment of institutional interest — ETF/ETP products tracking this asset, institutional fund allocations, OTC market depth, competitor custodian support.
 

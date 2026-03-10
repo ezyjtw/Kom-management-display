@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { detectVendorSupport, getVendorNotes } from "@/lib/vendor-supported-assets";
 
 /**
  * GET /api/tokens
@@ -139,6 +140,18 @@ export async function POST(request: NextRequest) {
           return apiValidationError("symbol and name are required");
         }
 
+        // Auto-detect vendor support from Ledger Enterprise & Fireblocks reference data
+        const vendorDetection = detectVendorSupport(
+          symbol,
+          network || "",
+          tokenType || "native",
+        );
+        const vendorNotesAuto = getVendorNotes(
+          symbol,
+          network || "",
+          tokenType || "native",
+        );
+
         const token = await prisma.tokenReview.create({
           data: {
             symbol: symbol.toUpperCase(),
@@ -153,6 +166,10 @@ export async function POST(request: NextRequest) {
             stakingAvailable: stakingAvailable || false,
             proposedById: actorId,
             status: "proposed",
+            fireblocksSupport: body.fireblocksSupport || vendorDetection.fireblocksSupport,
+            ledgerSupport: body.ledgerSupport || vendorDetection.ledgerSupport,
+            notabeneSupport: body.notabeneSupport || vendorDetection.notabeneSupport,
+            vendorNotes: JSON.stringify(vendorNotesAuto),
           },
         });
 

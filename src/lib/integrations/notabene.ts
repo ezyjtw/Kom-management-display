@@ -101,6 +101,98 @@ export async function fetchTransfer(
   return notabeneFetch<NotabeneTransfer>(`/tf/transfers/${transferId}`);
 }
 
+// ---------------------------------------------------------------------------
+// Supported Assets API
+// ---------------------------------------------------------------------------
+
+export interface NotabeneAsset {
+  asset_type: string;
+  notabene_asset: string;
+  notabene_description: string;
+  decimals: number;
+  coingecko_id: string | null;
+  notabene_network: string;
+  /** Analytics provider mappings */
+  elliptic_id?: string | null;
+  trm_id?: string | null;
+  chainalysis_id?: string | null;
+  coinfirm_id?: string | null;
+  crystal_id?: string | null;
+  coinmarketcap_id?: string | null;
+}
+
+interface NotabeneAssetsResponse {
+  assets: NotabeneAsset[];
+  total?: number;
+}
+
+/**
+ * Fetch all supported assets from the Notabene Asset Service.
+ * Endpoint: GET /v1/assets/assets
+ */
+export async function fetchSupportedAssets(): Promise<NotabeneAsset[]> {
+  const config = getConfig();
+  if (!config) {
+    throw new Error("Notabene not configured");
+  }
+
+  // The assets endpoint is on the main API host
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const url = new URL(`${baseUrl}/v1/assets/assets`);
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Notabene Assets API ${res.status}: ${await res.text().catch(() => res.statusText)}`,
+    );
+  }
+
+  const data = await res.json();
+  // Response may be an array directly or { assets: [...] }
+  if (Array.isArray(data)) return data as NotabeneAsset[];
+  return (data as NotabeneAssetsResponse).assets ?? [];
+}
+
+/**
+ * Search for a single asset by its Notabene asset identifier (e.g. "eth", "USDC-SOL").
+ * Endpoint: GET /v1/assets/asset?notabeneAsset=<identifier>
+ */
+export async function fetchAssetByIdentifier(
+  notabeneAsset: string,
+): Promise<NotabeneAsset | null> {
+  const config = getConfig();
+  if (!config) {
+    throw new Error("Notabene not configured");
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const url = new URL(`${baseUrl}/v1/assets/asset`);
+  url.searchParams.set("notabeneAsset", notabeneAsset);
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (res.status === 404) return null;
+
+  if (!res.ok) {
+    throw new Error(
+      `Notabene Asset API ${res.status}: ${await res.text().catch(() => res.statusText)}`,
+    );
+  }
+
+  return res.json() as Promise<NotabeneAsset>;
+}
+
 /**
  * Check if Notabene is configured.
  */
