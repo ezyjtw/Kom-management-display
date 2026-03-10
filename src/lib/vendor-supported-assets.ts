@@ -223,6 +223,63 @@ export const FIREBLOCKS_KNOWN_TOKENS: ReadonlyArray<{
 ];
 
 // ---------------------------------------------------------------------------
+// Notabene Supported Assets
+// ---------------------------------------------------------------------------
+// Notabene supports hundreds of assets for travel rule compliance.
+// Source: https://devx.notabene.id/docs/supported-assets
+//
+// API: GET /v1/assets/assets — all supported assets
+//      GET /v1/assets/asset?notabeneAsset=<id> — single asset lookup
+//
+// Asset naming convention: symbol for native assets (e.g. "eth"),
+// or SYMBOL-NETWORK for tokens (e.g. "USDC-SOL", "USDT-ETH").
+
+/** Well-known Notabene-supported assets and networks */
+export const NOTABENE_SUPPORTED_ASSETS: ReadonlyArray<{
+  notabeneAsset: string;
+  name: string;
+  network: string;
+  aliases: string[];
+}> = [
+  { notabeneAsset: "btc", name: "Bitcoin", network: "bitcoin", aliases: ["bitcoin", "btc"] },
+  { notabeneAsset: "eth", name: "Ethereum", network: "ethereum", aliases: ["ethereum", "eth"] },
+  { notabeneAsset: "xrp", name: "XRP", network: "xrp", aliases: ["xrp", "ripple"] },
+  { notabeneAsset: "ltc", name: "Litecoin", network: "litecoin", aliases: ["litecoin", "ltc"] },
+  { notabeneAsset: "bch", name: "Bitcoin Cash", network: "bitcoin_cash", aliases: ["bitcoin cash", "bch"] },
+  { notabeneAsset: "xlm", name: "Stellar", network: "stellar", aliases: ["stellar", "xlm"] },
+  { notabeneAsset: "xtz", name: "Tezos", network: "tezos", aliases: ["tezos", "xtz"] },
+  { notabeneAsset: "dot", name: "Polkadot", network: "polkadot", aliases: ["polkadot", "dot"] },
+  { notabeneAsset: "ada", name: "Cardano", network: "cardano", aliases: ["cardano", "ada"] },
+  { notabeneAsset: "sol", name: "Solana", network: "solana", aliases: ["solana", "sol"] },
+  { notabeneAsset: "matic", name: "Polygon", network: "polygon", aliases: ["polygon", "matic", "pol"] },
+  { notabeneAsset: "trx", name: "Tron", network: "tron", aliases: ["tron", "trx"] },
+  { notabeneAsset: "doge", name: "Dogecoin", network: "dogecoin", aliases: ["dogecoin", "doge"] },
+  { notabeneAsset: "atom", name: "Cosmos", network: "cosmos", aliases: ["cosmos", "atom"] },
+  { notabeneAsset: "avax", name: "Avalanche", network: "avalanche", aliases: ["avalanche", "avax"] },
+  { notabeneAsset: "algo", name: "Algorand", network: "algorand", aliases: ["algorand", "algo"] },
+  { notabeneAsset: "near", name: "NEAR", network: "near", aliases: ["near"] },
+  { notabeneAsset: "hbar", name: "Hedera", network: "hedera", aliases: ["hedera", "hbar"] },
+  { notabeneAsset: "bnb", name: "BNB", network: "bsc", aliases: ["bnb", "bsc", "binance"] },
+  { notabeneAsset: "ftm", name: "Fantom", network: "fantom", aliases: ["fantom", "ftm"] },
+  { notabeneAsset: "arb", name: "Arbitrum", network: "arbitrum", aliases: ["arbitrum", "arb"] },
+  { notabeneAsset: "op", name: "Optimism", network: "optimism", aliases: ["optimism", "op"] },
+  // Well-known tokens
+  { notabeneAsset: "USDT-ETH", name: "Tether (Ethereum)", network: "ethereum", aliases: ["usdt"] },
+  { notabeneAsset: "USDC-ETH", name: "USDC (Ethereum)", network: "ethereum", aliases: ["usdc"] },
+  { notabeneAsset: "USDC-SOL", name: "USDC (Solana)", network: "solana", aliases: [] },
+  { notabeneAsset: "USDT-TRX", name: "USDT (Tron)", network: "tron", aliases: [] },
+  { notabeneAsset: "DAI-ETH", name: "DAI (Ethereum)", network: "ethereum", aliases: ["dai"] },
+];
+
+/** Networks known to be supported by Notabene for travel rule messaging */
+export const NOTABENE_SUPPORTED_NETWORKS = [
+  "bitcoin", "ethereum", "xrp", "litecoin", "bitcoin_cash", "stellar",
+  "tezos", "polkadot", "cardano", "solana", "polygon", "tron", "dogecoin",
+  "cosmos", "avalanche", "algorand", "near", "hedera", "bsc", "fantom",
+  "arbitrum", "optimism", "base", "celo", "flow",
+] as const;
+
+// ---------------------------------------------------------------------------
 // Lookup Functions
 // ---------------------------------------------------------------------------
 
@@ -350,6 +407,60 @@ export function checkFireblocksSupport(
 }
 
 /**
+ * Determine Notabene support status for a given token.
+ *
+ * Uses the Notabene Supported Assets API reference
+ * (GET /v1/assets/assets, GET /v1/assets/asset) to determine support:
+ *
+ * - "supported": Known asset in Notabene's travel rule asset catalog
+ * - "partial": Network supported but specific token not in known list
+ *   (Notabene allows custom assets when transactionValue fields are provided)
+ * - "not_supported": Network not in Notabene's supported networks
+ * - "unknown": Cannot determine from available data
+ */
+export function checkNotabeneSupport(
+  symbol: string,
+  network: string,
+  _tokenType: string,
+): VendorSupportStatus {
+  const symLower = symbol.toLowerCase();
+  const netLower = network.toLowerCase();
+
+  // Check if it's a known Notabene asset
+  for (const asset of NOTABENE_SUPPORTED_ASSETS) {
+    if (
+      asset.notabeneAsset.toLowerCase() === symLower ||
+      asset.aliases.includes(symLower)
+    ) {
+      return "supported";
+    }
+  }
+
+  // Check compound identifiers (e.g. USDC-SOL)
+  const compoundId = `${symLower}-${netLower}`;
+  for (const asset of NOTABENE_SUPPORTED_ASSETS) {
+    if (asset.notabeneAsset.toLowerCase() === compoundId) {
+      return "supported";
+    }
+  }
+
+  // Check if the network is supported
+  const networkSupported = NOTABENE_SUPPORTED_NETWORKS.some(
+    (n) => n === netLower,
+  ) || NOTABENE_SUPPORTED_ASSETS.some(
+    (a) => a.network === netLower || a.aliases.includes(netLower),
+  );
+
+  if (networkSupported) {
+    // Notabene supports custom assets on supported networks
+    // when transactionValue fields are provided
+    return "partial";
+  }
+
+  return "unknown";
+}
+
+/**
  * Auto-detect vendor support for all vendors given a token's details.
  * Returns an object with support status for each vendor.
  */
@@ -360,10 +471,12 @@ export function detectVendorSupport(
 ): {
   fireblocksSupport: VendorSupportStatus;
   ledgerSupport: VendorSupportStatus;
+  notabeneSupport: VendorSupportStatus;
 } {
   return {
     fireblocksSupport: checkFireblocksSupport(symbol, network, tokenType),
     ledgerSupport: checkLedgerSupport(symbol, network, tokenType),
+    notabeneSupport: checkNotabeneSupport(symbol, network, tokenType),
   };
 }
 
@@ -406,6 +519,31 @@ export function getVendorNotes(
   );
   if (fbToken) {
     notes.fireblocks = `Fireblocks asset ID: ${fbToken.assetId} (type: ${fbToken.type}, native: ${fbToken.nativeAsset}).`;
+  }
+
+  // Notabene notes
+  const nbAsset = NOTABENE_SUPPORTED_ASSETS.find(
+    (a) =>
+      a.notabeneAsset.toLowerCase() === symbol.toLowerCase() ||
+      a.aliases.includes(symbol.toLowerCase()),
+  );
+  if (nbAsset) {
+    notes.notabene = `Notabene asset ID: ${nbAsset.notabeneAsset}. Supported for travel rule messaging via GET /v1/assets/asset.`;
+  } else {
+    const nbCompound = `${symbol.toLowerCase()}-${network.toLowerCase()}`;
+    const nbMatch = NOTABENE_SUPPORTED_ASSETS.find(
+      (a) => a.notabeneAsset.toLowerCase() === nbCompound,
+    );
+    if (nbMatch) {
+      notes.notabene = `Notabene asset ID: ${nbMatch.notabeneAsset}. Multi-chain token supported for travel rule.`;
+    } else {
+      const nbNetworkSupported = NOTABENE_SUPPORTED_NETWORKS.some(
+        (n) => n === network.toLowerCase(),
+      );
+      if (nbNetworkSupported) {
+        notes.notabene = `Network supported by Notabene. Custom asset may require transactionValue fields. Use GET /v1/assets/asset to verify.`;
+      }
+    }
   }
 
   // Check for multi-chain stablecoin deployment

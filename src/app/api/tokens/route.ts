@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
             status: "proposed",
             fireblocksSupport: body.fireblocksSupport || vendorDetection.fireblocksSupport,
             ledgerSupport: body.ledgerSupport || vendorDetection.ledgerSupport,
+            notabeneSupport: body.notabeneSupport || vendorDetection.notabeneSupport,
             vendorNotes: JSON.stringify(vendorNotesAuto),
           },
         });
