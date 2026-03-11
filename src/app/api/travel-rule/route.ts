@@ -3,9 +3,9 @@ import { requireAuth } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
 import {
   fetchPendingTransactions,
-  isKomainuConfigured,
-} from "@/lib/integrations/komainu";
-import type { KomainuTransaction } from "@/lib/integrations/komainu";
+  isCustodyConfigured,
+} from "@/lib/integrations/custody";
+import type { CustodyTransaction } from "@/lib/integrations/custody";
 import {
   fetchTransfers,
   isNotabeneConfigured,
@@ -64,7 +64,7 @@ function buildNotabeneIndex(transfers: NotabeneTransfer[]) {
 }
 
 function findMatch(
-  tx: KomainuTransaction,
+  tx: CustodyTransaction,
   index: ReturnType<typeof buildNotabeneIndex>,
 ): NotabeneTransfer | null {
   // Primary: match by tx hash
@@ -102,30 +102,30 @@ function deriveMatchStatus(
 
 /**
  * GET /api/travel-rule
- * Real-time reconciliation: Komainu transactions vs Notabene transfers.
+ * Real-time reconciliation: Custody transactions vs Notabene transfers.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const komainuConfigured = isKomainuConfigured();
+    const custodyConfigured = isCustodyConfigured();
     const notabeneConfigured = isNotabeneConfigured();
 
     // Fetch data from both sources in parallel
-    const [komainuResult, notabeneResult] = await Promise.allSettled([
-      komainuConfigured
+    const [custodyResult, notabeneResult] = await Promise.allSettled([
+      custodyConfigured
         ? fetchPendingTransactions({ pageSize: 200 })
-        : Promise.resolve({ data: [] as KomainuTransaction[] }),
+        : Promise.resolve({ data: [] as CustodyTransaction[] }),
       notabeneConfigured
         ? fetchTransfers({ perPage: 200 })
         : Promise.resolve({ transfers: [] as NotabeneTransfer[], total: 0 }),
     ]);
 
-    const transactions: KomainuTransaction[] =
-      komainuResult.status === "fulfilled"
-        ? ("data" in komainuResult.value
-            ? komainuResult.value.data
+    const transactions: CustodyTransaction[] =
+      custodyResult.status === "fulfilled"
+        ? ("data" in custodyResult.value
+            ? custodyResult.value.data
             : [])
         : [];
 
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
         missingBeneficiary,
       },
       configured: {
-        komainu: komainuConfigured,
+        custody: custodyConfigured,
         notabene: notabeneConfigured,
       },
     };

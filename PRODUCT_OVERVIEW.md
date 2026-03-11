@@ -123,7 +123,7 @@ Three independent clocks per thread, thresholds vary by priority:
 ## 5. Travel Rule Compliance (`/travel-rule`)
 
 ### 5.1 Reconciliation View
-- **Automated matching**: Komainu custody transactions matched against Notabene travel rule transfers
+- **Automated matching**: Custody custody transactions matched against Notabene travel rule transfers
 - **Tabs**: All | No Travel Rule | Missing Originator | Missing Beneficiary | Matched
 - **Asset filter**: Dropdown to filter by token type
 - **Stats cards**: Total, Matched, Unmatched, Missing Originator, Missing Beneficiary
@@ -148,7 +148,7 @@ Three independent clocks per thread, thresholds vary by priority:
 ## 6. Incident & RCA Management
 
 ### 6.1 Incidents (`/incidents`)
-- **Track third-party provider incidents**: Fireblocks, Ledger, GX, Komainu, Notabene, Chainalysis, etc.
+- **Track third-party provider incidents**: Fireblocks, Ledger, GX, Custody, Notabene, Chainalysis, etc.
 - **Severity levels**: Low, Medium, High, Critical
 - **Status workflow**: Active → Monitoring → Resolved
 - **Fields**: Title, provider, severity, description, operational impact
@@ -281,7 +281,7 @@ Three independent clocks per thread, thresholds vary by priority:
 
 ## 13. Approvals Queue (`/approvals`)
 
-- **Komainu API integration**: Fetches pending custody approval requests
+- **Custody API integration**: Fetches pending custody approval requests
 - **Risk-based swimlanes**: Three columns — Should Auto-Approve, Ops Approval, Compliance Review
 - **Per-request display**: Type, risk level, entity, account, age, expiration countdown
 - **Actions**: Approve, Escalate (with notes), Flag Stuck (with reason)
@@ -391,7 +391,7 @@ Three independent clocks per thread, thresholds vary by priority:
 
 | Integration | Purpose | Auth Method |
 |------------|---------|------------|
-| **Komainu Custody API** | Pending transactions, approval requests, approve/reject | JWT bearer token (api_user + api_secret) |
+| **Custody Custody API** | Pending transactions, approval requests, approve/reject | JWT bearer token (api_user + api_secret) |
 | **Notabene Travel Rule** | Transfer matching, originator/beneficiary data | Bearer token |
 | **Jira Cloud** | Comms thread sync, RCA ticket tracking, status polling | Basic auth (email + API token) |
 | **Slack** | Channel message ingestion into unified inbox, notifications | Bot token (OAuth) |

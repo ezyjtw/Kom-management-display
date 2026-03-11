@@ -28,7 +28,7 @@ const PROVIDERS = [
   "Fireblocks",
   "Ledger",
   "GX",
-  "Komainu",
+  "Custody",
   "Notabene",
   "Chainalysis",
   "Elliptic",

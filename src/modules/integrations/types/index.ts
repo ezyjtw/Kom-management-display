@@ -1,7 +1,7 @@
 /**
  * Normalized event model for all inbound integrations.
  *
- * Every integration (Jira, Slack, email, Fireblocks, Komainu, Notabene)
+ * Every integration (Jira, Slack, email, Fireblocks, Custody, Notabene)
  * maps its data into this format before it touches any business logic.
  */
 
@@ -11,7 +11,7 @@ export type SourceSystem =
   | "slack"
   | "email"
   | "fireblocks"
-  | "komainu"
+  | "custody"
   | "notabene"
   | "manual"
   | "system";

@@ -1,6 +1,6 @@
 // ─── Travel Rule / Notabene Types ───
 
-import type { KomainuTransactionDirection, KomainuTransactionStatus } from "./komainu";
+import type { CustodyTransactionDirection, CustodyTransactionStatus } from "./custody";
 
 export type NotabeneTransferStatus =
   | "NEW"
@@ -43,21 +43,21 @@ export interface NotabenePerson {
 }
 
 export type TravelRuleMatchStatus =
-  | "matched"           // Komainu tx matched to Notabene transfer
-  | "unmatched"         // Komainu tx with no Notabene transfer
+  | "matched"           // Custody tx matched to Notabene transfer
+  | "unmatched"         // Custody tx with no Notabene transfer
   | "missing_originator" // Transfer exists but originator info missing
   | "missing_beneficiary"; // Transfer exists but beneficiary info missing
 
 export interface TravelRuleReconciliationRow {
   transactionId: string;
   txHash: string;
-  direction: KomainuTransactionDirection;
+  direction: CustodyTransactionDirection;
   asset: string;
   amount: number;
   senderAddress: string;
   receiverAddress: string;
   createdAt: string;
-  status: KomainuTransactionStatus;
+  status: CustodyTransactionStatus;
   matchStatus: TravelRuleMatchStatus;
   notabeneTransferId: string | null;
   notabeneStatus: NotabeneTransferStatus | null;
@@ -77,5 +77,5 @@ export interface TravelRuleOverview {
     missingOriginator: number;
     missingBeneficiary: number;
   };
-  configured: { komainu: boolean; notabene: boolean };
+  configured: { custody: boolean; notabene: boolean };
 }

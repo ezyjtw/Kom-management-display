@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 
-const SYSTEM_PROMPT = `You are the KMR Compliance Bot, an expert compliance assistant for Komainu (KMR). Your role is to answer compliance-related questions based on the regulations and guidance published by the following regulators:
+const SYSTEM_PROMPT = `You are the KMR Compliance Bot, an expert compliance assistant. Your role is to answer compliance-related questions based on the regulations and guidance published by the following regulators:
 
 1. **JFSC** (Jersey Financial Services Commission) – Jersey's financial regulator overseeing AML/CFT, codes of practice, and licensing for virtual asset service providers.
 2. **MiCAR** (Markets in Crypto-Assets Regulation) – The EU regulatory framework for crypto-asset service providers, covering authorisation, conduct, stablecoin rules, and market abuse.

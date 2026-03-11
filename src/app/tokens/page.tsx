@@ -44,7 +44,24 @@ export default function TokenReviewPage() {
   }
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); const f = new FormData(e.currentTarget);
-    await post("/api/tokens", { action: "create", symbol: f.get("symbol"), name: f.get("name"), network: f.get("network"), tokenType: f.get("tokenType"), riskLevel: f.get("riskLevel"), marketCapTier: f.get("marketCapTier"), notes: f.get("notes") });
+    const networks = (f.get("supportedNetworks") as string || "").split(",").map((s) => s.trim()).filter(Boolean);
+    await post("/api/tokens", {
+      action: "create",
+      symbol: f.get("symbol"), name: f.get("name"), network: f.get("network"),
+      contractAddress: f.get("contractAddress"),
+      tokenType: f.get("tokenType"), riskLevel: f.get("riskLevel"), marketCapTier: f.get("marketCapTier"),
+      notes: f.get("notes"),
+      // Checklist fields
+      jiraTicket: f.get("jiraTicket"), complianceDoc: f.get("complianceDoc"),
+      launchDate: f.get("launchDate"), founders: f.get("founders"),
+      website: f.get("website"), whitepaper: f.get("whitepaper"), explorer: f.get("explorer"),
+      supportedNetworks: networks.length > 0 ? networks : undefined,
+      blockchainAnalytics: f.get("blockchainAnalytics"),
+      travelRuleNotabene: f.get("travelRuleNotabene") === "true",
+      priceFeedCoingecko: f.get("priceFeedCoingecko") === "true",
+      consensusMechanism: f.get("consensusMechanism"),
+      privacyToken: f.get("privacyToken") === "true",
+    });
     setShowForm(false); fetchData();
   }
   async function handleStatusChange(tokenId: string, newStatus: string) {

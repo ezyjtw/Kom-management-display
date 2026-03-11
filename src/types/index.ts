@@ -5,7 +5,7 @@ export * from "./scoring";
 export * from "./employees";
 export * from "./comms";
 export * from "./alerts";
-export * from "./komainu";
+export * from "./custody";
 export * from "./travel-rule";
 export * from "./schedule";
 export * from "./projects";

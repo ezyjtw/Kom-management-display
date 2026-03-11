@@ -1,11 +1,11 @@
 "use client";
 
 import { ArrowUpRight, ArrowDownLeft, Minus, Clock, ExternalLink } from "lucide-react";
-import type { KomainuPendingTransaction } from "@/types";
+import type { CustodyPendingTransaction } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 
 interface PendingTransactionsTableProps {
-  transactions: KomainuPendingTransaction[];
+  transactions: CustodyPendingTransaction[];
 }
 
 function DirectionIcon({ direction }: { direction: string }) {

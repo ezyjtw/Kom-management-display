@@ -160,7 +160,7 @@ export async function generateBriefing(data: {
   recentActivity: Array<{ action: string; userName: string; details: string }>;
 }): Promise<string | null> {
   return complete({
-    system: `You are an operations briefing assistant for a digital asset custody firm (Komainu).
+    system: `You are an operations briefing assistant for a digital asset custody firm.
 Generate a concise morning briefing for the ops team. Use short bullet points grouped by priority.
 Start with any critical items (incidents, SLA breaches), then status overview, then action items.
 Use plain text with markdown formatting. Be direct and specific — no filler.
@@ -259,7 +259,7 @@ export async function draftTravelRuleEmail(caseData: {
   counterpartyVasp?: string;
 }): Promise<string | null> {
   return complete({
-    system: `You are a compliance assistant for a digital asset custody firm (Komainu).
+    system: `You are a compliance assistant for a digital asset custody firm.
 Draft a professional email to a counterparty VASP requesting missing travel rule information.
 The email should be formal, reference the specific transaction, and clearly state what information is needed.
 Follow FATF Travel Rule requirements (originator/beneficiary name, address, account).
@@ -288,8 +288,15 @@ export async function researchToken(token: {
   demandSignals?: Array<{ signalType: string; source: string; description: string }>;
 }): Promise<Record<string, unknown> | null> {
   const text = await complete({
-    system: `You are a digital asset research analyst for Komainu, an institutional-grade custody firm.
+    system: `You are a digital asset research analyst for an institutional-grade custody firm.
+The firm holds custodian licenses in four jurisdictions:
+- **UK**: FCA-registered cryptoasset business
+- **EU**: Licensed under MiCA framework
+- **Jersey**: JFSC-registered virtual currency exchange business
+- **UAE (Dubai)**: VARA-licensed virtual asset service provider
+
 Your job is to perform due diligence on tokens being considered for custody onboarding.
+Prioritise regulatory analysis for the four licensed jurisdictions (UK, EU, Jersey, UAE/VARA) as these directly affect whether the firm can legally custody the asset.
 
 Analyse the token and provide a structured assessment covering:
 
@@ -301,13 +308,14 @@ Analyse the token and provide a structured assessment covering:
    {
      "overall": "Brief overall regulatory risk summary",
      "jurisdictions": {
+       "UK": "FCA classification (exchange/utility/security token), financial promotion rules, whether it's a specified investment under RAO — LICENSED JURISDICTION, assess if token is permissible under the firm's FCA registration",
+       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), CASP obligations, white paper requirements — LICENSED JURISDICTION, assess compatibility with the firm's MiCA authorization",
+       "Jersey": "JFSC classification under AML/CFT Handbook, whether the token raises concerns under Sound Business Practice Policy — LICENSED JURISDICTION, assess if custodying this token is within the firm's JFSC registration scope",
+       "UAE": "VARA classification and licensing requirements for Dubai, ADGM/FSRA considerations — LICENSED JURISDICTION, assess if token is permissible under the firm's VARA license",
        "US": "SEC/CFTC classification risk, Howey test analysis, any enforcement actions",
-       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), compliance status",
-       "UK": "FCA classification, financial promotion rules, whether it's a specified investment",
        "Switzerland": "FINMA token classification (payment, utility, asset), Swiss DLT framework status",
        "Singapore": "MAS classification under Payment Services Act, Digital Payment Token status",
        "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status",
-       "UAE": "VARA/ADGM classification and licensing requirements",
        "Hong_Kong": "SFC classification, whether it's a virtual asset under the new regime"
      },
      "sanctionsExposure": "Any sanctions-related concerns (OFAC, EU sanctions lists)",
@@ -382,7 +390,7 @@ export async function summariseDailyChecks(data: {
   }>;
 }): Promise<string | null> {
   return complete({
-    system: `You are an ops report writer for a digital asset custody firm (Komainu).
+    system: `You are an ops report writer for a digital asset custody firm.
 Given daily check results, produce a concise Jira ticket summary grouped by category.
 Lead with issues found, then confirmations. Use bullet points.
 Format: "## Daily Ops Check — [date]" then categories as ### headings.
@@ -496,7 +504,7 @@ export async function draftEscalationNote(request: {
   lane: string;
 }): Promise<string | null> {
   return complete({
-    system: `You are a compliance liaison for a digital asset custody firm (Komainu).
+    system: `You are a compliance liaison for a digital asset custody firm.
 Draft a concise escalation note for a compliance reviewer, including:
 - Request summary (type, entity, age)
 - Risk factors identified
@@ -540,8 +548,9 @@ export async function suggestTokensToOnboard(context: {
   clientDemandSignals?: Array<{ source: string; description: string }>;
 }): Promise<Array<Record<string, unknown>> | null> {
   const text = await complete({
-    system: `You are a digital asset strategy analyst for Komainu, an institutional-grade custody firm.
-Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported.
+    system: `You are a digital asset strategy analyst for an institutional-grade custody firm.
+The firm holds custodian licenses in the UK (FCA), EU (MiCA), Jersey (JFSC), and UAE/Dubai (VARA).
+Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported. Prioritise tokens that are permissible under the firm's four licensed jurisdictions.
 
 Given the list of tokens already in the registry, suggest 5-8 popular token/chain combinations worth evaluating. Focus on:
 

@@ -7,7 +7,7 @@
 ## Context
 
 The platform ingests data from multiple external systems: Jira, Confluence,
-Slack, email (IMAP), Fireblocks, Komainu, and Notabene. Each has different
+Slack, email (IMAP), Fireblocks, Custody, and Notabene. Each has different
 APIs, authentication models, rate limits, and failure modes. The architecture
 must handle these differences uniformly while being resilient to outages.
 

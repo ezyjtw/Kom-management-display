@@ -17,7 +17,7 @@ import { JiraAdapter } from "@/modules/integrations/adapters/jira-adapter";
 import { SlackAdapter } from "@/modules/integrations/adapters/slack-adapter";
 import { EmailAdapter } from "@/modules/integrations/adapters/email-adapter";
 import { FireblocksAdapter } from "@/modules/integrations/adapters/fireblocks-adapter";
-import { KomainuAdapter } from "@/modules/integrations/adapters/komainu-adapter";
+import { CustodyAdapter } from "@/modules/integrations/adapters/custody-adapter";
 import { NotabeneAdapter } from "@/modules/integrations/adapters/notabene-adapter";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ class IntegrationRegistry {
     this.register(new SlackAdapter());
     this.register(new EmailAdapter());
     this.register(new FireblocksAdapter());
-    this.register(new KomainuAdapter());
+    this.register(new CustodyAdapter());
     this.register(new NotabeneAdapter());
   }
 

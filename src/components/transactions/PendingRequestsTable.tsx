@@ -1,11 +1,11 @@
 "use client";
 
 import { Clock, FileCheck, AlertCircle } from "lucide-react";
-import type { KomainuPendingRequest } from "@/types";
+import type { CustodyPendingRequest } from "@/types";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface PendingRequestsTableProps {
-  requests: KomainuPendingRequest[];
+  requests: CustodyPendingRequest[];
 }
 
 function RequestTypeBadge({ type }: { type: string }) {

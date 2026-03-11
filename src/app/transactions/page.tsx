@@ -5,13 +5,13 @@ import { RefreshCw, AlertCircle } from "lucide-react";
 import { PendingTransactionsTable } from "@/components/transactions/PendingTransactionsTable";
 import { PendingRequestsTable } from "@/components/transactions/PendingRequestsTable";
 import { TransactionStats } from "@/components/transactions/TransactionStats";
-import type { KomainuPendingTransaction, KomainuPendingRequest } from "@/types";
+import type { CustodyPendingTransaction, CustodyPendingRequest } from "@/types";
 
 type Tab = "transactions" | "requests";
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<KomainuPendingTransaction[]>([]);
-  const [requests, setRequests] = useState<KomainuPendingRequest[]>([]);
+  const [transactions, setTransactions] = useState<CustodyPendingTransaction[]>([]);
+  const [requests, setRequests] = useState<CustodyPendingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("transactions");
@@ -22,7 +22,7 @@ export default function TransactionsPage() {
     try {
       const params = new URLSearchParams();
       if (assetFilter) params.set("asset", assetFilter);
-      const res = await fetch(`/api/integrations/komainu/transactions?${params}`);
+      const res = await fetch(`/api/integrations/custody/transactions?${params}`);
       const json = await res.json();
       if (json.success) {
         setTransactions(json.data.pendingTransactions || []);
@@ -30,7 +30,7 @@ export default function TransactionsPage() {
         setConfigured(json.data.configured);
       }
     } catch (err) {
-      console.error("Failed to fetch Komainu data:", err);
+      console.error("Failed to fetch custody data:", err);
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Pending Transactions</h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            Client pending transactions and approval requests from Komainu
+            Client pending transactions and approval requests from custody
           </p>
         </div>
         <button
@@ -70,9 +70,9 @@ export default function TransactionsPage() {
         <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
           <AlertCircle size={20} className="text-amber-400 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-amber-400">Komainu API not configured</p>
+            <p className="text-sm font-medium text-amber-400">Custody API not configured</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Set KOMAINU_API_BASE_URL, KOMAINU_API_USER, and KOMAINU_API_SECRET in your environment to connect.
+              Set CUSTODY_API_BASE_URL, CUSTODY_API_USER, and CUSTODY_API_SECRET in your environment to connect.
             </p>
           </div>
         </div>

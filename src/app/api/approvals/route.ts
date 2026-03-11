@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { isKomainuConfigured, fetchPendingRequests } from "@/lib/integrations/komainu";
+import { isCustodyConfigured, fetchPendingRequests } from "@/lib/integrations/custody";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
@@ -31,14 +31,14 @@ function categorizeRequest(req: {
 
 /**
  * GET /api/approvals
- * Fetch pending requests from Komainu API, categorize them, and return with audit trail.
+ * Fetch pending requests from Custody API, categorize them, and return with audit trail.
  */
 export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
   try {
-    if (!isKomainuConfigured()) {
+    if (!isCustodyConfigured()) {
       return apiSuccess({ items: [], summary: { total: 0, autoApprove: 0, opsApproval: 0, complianceReview: 0 }, configured: false });
     }
 
@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
 
     const actorId = auth.employeeId || auth.id;
 
-    if (action === "approved" && isKomainuConfigured()) {
-      const { approveRequest } = await import("@/lib/integrations/komainu");
+    if (action === "approved" && isCustodyConfigured()) {
+      const { approveRequest } = await import("@/lib/integrations/custody");
       await approveRequest(requestId);
     }
 

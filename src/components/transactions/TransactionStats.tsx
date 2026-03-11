@@ -1,11 +1,11 @@
 "use client";
 
 import { ArrowUpDown, Clock, FileCheck, AlertTriangle } from "lucide-react";
-import type { KomainuPendingTransaction, KomainuPendingRequest } from "@/types";
+import type { CustodyPendingTransaction, CustodyPendingRequest } from "@/types";
 
 interface TransactionStatsProps {
-  transactions: KomainuPendingTransaction[];
-  requests: KomainuPendingRequest[];
+  transactions: CustodyPendingTransaction[];
+  requests: CustodyPendingRequest[];
 }
 
 export function TransactionStats({ transactions, requests }: TransactionStatsProps) {

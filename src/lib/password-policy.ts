@@ -33,7 +33,7 @@ const COMMON_PASSWORDS = new Set([
   "shadow123", "master123", "monkey123", "dragon123",
   "trustno1", "baseball1", "abc12345", "passw0rd",
   "p@ssw0rd", "p@ssword", "pass1234", "test1234",
-  "komainu123", "komainu1234",
+  "custody123", "custody1234",
 ]);
 
 export interface PasswordValidationResult {

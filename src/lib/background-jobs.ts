@@ -10,7 +10,7 @@
  * - sync_jira: Poll Jira for issue updates
  * - check_sla: Monitor SLA deadlines and generate alerts
  * - check_staking: Check staking reward heartbeats
- * - poll_komainu: Poll Komainu API for new transactions/requests
+ * - poll_custody: Poll Custody API for new transactions/requests
  * - check_confirmations: Check for expired transaction confirmations
  * - cleanup_sessions: Clean up expired session metadata
  */
@@ -24,7 +24,7 @@ export type JobType =
   | "sync_jira"
   | "check_sla"
   | "check_staking"
-  | "poll_komainu"
+  | "poll_custody"
   | "check_confirmations"
   | "cleanup_sessions";
 
@@ -50,7 +50,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "sync_jira", cronExpression: "*/10 * * * *" },       // Every 10 mins
     { type: "check_sla", cronExpression: "*/1 * * * *" },        // Every minute
     { type: "check_staking", cronExpression: "0 */6 * * *" },    // Every 6 hours
-    { type: "poll_komainu", cronExpression: "*/2 * * * *" },     // Every 2 mins
+    { type: "poll_custody", cronExpression: "*/2 * * * *" },     // Every 2 mins
     { type: "check_confirmations", cronExpression: "*/5 * * * *" }, // Every 5 mins
     { type: "cleanup_sessions", cronExpression: "0 2 * * *" },   // Daily at 2am
   ];

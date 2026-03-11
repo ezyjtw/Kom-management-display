@@ -105,7 +105,7 @@ describe("Background Jobs - Cron Parser", () => {
 describe("Background Jobs - Job Types", () => {
   const VALID_JOB_TYPES = [
     "sync_slack", "sync_email", "sync_jira", "check_sla",
-    "check_staking", "poll_komainu", "check_confirmations", "cleanup_sessions",
+    "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
   ];
 
   it("has all expected job types", () => {

@@ -15,7 +15,7 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 
 const VALID_JOB_TYPES: JobType[] = [
   "sync_slack", "sync_email", "sync_jira", "check_sla",
-  "check_staking", "poll_komainu", "check_confirmations", "cleanup_sessions",
+  "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
 ];
 
 /**
@@ -165,14 +165,14 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
       return { overdueRewards: overdue.length };
     }
 
-    case "poll_komainu": {
+    case "poll_custody": {
       try {
-        const { isKomainuConfigured, fetchPendingTransactions } = await import("@/lib/integrations/komainu");
-        if (!isKomainuConfigured()) return { skipped: true, reason: "Komainu not configured" };
+        const { isCustodyConfigured, fetchPendingTransactions } = await import("@/lib/integrations/custody");
+        if (!isCustodyConfigured()) return { skipped: true, reason: "Custody API not configured" };
         const result = await fetchPendingTransactions();
         return { transactionsPolled: result.data.length };
       } catch {
-        return { skipped: true, reason: "Komainu API unavailable" };
+        return { skipped: true, reason: "Custody API unavailable" };
       }
     }
 

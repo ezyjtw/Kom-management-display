@@ -94,7 +94,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
 
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || "kommand-centre@komainu.com",
+      from: process.env.SMTP_FROM || "kommand-centre@company.com",
       to: data.to.join(", "),
       subject,
       html,

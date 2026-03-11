@@ -51,10 +51,10 @@
 
 **Decision**: Integration adapters in `src/lib/integrations/` with server-side API routes
 
-**Context**: External systems (Slack, Email/IMAP, Jira, Komainu, Notabene) need to be synced into the internal data model.
+**Context**: External systems (Slack, Email/IMAP, Jira, Custody, Notabene) need to be synced into the internal data model.
 
 **Current architecture**:
-- Each integration has a dedicated adapter module (`slack.ts`, `email.ts`, `jira.ts`, `komainu.ts`, `notabene.ts`)
+- Each integration has a dedicated adapter module (`slack.ts`, `email.ts`, `jira.ts`, `custody.ts`, `notabene.ts`)
 - Adapters handle authentication, data fetching, and normalization
 - API routes in `src/app/api/integrations/` expose sync triggers
 - Data is normalized into internal models (CommsThread, TravelRuleCase, etc.)

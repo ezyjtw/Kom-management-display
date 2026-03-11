@@ -1,7 +1,7 @@
 /**
  * Circuit Breaker pattern for external service calls.
  *
- * Prevents cascading failures when downstream services (Komainu, Slack, Email, Jira)
+ * Prevents cascading failures when downstream services (Custody, Slack, Email, Jira)
  * are unhealthy. Transitions between three states:
  *
  *   CLOSED  → requests pass through normally
@@ -14,7 +14,7 @@
  * breaker closes; if it fails, it re-opens.
  *
  * Usage:
- *   const breaker = CircuitBreaker.for("komainu");
+ *   const breaker = CircuitBreaker.for("custody");
  *   const result = await breaker.execute(() => fetchPendingTransactions());
  */
 
@@ -262,9 +262,9 @@ export class CircuitBreakerError extends Error {
 
 // ─── Pre-configured breakers for known services ───
 
-/** Komainu custody API — longer cooldown for financial operations */
-export function komainuBreaker(): CircuitBreaker {
-  return CircuitBreaker.for("komainu", {
+/** Custody API — longer cooldown for financial operations */
+export function custodyBreaker(): CircuitBreaker {
+  return CircuitBreaker.for("custody", {
     failureThreshold: 3,
     cooldownMs: 60_000,
     callTimeoutMs: 20_000,
