@@ -35,7 +35,7 @@ interface TokenDetailPanelProps {
   aiEnabled: boolean | null;
   showRegulatory: string | null;
   onStatusChange: (tokenId: string, newStatus: string) => void;
-  onToggleCheck: (tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed", currentValue: boolean) => void;
+  onToggleCheck: (tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed" | "smartContractReview", currentValue: boolean) => void;
   onUpdateVendor: (tokenId: string, vendor: string, status: string) => void;
   onAddSignal: (e: React.FormEvent<HTMLFormElement>, tokenId: string) => void;
   onSetShowSignalForm: (id: string | null) => void;
@@ -332,6 +332,34 @@ export function TokenDetailPanel({
               </span>
             )}
           </div>
+          {/* Smart Contract Review — required when tokenType is not "native" */}
+          {token.tokenType !== "native" && (
+            <div className="col-span-2">
+              <Shield size={10} className="inline text-muted-foreground mr-0.5" />
+              <span className="text-muted-foreground">Smart Contract Review:</span>{" "}
+              <button
+                onClick={() => onToggleCheck(token.id, "smartContractReview", token.smartContractReview)}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  token.smartContractReview
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-red-500/10 text-red-400"
+                }`}
+              >
+                {token.smartContractReview ? <CheckCircle2 size={8} /> : <XCircle size={8} />}
+                {token.smartContractReview ? "Completed" : "Required — Pending"}
+              </button>
+              {!token.smartContractReview && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-500/10 text-amber-400 rounded inline-flex items-center gap-0.5">
+                  <AlertCircle size={8} /> Smart contract tokens require an audit before approval
+                </span>
+              )}
+              {token.smartContractReviewNotes && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  <span className="font-medium text-foreground">Audit notes:</span> {token.smartContractReviewNotes}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

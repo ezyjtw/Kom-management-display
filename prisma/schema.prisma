@@ -1143,6 +1143,9 @@ model TokenReview {
   priceFeedCoingecko Boolean             @default(false) // CoinGecko price feed available
   consensusMechanism String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
   privacyToken       Boolean             @default(false) // whether this is a privacy token
+  // Smart contract review — required when tokenType is not "native"
+  smartContractReview Boolean             @default(false) // smart contract audit/review completed
+  smartContractReviewNotes String         @default("") // auditor, audit date, findings summary
   // Per-jurisdiction compliance guidance
   jurisdictionStatus String              @default("") // JSON: per-jurisdiction compliance status & guidance
   // Metadata
