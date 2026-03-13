@@ -104,6 +104,8 @@ export async function GET(request: NextRequest) {
         priceFeedCoingecko: t.priceFeedCoingecko,
         consensusMechanism: t.consensusMechanism,
         privacyToken: t.privacyToken,
+        smartContractReview: t.smartContractReview,
+        smartContractReviewNotes: t.smartContractReviewNotes,
         jurisdictionStatus,
       };
     });
@@ -203,6 +205,8 @@ export async function POST(request: NextRequest) {
             priceFeedCoingecko: body.priceFeedCoingecko || false,
             consensusMechanism: body.consensusMechanism || "",
             privacyToken: body.privacyToken || false,
+            smartContractReview: body.smartContractReview || false,
+            smartContractReviewNotes: body.smartContractReviewNotes || "",
             jurisdictionStatus: body.jurisdictionStatus ? JSON.stringify(body.jurisdictionStatus) : "",
           },
         });
@@ -295,6 +299,7 @@ export async function POST(request: NextRequest) {
           "jiraTicket", "complianceDoc", "launchDate", "founders", "website",
           "whitepaper", "explorer", "blockchainAnalytics",
           "travelRuleNotabene", "priceFeedCoingecko", "consensusMechanism", "privacyToken",
+          "smartContractReview", "smartContractReviewNotes",
         ];
         for (const field of allowedFields) {
           if (body[field] !== undefined) updateData[field] = body[field];

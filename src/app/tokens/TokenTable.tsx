@@ -19,7 +19,7 @@ interface TokenTableProps {
   onSetExpandedId: (id: string | null) => void;
   onSetFilter: (filter: string) => void;
   onStatusChange: (tokenId: string, newStatus: string) => void;
-  onToggleCheck: (tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed", currentValue: boolean) => void;
+  onToggleCheck: (tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed" | "smartContractReview", currentValue: boolean) => void;
   onUpdateVendor: (tokenId: string, vendor: string, status: string) => void;
   onAddSignal: (e: React.FormEvent<HTMLFormElement>, tokenId: string) => void;
   onSetShowSignalForm: (id: string | null) => void;

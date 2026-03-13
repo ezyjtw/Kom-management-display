@@ -65,6 +65,8 @@ export interface TokenEntry {
   priceFeedCoingecko: boolean;
   consensusMechanism: string;
   privacyToken: boolean;
+  smartContractReview: boolean;
+  smartContractReviewNotes: string;
   jurisdictionStatus: Record<string, JurisdictionGuidance>;
 }
 

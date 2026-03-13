@@ -66,6 +66,14 @@ export default function TokenReviewPage() {
   }
   async function handleStatusChange(tokenId: string, newStatus: string) {
     let reason = ""; if (newStatus === "rejected") { reason = prompt("Rejection reason:") || ""; if (!reason) return; }
+    // Warn if approving a smart contract token without a completed smart contract review
+    if (newStatus === "approved" && data) {
+      const token = data.tokens.find((t) => t.id === tokenId);
+      if (token && token.tokenType !== "native" && !token.smartContractReview) {
+        const proceed = confirm("This token is a smart contract but the smart contract review has not been completed. Are you sure you want to approve?");
+        if (!proceed) return;
+      }
+    }
     await post("/api/tokens", { action: "update_status", tokenId, newStatus, reason }); fetchData();
   }
   async function handleAddSignal(e: React.FormEvent<HTMLFormElement>, tokenId: string) {
@@ -73,7 +81,7 @@ export default function TokenReviewPage() {
     await post("/api/tokens", { action: "add_signal", tokenId, signalType: f.get("signalType"), source: f.get("source"), description: f.get("description"), weight: parseInt(f.get("weight") as string) || 1 });
     setShowSignalForm(null); fetchData();
   }
-  async function handleToggleCheck(tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed", currentValue: boolean) {
+  async function handleToggleCheck(tokenId: string, field: "sanctionsCheck" | "amlRiskAssessed" | "smartContractReview", currentValue: boolean) {
     await post("/api/tokens", { action: "update", tokenId, [field]: !currentValue }); fetchData();
   }
 
