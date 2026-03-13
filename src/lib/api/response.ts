@@ -160,6 +160,12 @@ export function handleApiError(error: unknown, context?: string): NextResponse {
       message = "Referenced record does not exist";
       status = 400;
     } else if (
+      error.message.includes("column") &&
+      error.message.includes("does not exist")
+    ) {
+      message = "Database schema out of date — pending migrations need to be applied";
+      status = 500;
+    } else if (
       error.message.includes("Invalid `") ||
       error.message.includes("Argument")
     ) {
