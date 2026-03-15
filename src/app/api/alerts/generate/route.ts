@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, isExcessiveBouncing, computeTravelRuleAging } from "@/lib/sla";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
 
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "alert", "view");
+  if (authz instanceof NextResponse) return authz;
   return generateAlerts();
 }
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 
 /**
  * GET /api/schedule/on-call
@@ -11,6 +12,9 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);

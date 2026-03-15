@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { prisma } from "@/lib/prisma";
 import { EmployeeRole, TeamName, Region, UserRole, TimePeriodType, ScoreCategory } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -12,6 +13,9 @@ import bcrypt from "bcryptjs";
 export async function POST() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "user", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const results: string[] = [];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import bcrypt from "bcryptjs";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -14,6 +15,9 @@ const MIN_PASSWORD_LENGTH = 8;
 export async function GET() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "user", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const users = await prisma.user.findMany({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
   fetchTransfers,
   isNotabeneConfigured,
@@ -27,6 +28,9 @@ export async function POST(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "travel_rule_case", "view");
+  if (authz instanceof NextResponse) return authz;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;

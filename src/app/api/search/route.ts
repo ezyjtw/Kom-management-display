@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { globalSearch } from "@/lib/global-search";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 
@@ -10,6 +11,9 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);

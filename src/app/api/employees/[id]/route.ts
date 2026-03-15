@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 
 export async function GET(
   _request: NextRequest,
@@ -10,6 +11,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const employee = await prisma.employee.findUnique({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
@@ -76,6 +77,9 @@ export const revalidate = 60; // ISR: cache for 60s
 export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "metrics", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const [priceData, gasData, btcNetwork, openInterest] = await Promise.all([

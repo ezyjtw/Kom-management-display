@@ -11,6 +11,7 @@ import {
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { emitHighRiskTransaction } from "@/lib/sse";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 
 /**
  * GET /api/transaction-confirmations
@@ -19,6 +20,9 @@ import { emitHighRiskTransaction } from "@/lib/sse";
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "transaction_confirmation", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);

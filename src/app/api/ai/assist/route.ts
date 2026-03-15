@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
   isAiEnabled,
   getProviderName,
@@ -49,6 +50,9 @@ export async function POST(request: NextRequest) {
 
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const body = await request.json();

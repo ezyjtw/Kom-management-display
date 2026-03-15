@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiPaginated, handleApiError } from "@/lib/api/response";
 
 const MAX_PAGE_SIZE = 100;
@@ -12,6 +13,9 @@ const MAX_PAGE_SIZE = 100;
 export async function GET(request: NextRequest) {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "audit_log", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);

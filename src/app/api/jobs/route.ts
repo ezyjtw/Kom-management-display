@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
   getJobQueueStatus,
   registerDefaultJobs,
@@ -25,6 +26,9 @@ const VALID_JOB_TYPES: JobType[] = [
 export async function GET() {
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "background_job", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const status = await getJobQueueStatus();
