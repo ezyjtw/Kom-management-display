@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import bcrypt from "bcryptjs";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createUserSchema } from "@/lib/validation";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -51,6 +52,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createUserSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { name, email, password, role, employeeId } = body;
 
     if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.includes("@") || typeof password !== "string") {

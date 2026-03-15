@@ -20,6 +20,7 @@ import {
 } from "@/lib/ai";
 import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, aiAssistSchema } from "@/lib/validation";
 
 /**
  * POST /api/ai/assist
@@ -56,6 +57,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(aiAssistSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action, data } = body;
 
     if (!action) {

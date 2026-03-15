@@ -5,6 +5,7 @@ import { getAllFlags, isFeatureEnabled, invalidateFlagCache } from "@/lib/featur
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, upsertFeatureFlagSchema } from "@/lib/validation";
 
 /**
  * GET /api/feature-flags
@@ -67,6 +68,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(upsertFeatureFlagSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { key, name, description, enabled, roles, teams, percentage } = body;
 
     if (!key || !name) {

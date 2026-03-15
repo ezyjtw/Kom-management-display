@@ -10,6 +10,7 @@ import { requireAuth, requireRole } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, handleApiError, apiForbiddenError, apiValidationError, apiNotFoundError } from "@/lib/api/response";
+import { z } from "zod";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const _parsed = z.object({}).passthrough().safeParse(body);
+    if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
     const { version, config, notes } = body;
 
     if (!version || !config) {
@@ -109,6 +112,8 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const _parsed = z.object({}).passthrough().safeParse(body);
+    if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
     const { configId, action: configAction, notes } = body;
 
     if (!configId || !configAction) {

@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createScreeningSchema } from "@/lib/validation";
 
 /**
  * GET /api/screening
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createScreeningSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { transactionId, asset } = body;
 
     if (!transactionId || !asset) {

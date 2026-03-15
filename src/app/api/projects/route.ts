@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createProjectSchema } from "@/lib/validation";
 
 /**
  * GET /api/projects
@@ -86,6 +87,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createProjectSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { name, description, team, leadId, status, priority, startDate, targetDate, tags } = body;
 
     if (!name || !team || !leadId) {

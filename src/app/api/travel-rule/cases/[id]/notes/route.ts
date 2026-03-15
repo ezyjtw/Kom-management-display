@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createTravelRuleCaseNoteSchema } from "@/lib/validation";
 
 /**
  * POST /api/travel-rule/cases/:id/notes
@@ -26,6 +27,8 @@ export async function POST(
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createTravelRuleCaseNoteSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { content } = body;
 
     if (!content || typeof content !== "string" || !content.trim()) {

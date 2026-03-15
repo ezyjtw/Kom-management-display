@@ -3,8 +3,9 @@ import { syncEmailInbox } from "@/lib/integrations/email";
 import { requireRole } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { prisma } from "@/lib/prisma";
-import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, emailSyncSchema } from "@/lib/validation";
 
 /**
  * POST /api/integrations/email
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(emailSyncSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { queue } = body;
 
     const result = await syncEmailInbox(queue);

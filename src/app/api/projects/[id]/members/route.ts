@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, projectMemberSchema } from "@/lib/validation";
 
 /**
  * POST /api/projects/[id]/members
@@ -25,6 +26,8 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
+    const parsed = validateBody(projectMemberSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { employeeId, role } = body;
 
     if (!employeeId) {

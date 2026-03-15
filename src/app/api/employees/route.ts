@@ -4,6 +4,7 @@ import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { employeeService } from "@/modules/employees/services/employee-service";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
+import { validateBody, createEmployeeSchema } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -44,6 +45,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createEmployeeSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { name, email, role, team, region } = body;
 
     if (!name || !email || !role || !team) {

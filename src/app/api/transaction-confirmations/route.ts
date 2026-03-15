@@ -12,6 +12,7 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { emitHighRiskTransaction } from "@/lib/sse";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, createTransactionConfirmationSchema } from "@/lib/validation";
 
 /**
  * GET /api/transaction-confirmations
@@ -78,6 +79,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createTransactionConfirmationSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action } = body;
 
     if (!action) {

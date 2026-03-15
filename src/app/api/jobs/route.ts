@@ -13,6 +13,7 @@ import {
 } from "@/lib/background-jobs";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, enqueueJobSchema } from "@/lib/validation";
 
 const VALID_JOB_TYPES: JobType[] = [
   "sync_slack", "sync_email", "sync_jira", "check_sla",
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(enqueueJobSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action } = body;
 
     if (!action) {

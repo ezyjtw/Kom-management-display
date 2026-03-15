@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { z } from "zod";
 
 /**
  * GET /api/schedule/daily-tasks
@@ -82,6 +83,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const _parsed = z.object({}).passthrough().safeParse(body);
+    if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
     const { date, team, assigneeId, title, description, priority, category } = body;
 
     if (!date || !team || !title) {
@@ -146,6 +149,8 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const _parsed = z.object({}).passthrough().safeParse(body);
+    if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
     const { id, status, assigneeId, priority, title, description } = body;
 
     if (!id) {

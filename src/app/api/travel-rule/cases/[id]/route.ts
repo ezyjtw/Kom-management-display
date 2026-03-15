@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { sendTravelRuleEmail } from "@/lib/travel-rule-email";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateTravelRuleCaseSchema } from "@/lib/validation";
 
 /**
  * GET /api/travel-rule/cases/:id
@@ -73,6 +74,8 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    const parsed = validateBody(updateTravelRuleCaseSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const actorId = auth.employeeId || auth.id;
 
     const travelCase = await prisma.travelRuleCase.findUnique({

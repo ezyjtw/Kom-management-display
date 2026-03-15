@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createUsdcRampSchema } from "@/lib/validation";
 
 /**
  * GET /api/usdc-ramp
@@ -95,6 +96,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createUsdcRampSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const {
       clientName, clientAccount, direction, amount, fiatCurrency, fiatAmount,
       bankReference, instructionRef, custodyWalletId, ssiDetails, priority,
