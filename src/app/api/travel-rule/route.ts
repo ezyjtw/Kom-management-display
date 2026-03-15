@@ -19,6 +19,7 @@ import type {
   TravelRuleMatchStatus,
   TravelRuleOverview,
 } from "@/types";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,9 @@ function deriveMatchStatus(
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "travel_rule_case", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const custodyConfigured = isCustodyConfigured();

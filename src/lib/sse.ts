@@ -11,6 +11,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { publishEvent } from "@/lib/pg-notify";
 
 export type SSEEventType =
   | "sla_breach"
@@ -19,7 +20,13 @@ export type SSEEventType =
   | "confirmation_expired"
   | "job_status"
   | "alert"
-  | "heartbeat";
+  | "heartbeat"
+  | "travel_rule_update"
+  | "screening_alert"
+  | "settlement_update"
+  | "token_review_update"
+  | "compliance_deadline"
+  | "staking_anomaly";
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -69,9 +76,13 @@ export function removeClient(clientId: string): void {
 }
 
 /**
- * Broadcast an event to all connected clients.
+ * Broadcast an event to all connected clients on this instance.
+ * Also publishes to PG NOTIFY for multi-instance fan-out.
+ *
+ * @param skipPGNotify - Set true when event was received FROM PG NOTIFY
+ *   (to avoid infinite re-publish loops).
  */
-export function broadcastEvent(event: SSEEvent): void {
+export function broadcastEvent(event: SSEEvent, skipPGNotify = false): void {
   const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
   const encoder = new TextEncoder();
   const encoded = encoder.encode(payload);
@@ -83,6 +94,13 @@ export function broadcastEvent(event: SSEEvent): void {
       // Client disconnected — clean up
       clients.delete(clientId);
     }
+  }
+
+  // Fan out to other instances via PG NOTIFY (fire-and-forget)
+  if (!skipPGNotify) {
+    publishEvent(event).catch(() => {
+      // Silently degrade — local clients still got the event
+    });
   }
 }
 
@@ -214,6 +232,88 @@ export function emitAlert(data: {
 }): void {
   broadcastEvent({
     type: "alert",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitTravelRuleUpdate(data: {
+  caseId: string;
+  transactionId: string;
+  matchStatus: string;
+  action: string;
+}): void {
+  sendToRoles(["admin", "lead"], {
+    type: "travel_rule_update",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitScreeningAlert(data: {
+  screeningId: string;
+  transactionId: string;
+  riskLevel: string;
+  classification: string;
+}): void {
+  sendToRoles(["admin", "lead"], {
+    type: "screening_alert",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitSettlementUpdate(data: {
+  settlementId: string;
+  settlementRef: string;
+  status: string;
+  venue: string;
+  asset: string;
+  amount: number;
+}): void {
+  sendToRoles(["admin", "lead"], {
+    type: "settlement_update",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitTokenReviewUpdate(data: {
+  tokenId: string;
+  symbol: string;
+  status: string;
+  action: string;
+}): void {
+  broadcastEvent({
+    type: "token_review_update",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitComplianceDeadline(data: {
+  entityType: string;
+  entityId: string;
+  deadline: string;
+  description: string;
+  hoursRemaining: number;
+}): void {
+  sendToRoles(["admin", "lead"], {
+    type: "compliance_deadline",
+    data,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitStakingAnomaly(data: {
+  walletId: string;
+  asset: string;
+  network: string;
+  anomalyType: string;
+  description: string;
+}): void {
+  sendToRoles(["admin", "lead"], {
+    type: "staking_anomaly",
     data,
     timestamp: new Date().toISOString(),
   });

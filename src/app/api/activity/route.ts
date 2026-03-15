@@ -1,7 +1,11 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody } from "@/lib/validation";
+import { createActivitySchema, endActivitySchema } from "@/lib/validation";
 
 /**
  * GET /api/activity
@@ -17,6 +21,12 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
  *   ?history=true&from=2026-03-03&to=2026-03-04 — return completed entries for date range
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
+
   try {
     const { searchParams } = new URL(request.url);
     const team = searchParams.get("team");
@@ -124,16 +134,20 @@ export async function GET(request: NextRequest) {
  * activity: one of project|bau|queue_monitoring|lunch|break|meeting|admin|training
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { employeeId, activity, detail } = body;
-
-    if (!employeeId || !activity) {
-      return apiValidationError("employeeId and activity are required");
-    }
+    const parsed = validateBody(createActivitySchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { employeeId, activity, detail } = parsed.data;
 
     // End any currently-active activity for this employee before starting a new one.
     // This enforces the one-activity-at-a-time constraint.
@@ -178,12 +192,20 @@ export async function POST(request: NextRequest) {
  *   { employeeId } — end all active entries for that employee
  */
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { id, employeeId } = body;
+    const parsed = validateBody(endActivitySchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { id, employeeId } = parsed.data;
 
     const now = new Date();
 

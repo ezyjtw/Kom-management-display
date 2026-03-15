@@ -32,7 +32,9 @@ export type Resource =
   | "session"
   | "background_job"
   | "report"
-  | "metrics";
+  | "metrics"
+  | "client_comms"
+  | "service_provider";
 
 export type Action =
   | "view"
@@ -89,6 +91,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     background_job:   { actions: ["view", "create", "configure"], scope: "all" },
     report:           { actions: ["view", "create", "export"], scope: "all" },
     metrics:          { actions: ["view"], scope: "all" },
+    client_comms:     { actions: ["view", "create", "update", "delete", "approve"], scope: "all" },
+    service_provider: { actions: ["view", "create", "update", "delete"], scope: "all" },
   },
   lead: {
     employee:         { actions: ["view", "update"], scope: "team" },
@@ -116,6 +120,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     background_job:   { actions: ["view"], scope: "all" },
     report:           { actions: ["view", "create", "export"], scope: "team" },
     metrics:          { actions: ["view"], scope: "all" },
+    client_comms:     { actions: ["view", "approve"], scope: "all" },
+    service_provider: { actions: ["view"], scope: "all" },
   },
   employee: {
     employee:         { actions: ["view_own"], scope: "own" },
@@ -143,6 +149,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     background_job:   { actions: [], scope: "none" },
     report:           { actions: ["view"], scope: "own" },
     metrics:          { actions: [], scope: "none" },
+    client_comms:     { actions: ["view"], scope: "all" },
+    service_provider: { actions: ["view"], scope: "all" },
   },
   auditor: {
     employee:         { actions: ["view"], scope: "all" },
@@ -170,6 +178,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     background_job:   { actions: ["view"], scope: "all" },
     report:           { actions: ["view", "export"], scope: "all" },
     metrics:          { actions: ["view"], scope: "all" },
+    client_comms:     { actions: ["view"], scope: "all" },
+    service_provider: { actions: ["view"], scope: "all" },
   },
 };
 
@@ -200,4 +210,6 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   background_job: [],
   report: [],
   metrics: [],
+  client_comms: [],
+  service_provider: ["contactEmail"],
 };

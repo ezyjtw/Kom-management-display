@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateThreadStatusSchema } from "@/lib/validation";
 
 const VALID_STATUSES = [
   "Unassigned",
@@ -25,16 +27,17 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "thread", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { status, reason } = body;
-
-    if (!status) {
-      return apiValidationError("status is required");
-    }
+    const parsed = validateBody(updateThreadStatusSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { status, reason } = parsed.data;
 
     if (!VALID_STATUSES.includes(status)) {
       return apiValidationError(`Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`);

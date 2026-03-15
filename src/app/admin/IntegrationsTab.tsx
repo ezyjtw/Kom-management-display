@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export interface SlackStatus {
   configured: boolean;
@@ -13,16 +13,66 @@ export interface EmailStatus {
   smtpConfigured: boolean;
 }
 
+interface SlackChannelRecord {
+  id: string;
+  channelId: string;
+  channelName: string;
+  channelType: string;
+  linkedEntityId: string | null;
+  isActive: boolean;
+  lastSyncedAt: string | null;
+}
+
 interface IntegrationsTabProps {
   slackStatus: SlackStatus | null;
   emailStatus: EmailStatus | null;
 }
+
+const CHANNEL_TYPE_BADGES: Record<string, { label: string; className: string }> = {
+  client: { label: "CLIENT", className: "bg-blue-500/10 text-blue-400" },
+  service_provider: { label: "PROVIDER", className: "bg-purple-500/10 text-purple-400" },
+  internal: { label: "INTERNAL", className: "bg-amber-500/10 text-amber-400" },
+};
 
 export default function IntegrationsTab({ slackStatus, emailStatus }: IntegrationsTabProps) {
   const [syncingSlack, setSyncingSlack] = useState(false);
   const [syncingEmail, setSyncingEmail] = useState(false);
   const [slackChannelInput, setSlackChannelInput] = useState("");
   const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  // Slack Channels registry state
+  const [registeredChannels, setRegisteredChannels] = useState<SlackChannelRecord[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registerForm, setRegisterForm] = useState({
+    channelId: "",
+    channelName: "",
+    channelType: "internal" as "client" | "service_provider" | "internal",
+    linkedEntityId: "",
+  });
+  const [registering, setRegistering] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const fetchRegisteredChannels = useCallback(async () => {
+    setLoadingChannels(true);
+    try {
+      const res = await fetch("/api/integrations/slack/channels");
+      const json = await res.json();
+      if (json.success) {
+        setRegisteredChannels(json.data);
+      }
+    } catch {
+      // Silently fail — channels section will show empty
+    } finally {
+      setLoadingChannels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (slackStatus?.configured) {
+      fetchRegisteredChannels();
+    }
+  }, [slackStatus?.configured, fetchRegisteredChannels]);
 
   async function triggerSlackSync() {
     if (!slackChannelInput.trim()) return;
@@ -62,6 +112,58 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
       setSyncResult(`Sync failed: ${String(err)}`);
     } finally {
       setSyncingEmail(false);
+    }
+  }
+
+  async function registerChannel() {
+    if (!registerForm.channelId.trim() || !registerForm.channelName.trim()) return;
+    setRegistering(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/integrations/slack/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelId: registerForm.channelId.trim(),
+          channelName: registerForm.channelName.trim(),
+          channelType: registerForm.channelType,
+          linkedEntityId: registerForm.linkedEntityId.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSyncResult(`Channel #${registerForm.channelName} registered successfully`);
+        setShowRegisterModal(false);
+        setRegisterForm({ channelId: "", channelName: "", channelType: "internal", linkedEntityId: "" });
+        fetchRegisteredChannels();
+      } else {
+        setSyncResult(`Registration error: ${json.error}`);
+      }
+    } catch (err) {
+      setSyncResult(`Registration failed: ${String(err)}`);
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  async function toggleChannelActive(channel: SlackChannelRecord) {
+    setTogglingId(channel.id);
+    try {
+      const res = await fetch(`/api/integrations/slack/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !channel.isActive }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRegisteredChannels((prev) =>
+          prev.map((ch) => (ch.id === channel.id ? { ...ch, isActive: !ch.isActive } : ch)),
+        );
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -129,6 +231,160 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
           </div>
         )}
       </div>
+
+      {/* Slack Channels Registry */}
+      {slackStatus?.configured && (
+        <div className="bg-card rounded-xl border border-border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Slack Channels Registry</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Registered channels are automatically synced every 2 minutes.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowRegisterModal(true)}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+            >
+              Register Channel
+            </button>
+          </div>
+
+          {loadingChannels ? (
+            <div className="text-sm text-muted-foreground py-8 text-center">Loading channels...</div>
+          ) : registeredChannels.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-8 text-center">
+              No channels registered yet. Click &quot;Register Channel&quot; to add one.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2">Channel Name</th>
+                    <th className="text-left px-3 py-2">Type</th>
+                    <th className="text-left px-3 py-2">Linked Entity</th>
+                    <th className="text-left px-3 py-2">Last Synced</th>
+                    <th className="text-center px-3 py-2">Active</th>
+                  </tr>
+                </thead>
+                <tbody className="text-muted-foreground">
+                  {registeredChannels.map((ch) => {
+                    const badge = CHANNEL_TYPE_BADGES[ch.channelType] || {
+                      label: ch.channelType.toUpperCase(),
+                      className: "bg-gray-500/10 text-gray-400",
+                    };
+                    return (
+                      <tr key={ch.id} className="border-b border-border">
+                        <td className="px-3 py-2 font-medium text-foreground">
+                          #{ch.channelName}
+                          <span className="text-xs text-muted-foreground ml-2">{ch.channelId}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {ch.linkedEntityId || <span className="text-muted-foreground/50">--</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {ch.lastSyncedAt
+                            ? new Date(ch.lastSyncedAt).toLocaleString()
+                            : <span className="text-muted-foreground/50">Never</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <button
+                            onClick={() => toggleChannelActive(ch)}
+                            disabled={togglingId === ch.id}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              ch.isActive ? "bg-emerald-500" : "bg-gray-600"
+                            } ${togglingId === ch.id ? "opacity-50" : ""}`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                ch.isActive ? "translate-x-6" : "translate-x-1"
+                              }`}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Channel Registration Modal */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Register Slack Channel</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Channel ID</label>
+                <input
+                  type="text"
+                  value={registerForm.channelId}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, channelId: e.target.value }))}
+                  placeholder="C01234ABCDE"
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Channel Name</label>
+                <input
+                  type="text"
+                  value={registerForm.channelName}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, channelName: e.target.value }))}
+                  placeholder="client-acme"
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Channel Type</label>
+                <select
+                  value={registerForm.channelType}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, channelType: e.target.value as any }))}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
+                >
+                  <option value="client">Client</option>
+                  <option value="service_provider">Service Provider</option>
+                  <option value="internal">Internal</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Linked Entity ID (optional)</label>
+                <input
+                  type="text"
+                  value={registerForm.linkedEntityId}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, linkedEntityId: e.target.value }))}
+                  placeholder="e.g. client preference or provider ID"
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowRegisterModal(false)}
+                className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={registerChannel}
+                disabled={registering || !registerForm.channelId.trim() || !registerForm.channelName.trim()}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {registering ? "Registering..." : "Register"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Email Integration */}
       <div className="bg-card rounded-xl border border-border p-6">

@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { threadService } from "@/modules/comms/services/thread-service";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { computeSlaStatus } from "@/lib/sla";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
+import { validateBody, createThreadSchema } from "@/lib/validation";
 import type { ThreadFilters } from "@/modules/comms/repositories/thread-repository";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -117,13 +122,17 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authzPost = requireAuthorization(auth, "thread", "create");
+  if (authzPost instanceof NextResponse) return authzPost;
+
   try {
     const body = await request.json();
-    const { source, sourceThreadRef, participants, clientOrPartnerTag, subject, priority, queue, initialMessage } = body;
-
-    if (!source || !sourceThreadRef || !subject) {
-      return apiValidationError("Missing required fields: source, sourceThreadRef, subject");
-    }
+    const parsed = validateBody(createThreadSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { source, participants, clientOrPartnerTag, priority, queue } = parsed.data;
+    const sourceThreadRef = parsed.data.sourceThreadRef;
+    const subject = parsed.data.subject;
+    const initialMessage = body.initialMessage;
 
     const cleanSubject = normaliseSubject(subject);
     const effectivePriority =

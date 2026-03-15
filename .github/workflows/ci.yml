@@ -230,6 +230,81 @@ jobs:
             echo "  WARNING: Export service may lack governance controls"
           fi
 
+      - name: Auth guard check — every API route must call requireAuth or requireRole
+        run: |
+          echo "Checking all API routes have auth guards..."
+          FAIL=0
+          # Find all route.ts files under src/app/api (excluding health/ and auth/)
+          for f in $(find src/app/api -name 'route.ts' | grep -v '/health/' | grep -v '/auth/'); do
+            if ! grep -qE 'requireAuth|requireRole' "$f"; then
+              echo "  MISSING auth guard: $f"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            echo "ERROR: API routes found without auth guards"
+            exit 1
+          fi
+          echo "All API routes have auth guards"
+
+      - name: Zod validation check — every POST/PUT/PATCH handler uses safeParse or validateBody
+        run: |
+          echo "Checking mutation routes use Zod validation..."
+          FAIL=0
+          for f in $(find src/app/api -name 'route.ts' | grep -v '/health/' | grep -v '/auth/'); do
+            # Check if file exports POST, PUT, or PATCH
+            if grep -qE 'export\s+async\s+function\s+(POST|PUT|PATCH)' "$f"; then
+              # Must have safeParse or validateBody
+              if ! grep -qE 'safeParse|validateBody' "$f"; then
+                echo "  MISSING Zod validation: $f"
+                FAIL=1
+              fi
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            echo "ERROR: Mutation routes found without Zod validation"
+            exit 1
+          fi
+          echo "All mutation routes use Zod validation"
+
+      - name: AI safety wrapper check — all AI calls wrap untrusted content
+        run: |
+          echo "Checking AI calls wrap untrusted content..."
+          # Check that ai.ts uses wrapUntrustedContent in all userMessage fields
+          if grep -c 'wrapUntrustedContent' src/lib/ai.ts | grep -q '^0$'; then
+            echo "ERROR: src/lib/ai.ts does not use wrapUntrustedContent"
+            exit 1
+          fi
+          # Check compliance-bot wraps user messages
+          if grep -q 'wrapUntrustedContent' src/app/api/compliance-bot/route.ts; then
+            echo "  OK: compliance-bot wraps untrusted content"
+          else
+            echo "  MISSING: compliance-bot does not wrap untrusted content"
+            exit 1
+          fi
+          # Count userMessage assignments that DON'T use wrap (excluding system/static content)
+          UNWRAPPED=$(grep -n 'userMessage:' src/lib/ai.ts | grep -v 'wrapUntrustedContent' | grep -v '^\s*//' || true)
+          if [ -n "$UNWRAPPED" ]; then
+            echo "WARNING: Possibly unwrapped userMessage in ai.ts:"
+            echo "$UNWRAPPED"
+          fi
+          echo "AI safety wrapper check passed"
+
+      - name: Authorization matrix check — routes use checkAuthorization/requireAuthorization
+        run: |
+          echo "Checking API routes enforce authorization..."
+          WARN=0
+          for f in $(find src/app/api -name 'route.ts' | grep -v '/health/' | grep -v '/auth/' | grep -v '/events/'); do
+            if ! grep -qE 'checkAuthorization|requireAuthorization' "$f"; then
+              echo "  WARNING: No authorization check: $f"
+              WARN=$((WARN+1))
+            fi
+          done
+          if [ "$WARN" -gt 0 ]; then
+            echo "NOTE: $WARN routes without explicit authorization checks (review required)"
+          fi
+          echo "Authorization check completed"
+
   schema-check:
     name: Schema Validation
     runs-on: ubuntu-latest

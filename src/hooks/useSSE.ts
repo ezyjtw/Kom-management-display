@@ -1,11 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
 export interface SSEEvent {
   type: string;
   data: Record<string, unknown>;
 }
+
+/** All SSE event types the client listens for. */
+const ALL_EVENT_TYPES = [
+  "sla_breach",
+  "incident_update",
+  "high_risk_transaction",
+  "confirmation_expired",
+  "job_status",
+  "alert",
+  // Stream 1: new event types
+  "travel_rule_update",
+  "screening_alert",
+  "settlement_update",
+  "token_review_update",
+  "compliance_deadline",
+  "staking_anomaly",
+] as const;
+
+export type SSEEventType = (typeof ALL_EVENT_TYPES)[number];
 
 interface UseSSEOptions {
   /** Auto-reconnect on disconnect (default: true) */
@@ -14,6 +33,8 @@ interface UseSSEOptions {
   reconnectDelay?: number;
   /** Max reconnect attempts (default: 10) */
   maxReconnects?: number;
+  /** Only receive events of these types (default: all) */
+  filter?: SSEEventType[];
 }
 
 /**
@@ -21,7 +42,7 @@ interface UseSSEOptions {
  * Returns live events and connection status.
  */
 export function useSSE(options: UseSSEOptions = {}) {
-  const { autoReconnect = true, reconnectDelay = 5000, maxReconnects = 10 } = options;
+  const { autoReconnect = true, reconnectDelay = 5000, maxReconnects = 10, filter } = options;
 
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState<SSEEvent[]>([]);
@@ -29,6 +50,13 @@ export function useSSE(options: UseSSEOptions = {}) {
   const sourceRef = useRef<EventSource | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Stabilize filter reference
+  const filterSet = useMemo(
+    () => (filter ? new Set(filter) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filter?.join(",")],
+  );
 
   const connect = useCallback(() => {
     if (sourceRef.current) {
@@ -48,17 +76,11 @@ export function useSSE(options: UseSSEOptions = {}) {
     });
 
     // Listen for all event types
-    const eventTypes = [
-      "sla_breach",
-      "incident_update",
-      "high_risk_transaction",
-      "confirmation_expired",
-      "job_status",
-      "alert",
-    ];
-
-    for (const type of eventTypes) {
+    for (const type of ALL_EVENT_TYPES) {
       source.addEventListener(type, (e) => {
+        // Skip events not in filter (if filter is set)
+        if (filterSet && !filterSet.has(type)) return;
+
         try {
           const data = JSON.parse((e as MessageEvent).data);
           const event: SSEEvent = { type, data };
@@ -80,7 +102,7 @@ export function useSSE(options: UseSSEOptions = {}) {
         reconnectTimerRef.current = setTimeout(connect, Math.min(delay, 30000));
       }
     };
-  }, [autoReconnect, reconnectDelay, maxReconnects]);
+  }, [autoReconnect, reconnectDelay, maxReconnects, filterSet]);
 
   const disconnect = useCallback(() => {
     clearTimeout(reconnectTimerRef.current);
@@ -109,4 +131,12 @@ export function useSSE(options: UseSSEOptions = {}) {
     disconnect,
     clearEvents,
   };
+}
+
+/**
+ * Convenience hook: subscribe to a single SSE event type.
+ * Returns only events matching the specified type.
+ */
+export function useSSEEventType(eventType: SSEEventType, options: Omit<UseSSEOptions, "filter"> = {}) {
+  return useSSE({ ...options, filter: [eventType] });
 }

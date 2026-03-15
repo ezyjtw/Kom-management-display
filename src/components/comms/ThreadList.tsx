@@ -1,10 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { Mail, MessageCircle, Clock, User, Ticket } from "lucide-react";
+import { Mail, MessageCircle, Clock, User, Ticket, Zap } from "lucide-react";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { formatSlaRemaining } from "@/lib/sla";
 import type { ThreadSummary } from "@/types";
+
+function getUrgencyDotClass(score: number | undefined): string {
+  if (score === undefined || score === 0) return "";
+  if (score >= 5) return "bg-red-500";
+  if (score >= 4) return "bg-orange-500";
+  if (score >= 3) return "bg-amber-500";
+  return "bg-gray-400";
+}
+
+function getChannelTypeBadgeClass(channelType: string | undefined | null): string {
+  switch (channelType) {
+    case "service_provider": return "bg-purple-500/10 text-purple-400";
+    case "client": return "bg-blue-500/10 text-blue-400";
+    case "internal": return "bg-muted text-muted-foreground";
+    default: return "";
+  }
+}
 
 interface ThreadListProps {
   threads: ThreadSummary[];
@@ -65,6 +82,13 @@ export function ThreadList({ threads }: ThreadListProps) {
             >
               {/* Desktop layout */}
               <div className="hidden sm:flex items-center gap-4">
+                {/* Urgency dot */}
+                {(thread.aiUrgencyScore ?? 0) > 0 && (
+                  <div className="flex-shrink-0" title={`AI Urgency: ${thread.aiUrgencyScore}/5`}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${getUrgencyDotClass(thread.aiUrgencyScore)}`} />
+                  </div>
+                )}
+
                 {/* Source icon */}
                 <div className="flex-shrink-0">
                   <SourceIcon
@@ -80,7 +104,19 @@ export function ThreadList({ threads }: ThreadListProps) {
                     <span className="text-sm font-medium text-foreground truncate">
                       {thread.subject}
                     </span>
+                    {thread.slackChannelType && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${getChannelTypeBadgeClass(thread.slackChannelType)}`}>
+                        {thread.slackChannelType === "service_provider" ? "provider" : thread.slackChannelType}
+                      </span>
+                    )}
                   </div>
+                  {/* AI summary line */}
+                  {thread.aiClassification?.summary && (
+                    <p className="text-xs text-primary/70 truncate mb-1 flex items-center gap-1">
+                      <Zap size={10} className="shrink-0" />
+                      {thread.aiClassification.summary}
+                    </p>
+                  )}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {thread.clientOrPartnerTag && (
                       <span className="bg-muted px-1.5 py-0.5 rounded">

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateSecondariesSchema } from "@/lib/validation";
 
 /**
  * GET /api/comms/threads/:id/secondaries
@@ -14,6 +16,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authzGet = requireAuthorization(auth, "thread", "view");
+  if (authzGet instanceof NextResponse) return authzGet;
 
   try {
     const thread = await prisma.commsThread.findUnique({
@@ -55,16 +60,18 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authzPost = requireAuthorization(auth, "thread", "update");
+  if (authzPost instanceof NextResponse) return authzPost;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { employeeId, action } = body;
-
-    if (!employeeId || !["add", "remove"].includes(action)) {
-      return apiValidationError("employeeId and action (add|remove) are required");
-    }
+    const parsed = validateBody(updateSecondariesSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const employeeId = parsed.data.userId;
+    const action = parsed.data.action;
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
