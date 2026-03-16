@@ -1,5 +1,4 @@
-import "next-auth";
-import "next-auth/jwt";
+import { DefaultSession } from "next-auth";
 
 /**
  * Augment NextAuth types to include custom session/token fields.
@@ -13,11 +12,8 @@ declare module "next-auth" {
   }
 
   interface Session {
-    user: {
+    user: DefaultSession["user"] & {
       id?: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
       role?: string;
       employeeId?: string | null;
       team?: string | null;
