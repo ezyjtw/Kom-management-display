@@ -154,7 +154,7 @@ Draft a notification body for this client about this incident.`;
             Authorization: `Bearer ${env("GROQ_API_KEY")}`,
           },
           body: JSON.stringify({
-            model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+            model: env("GROQ_MODEL") || "llama-3.3-70b-versatile",
             max_tokens: 300,
             temperature: 0.3,
             messages: [
@@ -169,12 +169,12 @@ Draft a notification body for this client about this incident.`;
       }
 
       if (provider === "ollama") {
-        const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+        const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
         const res = await fetch(`${baseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: process.env.OLLAMA_MODEL || "llama3.1",
+            model: env("OLLAMA_MODEL") || "llama3.1",
             stream: false,
             messages: [
               { role: "system", content: systemPrompt },

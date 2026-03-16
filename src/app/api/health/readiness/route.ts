@@ -6,6 +6,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { apiSuccess } from "@/lib/api/response";
+import { env, getEnv, type Env } from "@/lib/env";
 
 interface ReadinessCheck {
   name: string;
@@ -39,12 +40,13 @@ export async function GET() {
   }
 
   // Critical environment variables
-  const criticalEnvVars = [
+  const criticalEnvVars: (keyof Env)[] = [
     "DATABASE_URL",
     "NEXTAUTH_SECRET",
     "NEXTAUTH_URL",
   ];
-  const missingEnv = criticalEnvVars.filter((v) => !process.env[v]);
+  const validatedEnv = getEnv();
+  const missingEnv = criticalEnvVars.filter((v) => !validatedEnv[v]);
   if (missingEnv.length > 0) {
     overallStatus = "not_ready";
     checks.push({
@@ -57,7 +59,7 @@ export async function GET() {
   }
 
   // Optional integrations status
-  const integrations: Record<string, string[]> = {
+  const integrations: Record<string, (keyof Env)[]> = {
     jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
     email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
@@ -68,7 +70,7 @@ export async function GET() {
 
   const configuredIntegrations: string[] = [];
   for (const [name, vars] of Object.entries(integrations)) {
-    if (vars.every((v) => process.env[v])) {
+    if (vars.every((v) => !!validatedEnv[v as keyof Env])) {
       configuredIntegrations.push(name);
     }
   }
@@ -87,8 +89,8 @@ export async function GET() {
       status: overallStatus,
       checks,
       timestamp: new Date().toISOString(),
-      version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || "dev",
-      environment: process.env.NODE_ENV || "development",
+      version: env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev",
+      environment: env("NODE_ENV") || "development",
     },
     undefined,
     statusCode,

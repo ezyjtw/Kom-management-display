@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiSuccess } from "@/lib/api/response";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { getIdempotencyStats } from "@/lib/idempotency";
+import { env } from "@/lib/env";
 
 interface ComponentHealth {
   status: "healthy" | "degraded" | "unhealthy";
@@ -101,8 +102,8 @@ export async function GET(request: NextRequest) {
     status: overallStatus,
     components,
     timestamp: new Date().toISOString(),
-    version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || "dev",
-    environment: process.env.NODE_ENV || "development",
+    version: env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev",
+    environment: env("NODE_ENV") || "development",
     uptime: Math.round(process.uptime()),
     responseTimeMs: Date.now() - start,
   };
