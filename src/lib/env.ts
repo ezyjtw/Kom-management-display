@@ -88,6 +88,11 @@ const envSchema = z.object({
   SLACK_OPS_CHANNEL_ID: z.string().optional(),
   JIRA_PROJECT_KEY: z.string().optional(),
 
+  // Notification channels
+  SLACK_OPS_CHANNEL: z.string().optional(),
+  SLACK_COMPLIANCE_CHANNEL: z.string().optional(),
+  COMPLIANCE_EMAIL_RECIPIENTS: z.string().optional(),
+
   // Railway deployment
   RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
 });
