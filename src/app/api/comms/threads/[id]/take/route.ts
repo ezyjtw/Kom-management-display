@@ -3,9 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiNotFoundError, apiConflictError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiNotFoundError, apiConflictError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import type { ThreadPriority } from "@/types";
+import { z } from "zod";
+
+const takeParamsSchema = z.object({ id: z.string().min(1) });
 
 /**
  * POST /api/comms/threads/:id/take
@@ -23,6 +26,11 @@ export async function POST(
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
+
+  const paramsParsed = takeParamsSchema.safeParse(params);
+  if (!paramsParsed.success) {
+    return apiValidationError("Invalid thread ID");
+  }
 
   try {
     const thread = await prisma.commsThread.findUnique({

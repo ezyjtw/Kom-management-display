@@ -12,6 +12,9 @@ import {
 import type { NotabeneTransfer, TravelRuleMatchStatus } from "@/types";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { z } from "zod";
+
+const recheckParamsSchema = z.object({ id: z.string().min(1) });
 
 /**
  * POST /api/travel-rule/cases/:id/recheck
@@ -34,6 +37,11 @@ export async function POST(
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
+
+  const paramsParsed = recheckParamsSchema.safeParse(params);
+  if (!paramsParsed.success) {
+    return apiValidationError("Invalid case ID");
+  }
 
   try {
     if (!isNotabeneConfigured()) {

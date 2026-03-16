@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Search, X, ArrowRight, Mail, AlertTriangle, FileText, Users, Coins, BarChart3, Shield, Database, Eye } from "lucide-react";
 
 interface SearchResult {
@@ -46,6 +47,7 @@ const MODULE_LABELS: Record<string, string> = {
 };
 
 export default function GlobalSearch() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResponse | null>(null);
@@ -92,7 +94,7 @@ export default function GlobalSearch() {
     setOpen(false);
     setQuery("");
     setResults(null);
-    window.location.href = url;
+    router.push(url);
   }
 
   if (!open) {
@@ -111,7 +113,7 @@ export default function GlobalSearch() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[20vh]" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[20vh]" role="dialog" aria-modal="true" aria-label="Global search" onClick={() => setOpen(false)}>
       <div className="w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Search input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
@@ -120,12 +122,13 @@ export default function GlobalSearch() {
             ref={inputRef}
             type="text"
             placeholder="Search across all modules..."
+            aria-label="Search across all modules"
             className="flex-1 bg-transparent text-sm text-foreground outline-none"
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
           />
           {query && (
-            <button onClick={() => { setQuery(""); setResults(null); }} className="text-muted-foreground hover:text-foreground">
+            <button onClick={() => { setQuery(""); setResults(null); }} className="text-muted-foreground hover:text-foreground" aria-label="Clear search">
               <X size={16} />
             </button>
           )}

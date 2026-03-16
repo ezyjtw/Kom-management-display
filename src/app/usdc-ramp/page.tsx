@@ -90,7 +90,8 @@ export default function UsdcRampPage() {
       const res = await fetch("/api/usdc-ramp", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body }) });
       const json = await res.json();
       if (json.success) fetchData();
-    } catch { /* ignore */ }
+      else setError(json.error || `Update failed (${res.status})`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); }
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -101,7 +102,8 @@ export default function UsdcRampPage() {
       const res = await fetch("/api/usdc-ramp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
       if (json.success) { setShowForm(false); fetchData(); }
-    } catch { /* ignore */ }
+      else setError(json.error || `Create failed (${res.status})`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); }
   }
 
   const filtered = tickets

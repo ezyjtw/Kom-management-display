@@ -139,7 +139,8 @@ export default function SettlementsPage() {
       });
       const json = await res.json();
       if (json.success) fetchData();
-    } catch { /* ignore */ }
+      else setError(json.error || `Update failed (${res.status})`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); }
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -154,7 +155,8 @@ export default function SettlementsPage() {
       });
       const json = await res.json();
       if (json.success) { setShowForm(false); fetchData(); }
-    } catch { /* ignore */ }
+      else setError(json.error || `Create failed (${res.status})`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); }
   }
 
   // Filter
