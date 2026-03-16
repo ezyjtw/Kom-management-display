@@ -5,7 +5,7 @@ import {
   revokeSession,
   revokeAllUserSessions,
 } from "@/lib/session-revocation";
-import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, revokeSessionSchema } from "@/lib/validation";
@@ -27,10 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Non-admin can only view their own sessions
     if (targetUserId && targetUserId !== auth.id && auth.role !== "admin") {
-      return NextResponse.json(
-        { success: false, error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return apiForbiddenError();
     }
 
     const userId = targetUserId || auth.id;
@@ -80,10 +77,7 @@ export async function POST(request: NextRequest) {
           const sessions = await listUserSessions(auth.id);
           const owns = sessions.some((s) => s.sessionToken === sessionToken);
           if (!owns) {
-            return NextResponse.json(
-              { success: false, error: "Cannot revoke sessions belonging to other users" },
-              { status: 403 },
-            );
+            return apiForbiddenError("Cannot revoke sessions belonging to other users");
           }
         }
 
@@ -96,10 +90,7 @@ export async function POST(request: NextRequest) {
 
         // Only admin can revoke other users' sessions
         if (targetUserId !== auth.id && auth.role !== "admin") {
-          return NextResponse.json(
-            { success: false, error: "Insufficient permissions" },
-            { status: 403 },
-          );
+          return apiForbiddenError();
         }
 
         const count = await revokeAllUserSessions(targetUserId, reason || "all_sessions_revoked");

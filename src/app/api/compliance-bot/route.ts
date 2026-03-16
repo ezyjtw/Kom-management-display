@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import { wrapUntrustedContent } from "@/lib/ai";
 import { validateBody, complianceBotSchema } from "@/lib/validation";
+import { apiSuccess, apiValidationError, apiError, handleApiError } from "@/lib/api/response";
 
 const SYSTEM_PROMPT = `You are the KMR Compliance Bot, an expert compliance assistant. Your role is to answer compliance-related questions based on the regulations and guidance published by the following regulators:
 
@@ -32,19 +32,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(complianceBotSchema, body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error },
-        { status: 400 }
-      );
+      return apiValidationError(parsed.error);
     }
     const { messages } = parsed.data;
 
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { success: false, error: "GROQ_API_KEY is not configured" },
-        { status: 500 }
-      );
+      return apiError("GROQ_API_KEY is not configured", 500, "MISSING_CONFIG");
     }
 
     const groq = new Groq({ apiKey });
@@ -66,12 +60,8 @@ export async function POST(request: NextRequest) {
 
     const reply = completion.choices[0]?.message?.content || "No response generated.";
 
-    return NextResponse.json({ success: true, data: { reply } });
+    return apiSuccess({ reply });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { success: false, error: `Compliance bot error: ${message}` },
-      { status: 500 }
-    );
+    return handleApiError(error, "compliance-bot");
   }
 }

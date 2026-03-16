@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { computeSlaStatus, computeTravelRuleAging } from "@/lib/sla";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/command-center
@@ -26,7 +27,7 @@ export async function GET() {
   async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
     try { return await fn(); } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[command-center] ${label} query failed:`, msg);
+      logger.error(`[command-center] ${label} query failed`, { error: msg });
       errors.push(label);
       return fallback;
     }
@@ -37,7 +38,7 @@ export async function GET() {
     try {
       await prisma.$queryRaw`SELECT 1`;
     } catch (err) {
-      console.error("[command-center] Database unreachable:", err instanceof Error ? err.message : err);
+      logger.error("[command-center] Database unreachable", { error: err instanceof Error ? err.message : String(err) });
       return apiSuccess({
         _errors: ["Database unreachable — all metrics may be stale or zero"],
         travelRule: { openCount: 0, redCount: 0, amberCount: 0, topUrgent: [] },

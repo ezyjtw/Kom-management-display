@@ -43,7 +43,7 @@ interface ThreadNote {
   author: { name: string };
 }
 
-interface ThreadDetailData {
+export interface ThreadDetailData {
   id: string;
   source: string;
   subject: string;

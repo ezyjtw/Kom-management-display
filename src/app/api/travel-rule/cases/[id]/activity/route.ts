@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/travel-rule/cases/:id/activity
@@ -117,11 +118,8 @@ export async function GET(
     // Sort combined feed by time descending
     feed.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    return NextResponse.json({ success: true, data: feed });
+    return apiSuccess(feed);
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: safeErrorMessage(error) },
-      { status: 500 },
-    );
+    return handleApiError(error, "travel-rule activity");
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
 import { createAuditEntry } from "@/lib/api/audit";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -37,10 +37,7 @@ export async function GET(request: NextRequest) {
 
   // Only admins can see all registered channels
   if (auth.role !== "admin") {
-    return NextResponse.json(
-      { success: false, error: "Insufficient permissions" },
-      { status: 403 },
-    );
+    return apiForbiddenError();
   }
 
   try {
@@ -66,10 +63,7 @@ export async function POST(request: NextRequest) {
   if (authz instanceof NextResponse) return authz;
 
   if (auth.role !== "admin") {
-    return NextResponse.json(
-      { success: false, error: "Insufficient permissions" },
-      { status: 403 },
-    );
+    return apiForbiddenError();
   }
 
   try {

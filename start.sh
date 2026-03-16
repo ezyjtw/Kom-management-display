@@ -20,16 +20,26 @@ p.\$connect().then(() => { p.\$disconnect(); process.exit(0); }).catch(() => pro
   sleep 2
 done
 
-echo "Running database migrations..."
-node node_modules/prisma/build/index.js migrate deploy || echo "Warning: Migration failed, continuing startup..."
-
-echo "Seeding database (idempotent — safe to re-run)..."
-if node prisma/seed.js 2>&1; then
-  echo "Seed completed successfully."
+# Run migrations unless explicitly skipped (e.g. SKIP_MIGRATIONS=true)
+if [ "${SKIP_MIGRATIONS}" != "true" ]; then
+  echo "Running database migrations..."
+  node node_modules/prisma/build/index.js migrate deploy || echo "Warning: Migration failed, continuing startup..."
 else
-  SEED_EXIT=$?
-  echo "ERROR: Seed script failed with exit code $SEED_EXIT. Check logs above for details."
-  echo "You can re-run seeding from the Admin Panel (Employees tab) or via POST /api/admin/seed."
+  echo "Skipping migrations (SKIP_MIGRATIONS=true)"
+fi
+
+# Only seed in non-production or when explicitly requested (ALLOW_SEED=true)
+if [ "${NODE_ENV}" != "production" ] || [ "${ALLOW_SEED}" = "true" ]; then
+  echo "Seeding database (idempotent — safe to re-run)..."
+  if node prisma/seed.js 2>&1; then
+    echo "Seed completed successfully."
+  else
+    SEED_EXIT=$?
+    echo "WARNING: Seed script failed with exit code $SEED_EXIT. Check logs above for details."
+    echo "You can re-run seeding from the Admin Panel (Employees tab) or via POST /api/admin/seed."
+  fi
+else
+  echo "Skipping seed in production (set ALLOW_SEED=true to override)"
 fi
 
 # Auto-set NEXTAUTH_URL from Railway domain if not explicitly configured
