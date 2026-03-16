@@ -198,7 +198,8 @@ export class EmailAdapter implements IntegrationAdapter {
       return [];
     }
 
-    let connection: { search: Function; end: Function; openBox: Function } | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let connection: { search: any; end: any; openBox: any } | null = null;
 
     try {
       logger.info("Email sync starting", { host: config.host, user: config.user });

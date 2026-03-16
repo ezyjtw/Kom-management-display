@@ -2,7 +2,13 @@
  * In-memory rate limiter for login throttling and API abuse prevention.
  * Uses a sliding window approach.
  *
- * For production at scale, replace with Redis-backed rate limiting.
+ * ⚠️  LIMITATION: This store is process-local. In multi-instance deployments
+ * (e.g. Railway with replicas, Kubernetes), each instance has its own map,
+ * so a brute-forcer hitting different instances gets N × maxAttempts before lockout.
+ *
+ * TODO: Replace with Redis-backed rate limiting for multi-instance deployments.
+ * Migration path: swap the `store` Map for a Redis hash with TTL-based expiry.
+ * The public API (checkLoginRateLimit, resetLoginRateLimit) stays the same.
  */
 
 interface RateLimitEntry {

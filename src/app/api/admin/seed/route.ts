@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { EmployeeRole, TeamName, Region, UserRole, TimePeriodType, ScoreCategory } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { apiSuccess, apiError, apiForbiddenError } from "@/lib/api/response";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/admin/seed
@@ -17,10 +19,7 @@ import { z } from "zod";
 export async function POST() {
   // Gate: block in production unless explicitly allowed
   if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED !== "true") {
-    return NextResponse.json(
-      { success: false, error: "Seed endpoint is disabled in production. Set ALLOW_SEED=true to override." },
-      { status: 403 },
-    );
+    return apiForbiddenError("Seed endpoint is disabled in production. Set ALLOW_SEED=true to override.");
   }
 
   const auth = await requireRole("admin");
@@ -114,10 +113,7 @@ export async function POST() {
     // In production, seed passwords MUST be provided via env vars — no defaults.
     const isProduction = process.env.NODE_ENV === "production";
     if (isProduction && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_USER_PASSWORD || !process.env.SEED_LEAD_PASSWORD)) {
-      return NextResponse.json(
-        { success: false, error: "SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set in production" },
-        { status: 400 },
-      );
+      return apiError("SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set in production", 400, "VALIDATION_ERROR");
     }
     const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD || "admin123";
     const SEED_USER_PW = process.env.SEED_USER_PASSWORD || "user123";
@@ -234,13 +230,10 @@ export async function POST() {
     }
     results.push(`Upserted ${scoreCount} category scores`);
 
-    return NextResponse.json({ success: true, data: { results } });
+    return apiSuccess({ results });
   } catch (error) {
-    console.error("[POST /api/admin/seed] Error:", error);
+    logger.error("[POST /api/admin/seed] Error", { error: error instanceof Error ? error.message : String(error) });
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { success: false, error: `Seed failed: ${message}` },
-      { status: 500 }
-    );
+    return apiError(`Seed failed: ${message}`, 500);
   }
 }

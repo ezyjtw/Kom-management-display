@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
 import { createAuditEntry } from "@/lib/api/audit";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -34,10 +34,7 @@ export async function PATCH(
   if (authz instanceof NextResponse) return authz;
 
   if (auth.role !== "admin") {
-    return NextResponse.json(
-      { success: false, error: "Insufficient permissions" },
-      { status: 403 },
-    );
+    return apiForbiddenError();
   }
 
   try {

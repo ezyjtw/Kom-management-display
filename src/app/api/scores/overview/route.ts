@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
 import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization, applyScopeFilter } from "@/modules/auth/services/authorization";
-import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { Category } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const authz = checkAuthorization(auth, "score", "view");
   if (!authz.allowed && !checkAuthorization(auth, "score", "view_own").allowed) {
-    return NextResponse.json({ success: false, error: "Insufficient permissions" }, { status: 403 });
+    return apiForbiddenError();
   }
 
   try {

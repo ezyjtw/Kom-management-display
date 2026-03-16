@@ -4,11 +4,17 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ThreadDetail } from "@/components/comms/ThreadDetail";
+import { ThreadDetail, ThreadDetailData } from "@/components/comms/ThreadDetail";
+
+interface EmployeeListItem {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
 
 export default function ThreadDetailPage() {
   const params = useParams();
-  const [thread, setThread] = useState<any>(null);
+  const [thread, setThread] = useState<ThreadDetailData | null>(null);
   const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +28,7 @@ export default function ThreadDetailPage() {
           if (threadJson.success) setThread(threadJson.data);
           if (empJson.success) {
             setEmployees(
-              empJson.data.map((e: any) => ({ id: e.id, name: e.name }))
+              empJson.data.map((e: EmployeeListItem) => ({ id: e.id, name: e.name }))
             );
           }
         })
@@ -39,7 +45,7 @@ export default function ThreadDetailPage() {
     });
     const json = await res.json();
     if (json.success) {
-      setThread((prev: any) => ({ ...prev, status, lastActionAt: new Date().toISOString() }));
+      setThread((prev) => prev ? { ...prev, status, lastActionAt: new Date().toISOString() } : prev);
     }
   }
 

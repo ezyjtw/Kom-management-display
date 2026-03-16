@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
     // Also count total unresolved, overdue, and failing patterns
     let trCasesOpen = 0;
     let trCasesOverdue = 0;
-    let trCasesTotal = travelCases.length;
+    const trCasesTotal = travelCases.length;
     const trAssetIssues = new Map<string, { total: number; open: number; overdue: number }>();
 
     for (const tc of travelCases) {

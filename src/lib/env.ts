@@ -135,5 +135,13 @@ export function isEnvValidated(): boolean {
   return _validated;
 }
 
+/**
+ * Convenience accessor for a single validated env var.
+ * Use this instead of process.env.FOO throughout the codebase.
+ */
+export function env<K extends keyof Env>(key: K): Env[K] {
+  return getEnv()[key];
+}
+
 // Validate on module load (skipped during build)
 getEnv();

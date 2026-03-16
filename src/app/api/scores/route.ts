@@ -8,6 +8,7 @@ import { scoringService } from "@/modules/scoring/services/scoring-service";
 import { scoreRepository } from "@/modules/scoring/repositories/score-repository";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
+import { logger } from "@/lib/logger";
 import type { Category } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -47,16 +48,16 @@ export async function GET(request: NextRequest) {
     try {
       latestPeriod = await scoreRepository.getLatestPeriod(periodType);
     } catch (err) {
-      console.error("Failed to fetch latest period:", err);
+      logger.error("Failed to fetch latest period", { error: err instanceof Error ? err.message : String(err) });
       return apiSuccess([]);
     }
     if (!latestPeriod) {
       // No scoring periods yet — return employees with default scores
       const employeeWhere: Record<string, unknown> = { active: true };
-      if (authz.scope === "own" && (auth as { employeeId?: string }).employeeId) {
-        employeeWhere.id = (auth as { employeeId?: string }).employeeId;
-      } else if (authz.scope === "team" && (auth as { team?: string }).team) {
-        employeeWhere.team = (auth as { team?: string }).team;
+      if (authz.scope === "own" && auth.employeeId) {
+        employeeWhere.id = auth.employeeId;
+      } else if (authz.scope === "team" && auth.team) {
+        employeeWhere.team = auth.team;
       }
       const employees = await prisma.employee.findMany({ where: employeeWhere });
       const config = await scoringService.getActiveScoringConfig();
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
         name: employee.name,
         role: employee.role,
         team: employee.team,
-        region: (employee as Record<string, unknown>).region ?? "",
+        region: employee.region ?? "",
         overallScore,
         categoryScores,
         trends,

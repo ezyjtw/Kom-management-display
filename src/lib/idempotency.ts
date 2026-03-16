@@ -6,8 +6,13 @@
  * `Idempotency-Key` header; the server caches the response for that key
  * and returns it verbatim on subsequent requests.
  *
- * Storage: In-memory with TTL eviction. For multi-instance deployments,
- * replace with a Redis or database-backed store.
+ * ⚠️  LIMITATION: Storage is process-local (in-memory Map with TTL eviction).
+ * In multi-instance deployments, a retried request may hit a different instance
+ * that has no record of the original — resulting in duplicate processing.
+ *
+ * TODO: Replace with Redis or database-backed store for multi-instance deployments.
+ * Migration: swap the `store` Map for Redis SET with NX + TTL, or a Postgres
+ * idempotency_keys table. The public API stays the same.
  *
  * Flow:
  *   1. Client sends POST/PUT with `Idempotency-Key: <uuid>` header
