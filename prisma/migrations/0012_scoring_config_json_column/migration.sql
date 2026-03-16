@@ -23,6 +23,22 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_column THEN NULL;
 END $$;
 
+-- Ensure a placeholder "system" user exists so the FK constraint can be added.
+-- Production data may contain ScoringConfig rows with createdById = 'system'
+-- that were inserted before this FK existed.
+INSERT INTO "User" ("id", "email", "name", "role", "password", "createdAt", "updatedAt")
+VALUES ('system', 'system@internal', 'System', 'admin',
+        '$2b$10$000000000000000000000uLockAccountNoLoginPossible000000000',
+        NOW(), NOW())
+ON CONFLICT ("id") DO NOTHING;
+
+-- Also handle any other orphaned createdById values that don't reference a valid User
+-- by pointing them to the system user.
+UPDATE "ScoringConfig"
+SET "createdById" = 'system'
+WHERE "createdById" IS NOT NULL
+  AND "createdById" NOT IN (SELECT "id" FROM "User");
+
 -- Add foreign keys for ScoringConfig user relations
 DO $$ BEGIN
   ALTER TABLE "ScoringConfig" ADD CONSTRAINT "ScoringConfig_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
