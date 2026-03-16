@@ -1,9 +1,9 @@
 /**
  * Environment variable validation using Zod.
  *
- * Validates all required and optional env vars at import time.
- * Imported early in the application lifecycle (e.g., instrumentation.ts or layout.tsx)
- * to catch misconfiguration before any request is served.
+ * Validates required and optional env vars on first request.
+ * Skipped during `next build` (where env vars may not be available)
+ * but enforced at runtime — fails fast on misconfiguration in production.
  *
  * This replaces scattered process.env checks with a single source of truth.
  */
@@ -83,18 +83,28 @@ export type Env = z.infer<typeof envSchema>;
 
 /**
  * Validated environment variables.
- * Throws on first access if validation fails.
+ * Throws on first access if validation fails in production.
  */
 let _env: Env | null = null;
+let _validated = false;
 
 export function getEnv(): Env {
   if (_env) return _env;
+
+  // Skip validation during build phase (next build renders pages server-side
+  // where runtime env vars like NEXTAUTH_SECRET are not available).
+  // The NEXT_PHASE env var is set by Next.js during build.
+  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+  if (isBuildPhase) {
+    _env = process.env as unknown as Env;
+    return _env;
+  }
 
   const result = envSchema.safeParse(process.env);
 
   if (!result.success) {
     const formatted = result.error.issues
-      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+      .map((i: z.ZodIssue) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
 
     console.error(
@@ -102,7 +112,7 @@ export function getEnv(): Env {
       `Check your .env file against .env.example for required variables.\n`,
     );
 
-    // In development, warn but don't crash to allow partial setup
+    // In development/test, warn but don't crash to allow partial setup
     if (process.env.NODE_ENV !== "production") {
       console.warn("⚠️  Continuing with invalid env in development mode.\n");
       _env = process.env as unknown as Env;
@@ -113,8 +123,17 @@ export function getEnv(): Env {
   }
 
   _env = result.data;
+  _validated = true;
   return _env;
 }
 
-// Validate on module load
+/**
+ * Whether the environment has been successfully validated.
+ * Useful for health checks to report configuration status.
+ */
+export function isEnvValidated(): boolean {
+  return _validated;
+}
+
+// Validate on module load (skipped during build)
 getEnv();
