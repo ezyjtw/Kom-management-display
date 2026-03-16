@@ -21,7 +21,13 @@ p.\$connect().then(() => { p.\$disconnect(); process.exit(0); }).catch(() => pro
 done
 
 # Run migrations unless explicitly skipped (e.g. SKIP_MIGRATIONS=true)
-if [ "${SKIP_MIGRATIONS}" != "true" ]; then
+if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then
+  echo "Running database migrations (production — fail-fast)..."
+  node node_modules/prisma/build/index.js migrate deploy || {
+    echo "FATAL: Migration failed in production. Aborting startup."
+    exit 1
+  }
+elif [ "${SKIP_MIGRATIONS}" != "true" ]; then
   echo "Running database migrations..."
   node node_modules/prisma/build/index.js migrate deploy || echo "Warning: Migration failed, continuing startup..."
 else

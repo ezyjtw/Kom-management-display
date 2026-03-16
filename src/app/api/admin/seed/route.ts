@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { apiSuccess, apiError, apiForbiddenError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 /**
  * POST /api/admin/seed
@@ -18,7 +19,7 @@ import { logger } from "@/lib/logger";
  */
 export async function POST() {
   // Gate: block in production unless explicitly allowed
-  if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED !== "true") {
+  if (process.env.NODE_ENV === "production" && env("ALLOW_SEED") !== "true") {
     return apiForbiddenError("Seed endpoint is disabled in production. Set ALLOW_SEED=true to override.");
   }
 
@@ -112,12 +113,12 @@ export async function POST() {
 
     // In production, seed passwords MUST be provided via env vars — no defaults.
     const isProduction = process.env.NODE_ENV === "production";
-    if (isProduction && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_USER_PASSWORD || !process.env.SEED_LEAD_PASSWORD)) {
+    if (isProduction && (!env("SEED_ADMIN_PASSWORD") || !env("SEED_USER_PASSWORD") || !env("SEED_LEAD_PASSWORD"))) {
       return apiError("SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set in production", 400, "VALIDATION_ERROR");
     }
-    const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD || "admin123";
-    const SEED_USER_PW = process.env.SEED_USER_PASSWORD || "user123";
-    const SEED_LEAD_PW = process.env.SEED_LEAD_PASSWORD || "lead123";
+    const SEED_ADMIN_PW = env("SEED_ADMIN_PASSWORD") || "admin123";
+    const SEED_USER_PW = env("SEED_USER_PASSWORD") || "user123";
+    const SEED_LEAD_PW = env("SEED_LEAD_PASSWORD") || "lead123";
     const adminHash = await bcrypt.hash(SEED_ADMIN_PW, 10);
     const userHash = await bcrypt.hash(SEED_USER_PW, 10);
     const leadHash = await bcrypt.hash(SEED_LEAD_PW, 10);

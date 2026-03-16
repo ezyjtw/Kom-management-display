@@ -2,6 +2,10 @@
   "name": "kom-management-display",
   "version": "1.0.0",
   "description": "Ops Team Management Dashboard with Comms & Ownership Module",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -9,8 +13,14 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "prisma migrate deploy",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:watch": "vitest",
+    "ci:check": "npm run db:generate && npm run typecheck && npm run lint && npm run test && npm run build",
+    "ci:validate-env": "tsx scripts/validate-env-schema.ts",
+    "prebuild": "tsx scripts/prebuild-checks.ts",
+    "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts"

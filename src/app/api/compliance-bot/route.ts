@@ -5,6 +5,7 @@ import Groq from "groq-sdk";
 import { wrapUntrustedContent } from "@/lib/ai";
 import { validateBody, complianceBotSchema } from "@/lib/validation";
 import { apiSuccess, apiValidationError, apiError, handleApiError } from "@/lib/api/response";
+import { env } from "@/lib/env";
 
 const SYSTEM_PROMPT = `You are a senior compliance officer at KMR, a digital asset custody firm licensed by JFSC, FCA, VARA, and under MiCAR. You have deep expertise across all four regulatory frameworks and speak with the authority of an in-house compliance team member — not an external advisor.
 
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
     const { messages } = parsed.data;
 
-    const apiKey = process.env.GROQ_API_KEY;
+    const apiKey = env("GROQ_API_KEY");
     if (!apiKey) {
       return apiError("GROQ_API_KEY is not configured", 500, "MISSING_CONFIG");
     }

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
+import { env } from "@/lib/env";
 
 /**
  * POST /api/integrations/slack
@@ -62,12 +63,12 @@ export async function GET() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
-  const configured = !!process.env.SLACK_BOT_TOKEN;
+  const configured = !!env("SLACK_BOT_TOKEN");
 
   return apiSuccess({
     configured,
-    channels: process.env.SLACK_CHANNELS
-      ? process.env.SLACK_CHANNELS.split(",").map((ch) => ch.trim())
+    channels: env("SLACK_CHANNELS")
+      ? env("SLACK_CHANNELS")!.split(",").map((ch) => ch.trim())
       : [],
   });
 }

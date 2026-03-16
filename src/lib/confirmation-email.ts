@@ -5,6 +5,7 @@
 
 import nodemailer from "nodemailer";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 interface ConfirmationEmailData {
   to: string[];
@@ -19,13 +20,13 @@ interface ConfirmationEmailData {
 
 function getTransporter() {
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "localhost",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: process.env.SMTP_USER
+    host: env("SMTP_HOST") || "localhost",
+    port: parseInt(env("SMTP_PORT") || "587"),
+    secure: env("SMTP_SECURE") === "true",
+    auth: env("SMTP_USER")
       ? {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
+          user: env("SMTP_USER"),
+          pass: env("SMTP_PASSWORD"),
         }
       : undefined,
   });
@@ -33,7 +34,7 @@ function getTransporter() {
 
 export async function sendConfirmationEmail(data: ConfirmationEmailData): Promise<void> {
   const transporter = getTransporter();
-  const appUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const appUrl = env("NEXTAUTH_URL") || "http://localhost:3000";
   const riskBadge = data.riskLevel === "critical"
     ? '<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold;">CRITICAL</span>'
     : '<span style="background:#f97316;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold;">HIGH RISK</span>';
@@ -94,7 +95,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
 
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || "kommand-centre@company.com",
+      from: env("SMTP_FROM") || "kommand-centre@company.com",
       to: data.to.join(", "),
       subject,
       html,

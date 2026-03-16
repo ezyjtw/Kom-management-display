@@ -7,6 +7,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -77,9 +78,9 @@ interface NotabeneVasp {
 // ---------------------------------------------------------------------------
 
 function getConfig(): NotabeneConfig | null {
-  const baseUrl = process.env.NOTABENE_API_BASE_URL;
-  const apiToken = process.env.NOTABENE_API_TOKEN || process.env.NOTABENE_API_KEY;
-  const vaspDid = process.env.NOTABENE_VASP_DID;
+  const baseUrl = env("NOTABENE_API_BASE_URL");
+  const apiToken = env("NOTABENE_API_TOKEN");
+  const vaspDid = env("NOTABENE_VASP_DID");
   if (!baseUrl || !apiToken || !vaspDid) return null;
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiToken, vaspDid };
 }

@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { createAuditEntry } from "@/lib/api/audit";
 import { slackBreaker, emailBreaker } from "@/lib/circuit-breaker";
+import { env } from "@/lib/env";
 
 interface Recipient {
   channel: "slack" | "email";
@@ -208,7 +209,7 @@ export async function dispatchClientComms(
 // ─── Channel Implementations ───
 
 async function sendViaSlack(channelId: string, message: string): Promise<void> {
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = env("SLACK_BOT_TOKEN");
   if (!token) {
     throw new Error("SLACK_BOT_TOKEN not configured");
   }
@@ -243,7 +244,7 @@ async function sendViaEmail(
   body: string,
 ): Promise<void> {
   // Use SMTP or email API if configured
-  const smtpHost = process.env.SMTP_HOST;
+  const smtpHost = env("SMTP_HOST");
   if (!smtpHost) {
     throw new Error("SMTP_HOST not configured");
   }
@@ -253,15 +254,15 @@ async function sendViaEmail(
     const nodemailer = await import("nodemailer");
     const transporter = nodemailer.createTransport({
       host: smtpHost,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true",
-      auth: process.env.SMTP_USER
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      port: parseInt(env("SMTP_PORT") || "587"),
+      secure: env("SMTP_SECURE") === "true",
+      auth: env("SMTP_USER")
+        ? { user: env("SMTP_USER"), pass: env("SMTP_PASSWORD") }
         : undefined,
     });
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || "ops@company.com",
+      from: env("SMTP_FROM") || "ops@company.com",
       to: toAddress,
       subject: `Service Update — ${clientName}`,
       text: body,

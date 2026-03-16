@@ -1,39 +1,37 @@
 /**
- * CSRF protection for state-changing requests.
+ * CSRF protection utilities for route-level use.
  *
- * Uses the double-submit cookie pattern combined with origin/referer validation:
+ * NOTE: Primary CSRF enforcement happens in src/middleware.ts (Edge Runtime).
+ * This module provides utilities for route handlers that need additional
+ * CSRF validation. The middleware handles origin/referer validation for
+ * all matched routes automatically.
  *
- *   1. Origin Check: Validates the Origin or Referer header matches the
- *      configured application URL. This blocks cross-origin POST/PUT/DELETE/PATCH.
- *
- *   2. Custom Header Check: Requires a custom X-Requested-With header on
- *      mutations. Browsers enforce CORS preflight for requests with custom
- *      headers, which prevents cross-origin requests from untrusted origins.
- *
- * This is a stateless approach that doesn't require per-session tokens.
- * The combination of origin validation + custom header provides strong
- * CSRF protection without adding complexity.
- *
- * Usage in API routes:
- *   const csrfError = validateCsrf(request);
- *   if (csrfError) return csrfError;
+ * Security headers are defined in THREE places (kept in sync manually):
+ * 1. src/middleware.ts - applied to all middleware-matched responses
+ * 2. next.config.js - applied to all responses including static assets
+ * 3. This file (getSecurityHeaders) - available for programmatic use
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { apiError } from "@/lib/api/response";
+import { env } from "@/lib/env";
 
 /** HTTP methods that modify state and need CSRF protection. */
 const PROTECTED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-/** Paths exempt from CSRF checks (webhooks, cron endpoints). */
+/**
+ * Paths exempt from CSRF checks.
+ * Each path is exempt because it receives requests from external services
+ * that won't have a matching origin/referer header.
+ */
 const EXEMPT_PATHS = [
-  "/api/auth/",
-  "/api/integrations/slack",
-  "/api/integrations/jira",
-  "/api/alerts/generate",
-  "/api/events",
-  "/api/health",
+  "/api/auth/",             // NextAuth callback flow (OAuth redirects from providers)
+  "/api/webhooks/slack",    // Slack webhook deliveries (verified via signing secret)
+  "/api/webhooks/jira",     // Jira webhook deliveries (verified via signature)
+  "/api/alerts/generate",   // Cron/external trigger (verified via CRON_SECRET bearer token)
+  "/api/events",            // SSE endpoint (GET-only, no mutation risk)
+  "/api/health",            // Health check endpoint (no auth, no mutation)
 ];
 
 /**
@@ -43,9 +41,10 @@ const EXEMPT_PATHS = [
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];
 
-  if (process.env.NEXTAUTH_URL) {
+  const nextauthUrl = env("NEXTAUTH_URL");
+  if (nextauthUrl) {
     try {
-      const url = new URL(process.env.NEXTAUTH_URL);
+      const url = new URL(nextauthUrl);
       origins.push(url.origin);
     } catch {
       // Invalid URL, skip
@@ -53,8 +52,9 @@ function getAllowedOrigins(): string[] {
   }
 
   // Additional allowed origins (comma-separated)
-  if (process.env.CSRF_ALLOWED_ORIGINS) {
-    origins.push(...process.env.CSRF_ALLOWED_ORIGINS.split(",").map((o) => o.trim()));
+  const csrfOrigins = env("CSRF_ALLOWED_ORIGINS");
+  if (csrfOrigins) {
+    origins.push(...csrfOrigins.split(",").map((o) => o.trim()));
   }
 
   // Always allow localhost in development
@@ -67,6 +67,7 @@ function getAllowedOrigins(): string[] {
 
 /**
  * Validate CSRF protection on a request.
+ * This is for route-level use. Primary CSRF enforcement is in middleware.ts.
  *
  * Returns null if the request passes CSRF validation, or a 403 response if it fails.
  */
@@ -83,12 +84,12 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
     return null;
   }
 
-  // 1. Origin/Referer validation
+  // Origin/Referer validation — no x-requested-with fallback
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
   const allowedOrigins = getAllowedOrigins();
 
-  if (allowedOrigins.length > 0) {
+  if (allowedOrigins.length > 0 && process.env.NODE_ENV === "production") {
     let originValid = false;
 
     if (origin) {
@@ -100,11 +101,8 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
       } catch {
         originValid = false;
       }
-    } else {
-      // No origin or referer — could be a same-origin request from some browsers
-      // or a non-browser client. Allow if the custom header is present.
-      originValid = true;
     }
+    // No fallback: production mutations MUST have a valid origin or referer header.
 
     if (!originValid) {
       logger.security("CSRF origin validation failed", {
@@ -118,45 +116,15 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
     }
   }
 
-  // 2. Custom header check (X-Requested-With)
-  // Browsers enforce CORS preflight for non-standard headers,
-  // which prevents cross-origin requests from untrusted sites.
-  const requestedWith = request.headers.get("x-requested-with");
-  if (!requestedWith) {
-    // Allow requests from same-origin that have a valid origin/referer
-    // but don't have the custom header (e.g., form submissions from our app)
-    if (origin && allowedOrigins.includes(origin)) {
-      return null;
-    }
-    if (referer) {
-      try {
-        const refererOrigin = new URL(referer).origin;
-        if (allowedOrigins.includes(refererOrigin)) {
-          return null;
-        }
-      } catch {
-        // Invalid referer
-      }
-    }
-
-    // In development, be more lenient
-    if (process.env.NODE_ENV !== "production") {
-      return null;
-    }
-
-    logger.security("CSRF custom header missing", {
-      path,
-      method: request.method,
-    });
-    return apiError("Missing X-Requested-With header", 403, "CSRF_HEADER_MISSING");
-  }
-
   return null;
 }
 
 /**
  * Security headers to add to all responses.
  * These headers provide defense-in-depth against common web attacks.
+ *
+ * NOTE: These same headers are defined in src/middleware.ts and next.config.js.
+ * Changes here must be reflected in those locations as well.
  */
 export function getSecurityHeaders(): Record<string, string> {
   return {
@@ -165,7 +133,7 @@ export function getSecurityHeaders(): Record<string, string> {
     // Prevent clickjacking
     "X-Frame-Options": "DENY",
     // Enable XSS filter (legacy browsers)
-    "X-XSS-Protection": "1; mode=block",
+    "X-XSS-Protection": "0",
     // Restrict referrer information
     "Referrer-Policy": "strict-origin-when-cross-origin",
     // Prevent DNS prefetching to external domains

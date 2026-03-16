@@ -7,6 +7,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -53,9 +54,9 @@ interface JiraSearchResult {
 // ---------------------------------------------------------------------------
 
 function getJiraConfig(): JiraConfig | null {
-  const baseUrl = process.env.JIRA_BASE_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
+  const baseUrl = env("JIRA_BASE_URL");
+  const email = env("JIRA_EMAIL");
+  const apiToken = env("JIRA_API_TOKEN");
   if (!baseUrl || !email || !apiToken) return null;
   return { baseUrl: baseUrl.replace(/\/$/, ""), email, apiToken };
 }

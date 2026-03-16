@@ -72,8 +72,21 @@ const envSchema = z.object({
   // AI
   AI_PROVIDER: z.enum(["groq", "anthropic", "ollama"]).optional(),
   GROQ_API_KEY: z.string().optional(),
+  GROQ_MODEL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional(),
+  OLLAMA_MODEL: z.string().optional(),
+
+  // Webhook secrets
+  JIRA_WEBHOOK_SECRET: z.string().optional(),
+
+  // Fireblocks
+  FIREBLOCKS_API_BASE_URL: z.string().optional(),
+
+  // Job runner
+  SLACK_OPS_CHANNEL_ID: z.string().optional(),
+  JIRA_PROJECT_KEY: z.string().optional(),
 
   // Railway deployment
   RAILWAY_GIT_COMMIT_SHA: z.string().optional(),

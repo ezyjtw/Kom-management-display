@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { isAiEnabled, getProviderName } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
+import { env } from "@/lib/env";
 
 interface ImpactRecordInput {
   id: string;
@@ -134,9 +135,9 @@ Draft a notification body for this client about this incident.`;
 
       if (provider === "anthropic") {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY") });
         const response = await client.messages.create({
-          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+          model: env("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514",
           max_tokens: 300,
           system: systemPrompt,
           messages: [{ role: "user", content: userMessage }],
@@ -150,7 +151,7 @@ Draft a notification body for this client about this incident.`;
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            Authorization: `Bearer ${env("GROQ_API_KEY")}`,
           },
           body: JSON.stringify({
             model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",

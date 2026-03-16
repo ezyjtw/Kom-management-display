@@ -17,6 +17,7 @@ declare module "next-auth" {
       role?: string;
       employeeId?: string | null;
       team?: string | null;
+      jti?: string;
     };
   }
 }

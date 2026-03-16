@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { isSessionRevoked } from "@/lib/session-revocation";
+import { env } from "@/lib/env";
 
 /**
  * GET /api/sessions/check?token=<jti>
@@ -13,7 +14,7 @@ import { isSessionRevoked } from "@/lib/session-revocation";
 export async function GET(request: NextRequest) {
   // Allow internal middleware calls via shared secret
   const internalSecret = request.headers.get("x-internal-check");
-  const isInternalCall = internalSecret && internalSecret === process.env.NEXTAUTH_SECRET;
+  const isInternalCall = internalSecret && internalSecret === env("NEXTAUTH_SECRET");
 
   if (!isInternalCall) {
     // Fall back to standard session auth

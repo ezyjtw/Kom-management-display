@@ -6,6 +6,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
+import { env } from "@/lib/env";
 
 /**
  * GET /api/alerts/generate
@@ -15,7 +16,7 @@ import { z } from "zod";
  * Manual trigger from admin panel. Admin only.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env("CRON_SECRET");
   if (!cronSecret) {
     return apiError("CRON_SECRET not configured", 500);
   }

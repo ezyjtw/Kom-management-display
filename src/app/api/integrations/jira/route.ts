@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
+import { env } from "@/lib/env";
 
 /**
  * POST /api/integrations/jira
@@ -66,12 +67,12 @@ export async function GET() {
   if (auth instanceof NextResponse) return auth;
 
   const configured =
-    !!process.env.JIRA_BASE_URL &&
-    !!process.env.JIRA_EMAIL &&
-    !!process.env.JIRA_API_TOKEN;
+    !!env("JIRA_BASE_URL") &&
+    !!env("JIRA_EMAIL") &&
+    !!env("JIRA_API_TOKEN");
 
   return apiSuccess({
     configured,
-    baseUrl: configured ? process.env.JIRA_BASE_URL : null,
+    baseUrl: configured ? env("JIRA_BASE_URL") : null,
   });
 }

@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -78,9 +79,9 @@ interface CustodyPagedResponse<T> {
 let tokenCache: TokenCache | null = null;
 
 function getConfig(): CustodyConfig | null {
-  const baseUrl = process.env.CUSTODY_API_BASE_URL || process.env.CUSTODY_API_URL;
-  const apiUser = process.env.CUSTODY_API_USER || process.env.CUSTODY_API_KEY;
-  const apiSecret = process.env.CUSTODY_API_SECRET;
+  const baseUrl = env("CUSTODY_API_BASE_URL");
+  const apiUser = env("CUSTODY_API_USER");
+  const apiSecret = env("CUSTODY_API_SECRET");
   if (!baseUrl || !apiUser || !apiSecret) return null;
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiUser, apiSecret };
 }

@@ -12,6 +12,7 @@ import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { isAiEnabled } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
+import { env } from "@/lib/env";
 import { incidentService } from "@/modules/incidents/services/incident-service";
 
 // ─── Types ───
@@ -59,9 +60,9 @@ async function classifyViaAi(
 
       if (provider === "anthropic") {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY") });
         const response = await client.messages.create({
-          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+          model: env("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514",
           max_tokens: 512,
           system: systemPrompt,
           messages: [{ role: "user", content: userMessage }],
@@ -75,10 +76,10 @@ async function classifyViaAi(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            Authorization: `Bearer ${env("GROQ_API_KEY")}`,
           },
           body: JSON.stringify({
-            model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+            model: env("GROQ_MODEL") || "llama-3.3-70b-versatile",
             max_tokens: 512,
             temperature: 0.2,
             messages: [
@@ -93,12 +94,12 @@ async function classifyViaAi(
       }
 
       if (provider === "ollama") {
-        const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+        const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
         const res = await fetch(`${baseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: process.env.OLLAMA_MODEL || "llama3.1",
+            model: env("OLLAMA_MODEL") || "llama3.1",
             stream: false,
             messages: [
               { role: "system", content: systemPrompt },

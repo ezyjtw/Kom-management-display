@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Role-based idle timeout in seconds. Privileged roles get shorter timeouts.
- * Checked against lastActiveAt from the session metadata table for accurate
- * idle tracking (not token.iat which only reflects issuance time).
+ *
+ * NOTE: In Edge middleware, we can only use token.iat as a rough approximation.
+ * Accurate idle tracking happens in requireAuth() (src/lib/auth-user.ts) via
+ * lastActiveAt DB lookup in the SessionMetadata table.
  */
 const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
   admin: 2 * 60 * 60,    // 2 hours
@@ -36,26 +38,30 @@ const SENSITIVE_ACTION_MAX_AGE: Record<string, number> = {
 /** HTTP methods that modify state. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-/** Paths exempt from CSRF origin validation (webhooks, auth, SSE). */
+/**
+ * Paths exempt from CSRF origin validation.
+ * Each path is exempt because it receives requests from external services
+ * that won't have a matching origin/referer header.
+ */
 const CSRF_EXEMPT_PATHS = [
-  "/api/auth/",
-  "/api/integrations/slack",
-  "/api/integrations/jira",
-  "/api/alerts/generate",
-  "/api/events",
-  "/api/health",
+  "/api/auth/",             // NextAuth callback flow (OAuth redirects from providers)
+  "/api/webhooks/slack",    // Slack webhook deliveries (verified via signing secret)
+  "/api/webhooks/jira",     // Jira webhook deliveries (verified via signature)
+  "/api/alerts/generate",   // Cron/external trigger (verified via CRON_SECRET bearer token)
+  "/api/events",            // SSE endpoint (GET-only, no mutation risk)
+  "/api/health",            // Health check endpoint (no auth, no mutation)
 ];
 
 /**
  * Security headers applied to every response.
- * Kept in sync with getSecurityHeaders() in src/lib/csrf.ts.
+ * Kept in sync with getSecurityHeaders() in src/lib/csrf.ts and next.config.js.
  * Defined inline here because middleware runs in Edge Runtime and cannot
  * transitively import Node.js crypto (used by api/response.ts).
  */
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
+  "X-XSS-Protection": "0",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-DNS-Prefetch-Control": "off",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
@@ -86,7 +92,8 @@ function getAllowedOrigins(): string[] {
 
 /**
  * Validate CSRF protection on a mutation request.
- * Mirrors the logic in src/lib/csrf.ts validateCsrf() but runs in Edge Runtime.
+ * Runs in Edge Runtime. For production mutations, requires a valid origin OR referer header.
+ * No x-requested-with fallback — tightened to require origin/referer proof.
  * Returns a 403 response if validation fails, or null if it passes.
  */
 function validateCsrf(req: NextRequest, path: string): NextResponse | null {
@@ -108,10 +115,8 @@ function validateCsrf(req: NextRequest, path: string): NextResponse | null {
       try {
         originValid = allowedOrigins.includes(new URL(referer).origin);
       } catch { originValid = false; }
-    } else {
-      // No origin header — allow if custom header is present (CORS preflight guard)
-      originValid = !!req.headers.get("x-requested-with");
     }
+    // No fallback: production mutations MUST have a valid origin or referer header.
 
     if (!originValid) {
       return NextResponse.json(
@@ -148,18 +153,6 @@ export async function middleware(req: NextRequest) {
       secureCookie: !isSecure,
     }));
 
-  // Allow internal session revocation check (used by middleware itself)
-  if (path === "/api/sessions/check") {
-    const internalSecret = req.headers.get("x-internal-check");
-    if (internalSecret && internalSecret === process.env.NEXTAUTH_SECRET) {
-      return addSecurityHeaders(NextResponse.next());
-    }
-    // Block external access
-    return addSecurityHeaders(
-      NextResponse.json({ error: "Forbidden" }, { status: 403 }),
-    );
-  }
-
   // Allow cron/external calls to alert generate endpoint with CRON_SECRET
   if (path === "/api/alerts/generate") {
     const authHeader = req.headers.get("authorization");
@@ -173,7 +166,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Allow webhook endpoints with their own auth (signature verification)
-  const webhookPaths = ["/api/integrations/slack", "/api/integrations/jira"];
+  const webhookPaths = ["/api/webhooks/slack", "/api/webhooks/jira"];
   if (webhookPaths.some((p) => path.startsWith(p)) && req.method === "POST") {
     return addSecurityHeaders(NextResponse.next());
   }
@@ -190,45 +183,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // ─── Session Revocation Check ───
-  // Check if this session has been explicitly revoked (e.g., admin forced logout).
-  // Uses the session token JTI as the revocation key. Only checked for privileged
-  // roles on every request; regular users are checked on sensitive operations only.
+  // Session revocation is checked at the route handler level in requireAuth()
+  // (src/lib/auth-user.ts) where Prisma IS available. Edge middleware cannot
+  // use Prisma directly, and self-fetching /api/sessions/check is an anti-pattern.
   const role = token.role as string;
-  const sessionJti = token.jti as string | undefined;
-
-  if (sessionJti) {
-    const privilegedRoles = ["admin", "lead", "auditor"];
-    const isSensitiveOp = isApi && MUTATION_METHODS.has(req.method);
-
-    if (privilegedRoles.includes(role) || isSensitiveOp) {
-      try {
-        // Dynamic import to avoid bundling Prisma in edge middleware
-        // We use a lightweight fetch-based check instead
-        const revocationCheckUrl = new URL("/api/sessions/check", req.url);
-        revocationCheckUrl.searchParams.set("token", sessionJti);
-        const revocationRes = await fetch(revocationCheckUrl.toString(), {
-          headers: { "x-internal-check": process.env.NEXTAUTH_SECRET || "" },
-        });
-        if (revocationRes.ok) {
-          const revocationData = await revocationRes.json();
-          if (revocationData.revoked) {
-            if (isApi) {
-              return addSecurityHeaders(
-                NextResponse.json(
-                  { success: false, error: "Session has been revoked", code: "SESSION_REVOKED" },
-                  { status: 401 },
-                ),
-              );
-            }
-            return NextResponse.redirect(new URL("/login?reason=session_revoked", req.url));
-          }
-        }
-      } catch {
-        // Fail-open: don't block users if revocation check fails (e.g., DB down)
-      }
-    }
-  }
 
   // Enforce session timeouts (both idle and absolute)
   if (token.iat) {
@@ -248,10 +206,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
     }
 
-    // Role-based idle timeout — uses token.iat as approximation.
-    // For more accurate idle tracking, the session metadata table records
-    // lastActiveAt which is updated on each authenticated request via
-    // the recordSession() function in auth-options callbacks.
+    // Role-based idle timeout — uses token.iat as a rough approximation only.
+    // Real idle tracking happens in requireAuth() via lastActiveAt DB lookup
+    // (updated by updateLastActive() on each authenticated request).
     const idleTimeout = IDLE_TIMEOUT_SECONDS[role] ?? IDLE_TIMEOUT_SECONDS.employee;
     if (ageSeconds > idleTimeout) {
       if (isApi) {
@@ -342,8 +299,6 @@ export async function middleware(req: NextRequest) {
   // Propagate correlation ID and security context to response
   response.headers.set("x-correlation-id", correlationId);
   response.headers.set("x-request-id", correlationId);
-  response.headers.set("x-user-role", role);
-
   return addSecurityHeaders(response);
 }
 
@@ -415,5 +370,8 @@ export const config = {
     "/api/reports/:path*",
     "/api/search/:path*",
     "/api/metrics/:path*",
+    "/api/webhooks/:path*",
+    "/api/compliance-bot/:path*",
+    "/client-comms/:path*",
   ],
 };

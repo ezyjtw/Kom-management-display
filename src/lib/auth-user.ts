@@ -1,6 +1,8 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth-options";
+import { isSessionRevoked, updateLastActive } from "@/lib/session-revocation";
+import { logger } from "@/lib/logger";
 
 export interface AuthUser {
   id: string;
@@ -31,16 +33,49 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
 /**
  * Require the user to be authenticated. Returns 401 if not.
+ *
+ * Also performs session revocation check (Prisma available here, unlike Edge
+ * middleware) and updates lastActiveAt for idle timeout tracking.
  */
 export async function requireAuth(): Promise<AuthUser | NextResponse> {
-  const user = await getAuthUser();
-  if (!user) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
     return NextResponse.json(
       { success: false, error: "Authentication required" },
       { status: 401 }
     );
   }
-  return user;
+
+  // Check if session has been revoked (Prisma available here, unlike Edge middleware)
+  const jti = session.user.jti;
+  if (session.user.id && jti) {
+    try {
+      const revoked = await isSessionRevoked(jti);
+      if (revoked) {
+        return NextResponse.json(
+          { success: false, error: "Session has been revoked", code: "SESSION_REVOKED" },
+          { status: 401 }
+        );
+      }
+    } catch {
+      // isSessionRevoked throws on DB errors; fail-open for reads.
+      // Route handlers for mutations should implement fail-closed if needed.
+    }
+  }
+
+  // Update lastActiveAt for idle timeout tracking (non-blocking, fire-and-forget)
+  if (session.user.id) {
+    updateLastActive(session.user.id).catch(() => {});
+  }
+
+  return {
+    id: session.user.id || "",
+    name: session.user.name || "Unknown",
+    email: session.user.email || "",
+    role: session.user.role || "employee",
+    employeeId: session.user.employeeId ?? null,
+    team: session.user.team ?? null,
+  };
 }
 
 /**
@@ -66,7 +101,7 @@ export async function requireRole(...roles: string[]): Promise<AuthUser | NextRe
  */
 export function safeErrorMessage(error: unknown, context?: string): string {
   // Always log full error server-side
-  console.error(`[API Error]${context ? ` ${context}:` : ""}`, error);
+  logger.error(`API Error${context ? ` ${context}` : ""}`, { error: error instanceof Error ? error.message : String(error) });
 
   if (error instanceof Error) {
     if (error.message.includes("Unique constraint")) {

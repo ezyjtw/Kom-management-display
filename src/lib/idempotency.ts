@@ -6,19 +6,31 @@
  * `Idempotency-Key` header; the server caches the response for that key
  * and returns it verbatim on subsequent requests.
  *
- * ⚠️  LIMITATION: Storage is process-local (in-memory Map with TTL eviction).
- * In multi-instance deployments, a retried request may hit a different instance
- * that has no record of the original — resulting in duplicate processing.
+ * =====================================================================
+ * MULTI-INSTANCE LIMITATION
+ * =====================================================================
+ * Storage is process-local (in-memory Map with TTL eviction). In
+ * multi-instance deployments (e.g. Railway replicas, Kubernetes pods),
+ * a retried request may hit a different instance that has no record of
+ * the original — resulting in duplicate processing.
  *
- * TODO: Replace with Redis or database-backed store for multi-instance deployments.
- * Migration: swap the `store` Map for Redis SET with NX + TTL, or a Postgres
- * idempotency_keys table. The public API stays the same.
+ * For single-instance deployments this is safe. For multi-instance,
+ * you MUST migrate to a shared store before scaling horizontally.
+ *
+ * TODO: Replace with Redis or Postgres-backed store for multi-instance
+ * deployments. Migration path:
+ *   - Redis: swap the `store` Map for Redis SET with NX + TTL
+ *   - Postgres: create an idempotency_keys table with (key PK, response
+ *     JSONB, status TEXT, created_at TIMESTAMPTZ, expires_at TIMESTAMPTZ)
+ * The public API (checkIdempotency, storeIdempotencyResponse,
+ * releaseIdempotencyLock) stays the same.
+ * =====================================================================
  *
  * Flow:
  *   1. Client sends POST/PUT with `Idempotency-Key: <uuid>` header
  *   2. Server checks cache for existing response
- *   3a. Cache hit → return cached response immediately (no re-processing)
- *   3b. Cache miss → process request, store response, return it
+ *   3a. Cache hit  -> return cached response immediately (no re-processing)
+ *   3b. Cache miss -> process request, store response, return it
  *   4. Entry is locked during processing to prevent concurrent duplicates
  *
  * Usage:
@@ -48,13 +60,18 @@ const ENTRY_TTL_MS = 24 * 60 * 60 * 1000;
 /** In-memory idempotency store. */
 const store = new Map<string, IdempotencyEntry>();
 
-// Evict expired entries every 10 minutes
+// Evict expired entries every 10 minutes to prevent unbounded memory growth
 setInterval(() => {
   const now = Date.now();
+  let evicted = 0;
   for (const [key, entry] of store) {
     if (now - entry.createdAt > ENTRY_TTL_MS) {
       store.delete(key);
+      evicted++;
     }
+  }
+  if (evicted > 0) {
+    logger.debug(`Idempotency store: evicted ${evicted} expired entries, ${store.size} remaining`);
   }
 }, 10 * 60 * 1000);
 
@@ -88,6 +105,7 @@ export function checkIdempotency(request: NextRequest): NextResponse | null {
       createdAt: Date.now(),
       processing: true,
     });
+    logger.debug("Idempotency: new entry created", { key, storeSize: store.size });
     return null;
   }
 

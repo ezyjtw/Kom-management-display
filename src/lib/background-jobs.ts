@@ -300,6 +300,60 @@ export async function getJobQueueStatus() {
 }
 
 /**
+ * Worker heartbeat — call periodically from the job-processing loop
+ * so that other instances (and the health endpoint) can detect stale workers.
+ *
+ * Stores the heartbeat as a BackgroundJob metadata row with type 'worker_heartbeat'.
+ * The `lastRunAt` column is bumped on every tick.
+ */
+export async function workerHeartbeat(workerId: string): Promise<void> {
+  try {
+    const existing = await prisma.backgroundJob.findFirst({
+      where: { type: "worker_heartbeat", deduplicationKey: `heartbeat:${workerId}` },
+    });
+
+    if (existing) {
+      await prisma.backgroundJob.update({
+        where: { id: existing.id },
+        data: { lastRunAt: new Date(), status: "running" },
+      });
+    } else {
+      await prisma.backgroundJob.create({
+        data: {
+          type: "worker_heartbeat",
+          deduplicationKey: `heartbeat:${workerId}`,
+          status: "running",
+          isRecurring: false,
+          payload: { workerId } as Prisma.InputJsonValue,
+          lastRunAt: new Date(),
+          nextRunAt: new Date(),
+        },
+      });
+    }
+  } catch (error) {
+    logger.warn("Failed to update worker heartbeat", {
+      workerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Check if any worker has sent a heartbeat within the given threshold.
+ * Returns true if at least one worker is alive.
+ */
+export async function isAnyWorkerAlive(thresholdMs = 120_000): Promise<boolean> {
+  const cutoff = new Date(Date.now() - thresholdMs);
+  const alive = await prisma.backgroundJob.count({
+    where: {
+      type: "worker_heartbeat",
+      lastRunAt: { gte: cutoff },
+    },
+  });
+  return alive > 0;
+}
+
+/**
  * Get dead-lettered jobs for review/replay.
  */
 export async function getDeadLetterJobs(limit = 50) {

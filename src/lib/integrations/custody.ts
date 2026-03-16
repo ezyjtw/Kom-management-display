@@ -6,6 +6,8 @@
  * Requests: GET /v1/requests?status=PENDING
  */
 
+import { env } from "@/lib/env";
+
 interface CustodyConfig {
   baseUrl: string;
   apiUser: string;
@@ -20,9 +22,9 @@ interface TokenCache {
 let tokenCache: TokenCache | null = null;
 
 function getConfig(): CustodyConfig | null {
-  const baseUrl = process.env.CUSTODY_API_BASE_URL;
-  const apiUser = process.env.CUSTODY_API_USER;
-  const apiSecret = process.env.CUSTODY_API_SECRET;
+  const baseUrl = env("CUSTODY_API_BASE_URL");
+  const apiUser = env("CUSTODY_API_USER");
+  const apiSecret = env("CUSTODY_API_SECRET");
 
   if (!baseUrl || !apiUser || !apiSecret) return null;
 
