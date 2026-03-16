@@ -210,7 +210,7 @@ export async function sendTravelRuleEmail(
   const subject = `Travel Rule Information Request — ${params.travelCase.asset} ${params.travelCase.direction} ${params.travelCase.transactionId}`;
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || user,
+    from: env("SMTP_FROM") || user,
     to: params.recipientEmail,
     subject,
     text: buildPlainTextEmail(params),
