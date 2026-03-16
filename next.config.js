@@ -27,6 +27,10 @@ const nextConfig = {
             value: "max-age=31536000; includeSubDomains",
           },
           {
+            key: "X-XSS-Protection",
+            value: "0",
+          },
+          {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },

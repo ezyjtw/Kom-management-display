@@ -356,7 +356,7 @@ describe("Security headers are applied", () => {
     const res = await middleware(req);
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
-    expect(res.headers.get("X-XSS-Protection")).toBe("1; mode=block");
+    expect(res.headers.get("X-XSS-Protection")).toBe("0");
   });
 
   it("403 response includes security headers", async () => {
@@ -389,11 +389,12 @@ describe("Correlation ID is set on pass-through requests", () => {
     expect(res.headers.get("x-request-id")).toBeTruthy();
   });
 
-  it("user role header is set on pass-through", async () => {
+  it("user role header is NOT leaked on pass-through", async () => {
     mockToken(freshToken("lead"));
     const req = makeRequest("/api/employees/test");
     const res = await middleware(req);
-    expect(res.headers.get("x-user-role")).toBe("lead");
+    // x-user-role was removed to avoid leaking authorization details to clients
+    expect(res.headers.get("x-user-role")).toBeNull();
   });
 });
 

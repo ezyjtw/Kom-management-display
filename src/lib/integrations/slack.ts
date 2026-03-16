@@ -3,13 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { computeTtoDeadline } from "@/lib/sla";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
+import { env } from "@/lib/env";
 
 let slackClient: WebClient | null = null;
 
 export function getSlackClient(): WebClient | null {
-  if (!process.env.SLACK_BOT_TOKEN) return null;
+  if (!env("SLACK_BOT_TOKEN")) return null;
   if (!slackClient) {
-    slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
+    slackClient = new WebClient(env("SLACK_BOT_TOKEN"));
   }
   return slackClient;
 }

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { checkLoginRateLimit, resetLoginRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { recordSession } from "@/lib/session-revocation";
+import { env } from "@/lib/env";
 
 async function logLoginAudit(userId: string, email: string, success: boolean) {
   try {
@@ -123,6 +124,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = (token.role as string) ?? undefined;
         session.user.employeeId = (token.employeeId as string | null) ?? null;
         session.user.team = (token.team as string | null) ?? null;
+        session.user.jti = (token.jti as string) ?? undefined;
       }
       return session;
     },
@@ -134,5 +136,5 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 8 * 60 * 60, // 8 hours default — reduced from 24h for security
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: env("NEXTAUTH_SECRET"),
 };

@@ -4,25 +4,23 @@
  * Since we use stateless JWTs, we check the session metadata table
  * on each authenticated request for privileged users (admin/lead).
  * Regular users only get checked on sensitive operations.
+ *
+ * Session revocation failure policy:
+ * - Read operations (GET): fail-open (allow access if revocation check fails)
+ * - Mutations (POST/PUT/PATCH/DELETE): fail-closed (deny access if check fails)
+ * - Sensitive actions: fail-closed (always deny on failure)
+ *
+ * The caller (requireAuth) decides which policy to apply based on the request.
  */
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
-// In-memory cache of revoked session tokens (cleared every 5 minutes)
-let revokedCache: Set<string> = new Set();
-let cacheExpiresAt = 0;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
 /**
  * Check if a session token has been revoked.
+ * Always queries the DB directly for multi-instance consistency.
  */
 export async function isSessionRevoked(sessionToken: string): Promise<boolean> {
-  // Check in-memory cache first
-  if (Date.now() < cacheExpiresAt && revokedCache.has(sessionToken)) {
-    return true;
-  }
-
   try {
     const session = await prisma.sessionMetadata.findUnique({
       where: { sessionToken },
@@ -33,7 +31,6 @@ export async function isSessionRevoked(sessionToken: string): Promise<boolean> {
 
     // Check if revoked
     if (session.revokedAt) {
-      revokedCache.add(sessionToken);
       return true;
     }
 
@@ -47,7 +44,28 @@ export async function isSessionRevoked(sessionToken: string): Promise<boolean> {
     logger.error("Failed to check session revocation", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return false; // fail-open to avoid locking out all users on DB issues
+    // Caller decides fail-open vs fail-closed based on request method
+    throw error;
+  }
+}
+
+/**
+ * Update lastActiveAt for idle timeout tracking.
+ * Only updates if more than 60 seconds since last update to avoid DB spam.
+ * Non-critical — failures are swallowed to avoid breaking the request.
+ */
+export async function updateLastActive(userId: string): Promise<void> {
+  try {
+    await prisma.sessionMetadata.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        lastActiveAt: { lt: new Date(Date.now() - 60_000) },
+      },
+      data: { lastActiveAt: new Date() },
+    });
+  } catch {
+    // Non-critical - don't break the request
   }
 }
 
@@ -99,7 +117,6 @@ export async function revokeSession(
         revokeReason: reason,
       },
     });
-    revokedCache.add(sessionToken);
     logger.security("Session revoked", { sessionToken: sessionToken.substring(0, 8) + "...", reason });
     return true;
   } catch (error) {
@@ -128,10 +145,6 @@ export async function revokeAllUserSessions(
         revokeReason: reason,
       },
     });
-
-    // Invalidate cache
-    revokedCache = new Set();
-    cacheExpiresAt = 0;
 
     logger.security("All sessions revoked for user", { userId, count: result.count, reason });
     return result.count;

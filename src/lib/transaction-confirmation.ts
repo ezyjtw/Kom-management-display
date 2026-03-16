@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendSlackNotification } from "@/lib/integrations/slack";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type { TransactionRiskLevel, ConfirmationStatus } from "@prisma/client";
 
 export interface TransactionForConfirmation {
@@ -67,9 +68,9 @@ export async function createTransactionConfirmation(
   });
 
   const notifications: string[] = [];
-  const opsChannel = process.env.SLACK_OPS_CHANNEL || "#ops-alerts";
-  const complianceChannel = process.env.SLACK_COMPLIANCE_CHANNEL || "#compliance-alerts";
-  const complianceEmails = process.env.COMPLIANCE_EMAIL_RECIPIENTS || "";
+  const opsChannel = env("SLACK_OPS_CHANNEL") || "#ops-alerts";
+  const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
+  const complianceEmails = env("COMPLIANCE_EMAIL_RECIPIENTS") || "";
 
   // Calculate expiry based on risk level
   const expiryMinutes = riskLevel === "critical" ? 15 : riskLevel === "high" ? 60 : 240;
@@ -273,7 +274,7 @@ export async function escalateConfirmation(
   });
 
   if (confirmation) {
-    const complianceChannel = process.env.SLACK_COMPLIANCE_CHANNEL || "#compliance-alerts";
+    const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
     await sendSlackNotification(
       complianceChannel,
       `🚨 *Transaction Escalated*\n\nTransaction \`${confirmation.transactionId}\` has been escalated.\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${confirmation.amount.toLocaleString()}`

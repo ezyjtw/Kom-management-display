@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createRcaTicketSchema } from "@/lib/validation";
+import { env } from "@/lib/env";
 
 // Statuses that providers use to "close" tickets — if the ticket moves to one
 // of these and our RCA isn't done, it's a premature closure.
@@ -31,9 +32,9 @@ export async function GET(request: NextRequest) {
     const incidentId = searchParams.get("incidentId");
 
     // Get Jira config
-    const baseUrl = process.env.JIRA_BASE_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
+    const baseUrl = env("JIRA_BASE_URL");
+    const email = env("JIRA_EMAIL");
+    const apiToken = env("JIRA_API_TOKEN");
 
     if (!baseUrl || !email || !apiToken) {
       return apiSuccess({ configured: false, message: "Jira not configured" });
@@ -205,8 +206,8 @@ export async function POST(request: NextRequest) {
 
         // If no URL provided, try to construct from JIRA_BASE_URL
         let url = ticketUrl || "";
-        if (!url && process.env.JIRA_BASE_URL) {
-          url = `${process.env.JIRA_BASE_URL.replace(/\/$/, "")}/browse/${ticketRef}`;
+        if (!url && env("JIRA_BASE_URL")) {
+          url = `${env("JIRA_BASE_URL")!.replace(/\/$/, "")}/browse/${ticketRef}`;
         }
 
         await prisma.$transaction([
@@ -317,9 +318,9 @@ export async function POST(request: NextRequest) {
  * Silently fails if Jira is not configured or the request fails.
  */
 async function postJiraComment(incidentId: string, comment: string) {
-  const baseUrl = process.env.JIRA_BASE_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
+  const baseUrl = env("JIRA_BASE_URL");
+  const email = env("JIRA_EMAIL");
+  const apiToken = env("JIRA_API_TOKEN");
   if (!baseUrl || !email || !apiToken) return;
 
   try {

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { computeTtoDeadline } from "@/lib/sla";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
+import { env } from "@/lib/env";
 
 /**
  * Email configuration interface for IMAP connections.
@@ -32,18 +33,18 @@ interface ParsedEmail {
  * Get email configuration from environment variables.
  */
 function getEmailConfig(): EmailConfig | null {
-  const host = process.env.IMAP_HOST;
-  const user = process.env.IMAP_USER;
-  const password = process.env.IMAP_PASSWORD;
+  const host = env("IMAP_HOST");
+  const user = env("IMAP_USER");
+  const password = env("IMAP_PASSWORD");
 
   if (!host || !user || !password) return null;
 
   return {
     host,
-    port: parseInt(process.env.IMAP_PORT || "993", 10),
+    port: parseInt(env("IMAP_PORT") || "993", 10),
     user,
     password,
-    tls: process.env.IMAP_TLS !== "false",
+    tls: env("IMAP_TLS") !== "false",
   };
 }
 
@@ -207,9 +208,9 @@ export async function sendEmailNotification(
   subject: string,
   body: string
 ) {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
+  const host = env("SMTP_HOST");
+  const user = env("SMTP_USER");
+  const pass = env("SMTP_PASSWORD");
 
   if (!host || !user || !pass) return;
 
@@ -217,13 +218,13 @@ export async function sendEmailNotification(
 
   const transporter = nodemailer.createTransport({
     host,
-    port: parseInt(process.env.SMTP_PORT || "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
+    port: parseInt(env("SMTP_PORT") || "587", 10),
+    secure: env("SMTP_SECURE") === "true",
     auth: { user, pass },
   });
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || user,
+    from: env("SMTP_FROM") || user,
     to,
     subject,
     text: body,

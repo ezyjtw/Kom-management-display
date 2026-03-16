@@ -1,6 +1,19 @@
 /**
- * In-process job queue with retry, dead-letter, and idempotency.
+ * @deprecated — USE src/lib/background-jobs.ts INSTEAD.
  *
+ * This in-memory job queue is superseded by the Postgres-backed background
+ * job system in src/lib/background-jobs.ts. That module stores jobs in the
+ * BackgroundJob table, supports multi-instance workers, priority ordering,
+ * deduplication, dead-letter inspection, and cron scheduling.
+ *
+ * This file is retained only for backward compatibility with any code that
+ * still imports `jobQueue`. All new job scheduling MUST use:
+ *   import { enqueueJob } from "@/lib/background-jobs";
+ *
+ * Removal target: next major version.
+ *
+ * Original description:
+ * In-process job queue with retry, dead-letter, and idempotency.
  * For production at scale, replace the in-memory store with Redis + BullMQ.
  * This implementation provides the same interface so the migration is seamless.
  */

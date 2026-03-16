@@ -17,6 +17,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type { SSEEvent } from "@/lib/sse";
 
 const PG_CHANNEL = "sse_events";
@@ -212,7 +213,7 @@ export async function startNativeListener(options: {
 export async function initPGNotifyBridge(
   onEvent: (event: SSEEvent) => void,
 ): Promise<{ stop: () => Promise<void> }> {
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl = env("DATABASE_URL");
   if (!dbUrl) {
     logger.warn("DATABASE_URL not set — PG notify bridge disabled");
     return { stop: async () => {} };

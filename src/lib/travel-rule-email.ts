@@ -5,6 +5,8 @@
  * and sends it via the existing SMTP integration.
  */
 
+import { env } from "@/lib/env";
+
 export interface TravelRuleCaseData {
   transactionId: string;
   txHash: string;
@@ -186,9 +188,9 @@ function escapeHtml(str: string): string {
 export async function sendTravelRuleEmail(
   params: SendTravelRuleEmailParams,
 ): Promise<void> {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
+  const host = env("SMTP_HOST");
+  const user = env("SMTP_USER");
+  const pass = env("SMTP_PASSWORD");
 
   if (!host || !user || !pass) {
     throw new Error(
@@ -200,15 +202,15 @@ export async function sendTravelRuleEmail(
 
   const transporter = nodemailer.createTransport({
     host,
-    port: parseInt(process.env.SMTP_PORT || "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
+    port: parseInt(env("SMTP_PORT") || "587", 10),
+    secure: env("SMTP_SECURE") === "true",
     auth: { user, pass },
   });
 
   const subject = `Travel Rule Information Request — ${params.travelCase.asset} ${params.travelCase.direction} ${params.travelCase.transactionId}`;
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || user,
+    from: env("SMTP_FROM") || user,
     to: params.recipientEmail,
     subject,
     text: buildPlainTextEmail(params),

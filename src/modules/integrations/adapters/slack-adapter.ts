@@ -7,6 +7,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -39,11 +40,11 @@ interface SlackChannelInfo {
 // ---------------------------------------------------------------------------
 
 function isSlackConfigured(): boolean {
-  return !!process.env.SLACK_BOT_TOKEN;
+  return !!env("SLACK_BOT_TOKEN");
 }
 
 function getSigningSecret(): string | null {
-  return process.env.SLACK_SIGNING_SECRET ?? null;
+  return env("SLACK_SIGNING_SECRET") ?? null;
 }
 
 /**
@@ -173,7 +174,7 @@ export class SlackAdapter implements IntegrationAdapter {
 
       // Dynamic import so the adapter file can be loaded even without @slack/web-api
       const { WebClient } = await import("@slack/web-api");
-      const client = new WebClient(process.env.SLACK_BOT_TOKEN);
+      const client = new WebClient(env("SLACK_BOT_TOKEN"));
 
       // Channel info
       const channelInfo = await client.conversations.info({ channel: channelId });

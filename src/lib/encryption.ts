@@ -28,6 +28,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from "crypto";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // GCM recommended IV length
@@ -50,7 +51,7 @@ let derivedKey: Buffer | null = null;
 function getEncryptionKey(): Buffer {
   if (derivedKey) return derivedKey;
 
-  const secret = process.env.ENCRYPTION_SECRET;
+  const secret = env("ENCRYPTION_SECRET");
   if (!secret) {
     throw new Error(
       "ENCRYPTION_SECRET environment variable is required for encryption. " +

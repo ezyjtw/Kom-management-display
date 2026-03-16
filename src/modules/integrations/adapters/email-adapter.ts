@@ -8,6 +8,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -51,16 +52,16 @@ interface AttachmentMeta {
 // ---------------------------------------------------------------------------
 
 function getEmailConfig(): EmailConfig | null {
-  const host = process.env.IMAP_HOST;
-  const user = process.env.IMAP_USER;
-  const password = process.env.IMAP_PASSWORD;
+  const host = env("IMAP_HOST");
+  const user = env("IMAP_USER");
+  const password = env("IMAP_PASSWORD");
   if (!host || !user || !password) return null;
   return {
     host,
-    port: parseInt(process.env.IMAP_PORT || "993", 10),
+    port: parseInt(env("IMAP_PORT") || "993", 10),
     user,
     password,
-    tls: process.env.IMAP_TLS !== "false",
+    tls: env("IMAP_TLS") !== "false",
   };
 }
 

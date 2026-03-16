@@ -14,6 +14,7 @@ import {
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, enqueueJobSchema } from "@/lib/validation";
+import { env } from "@/lib/env";
 
 const VALID_JOB_TYPES: JobType[] = [
   "sync_slack", "sync_email", "sync_jira", "check_sla",
@@ -128,7 +129,7 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
   switch (type) {
     case "sync_slack": {
       const { syncSlackChannel } = await import("@/lib/integrations/slack");
-      const channelId = (payload.channelId as string) || process.env.SLACK_OPS_CHANNEL_ID || "";
+      const channelId = (payload.channelId as string) || env("SLACK_OPS_CHANNEL_ID") || "";
       if (!channelId) return { skipped: true, reason: "No channel ID configured" };
       return syncSlackChannel(channelId);
     }
@@ -140,7 +141,7 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
 
     case "sync_jira": {
       const { syncJiraProject } = await import("@/lib/integrations/jira");
-      const projectKey = (payload.projectKey as string) || process.env.JIRA_PROJECT_KEY || "";
+      const projectKey = (payload.projectKey as string) || env("JIRA_PROJECT_KEY") || "";
       if (!projectKey) return { skipped: true, reason: "No Jira project key configured" };
       return syncJiraProject(projectKey);
     }

@@ -7,6 +7,7 @@
  */
 
 import type { NotabeneTransfer } from "@/types";
+import { env } from "@/lib/env";
 
 interface NotabeneConfig {
   baseUrl: string;
@@ -15,9 +16,9 @@ interface NotabeneConfig {
 }
 
 function getConfig(): NotabeneConfig | null {
-  const baseUrl = process.env.NOTABENE_API_BASE_URL;
-  const apiToken = process.env.NOTABENE_API_TOKEN;
-  const vaspDid = process.env.NOTABENE_VASP_DID;
+  const baseUrl = env("NOTABENE_API_BASE_URL");
+  const apiToken = env("NOTABENE_API_TOKEN");
+  const vaspDid = env("NOTABENE_VASP_DID");
   if (!baseUrl || !apiToken || !vaspDid) return null;
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiToken, vaspDid };
 }

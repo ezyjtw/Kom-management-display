@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -65,13 +66,13 @@ interface FireblocksVaultAccount {
 // ---------------------------------------------------------------------------
 
 function getConfig(): FireblocksConfig | null {
-  const apiKey = process.env.FIREBLOCKS_API_KEY;
-  const apiSecret = process.env.FIREBLOCKS_API_SECRET;
+  const apiKey = env("FIREBLOCKS_API_KEY");
+  const apiSecret = env("FIREBLOCKS_API_SECRET");
   if (!apiKey || !apiSecret) return null;
   return {
     apiKey,
     apiSecret,
-    baseUrl: (process.env.FIREBLOCKS_API_BASE_URL ?? "https://api.fireblocks.io").replace(
+    baseUrl: (env("FIREBLOCKS_API_BASE_URL") ?? "https://api.fireblocks.io").replace(
       /\/+$/,
       "",
     ),

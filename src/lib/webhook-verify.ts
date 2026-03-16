@@ -16,6 +16,7 @@
 
 import { createHmac, timingSafeEqual } from "crypto";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 /**
  * Verify a Slack webhook signature.
@@ -30,7 +31,7 @@ export async function verifySlackWebhook(
   timestamp: string | null,
   signature: string | null,
 ): Promise<boolean> {
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
+  const signingSecret = env("SLACK_SIGNING_SECRET");
   if (!signingSecret) {
     logger.warn("SLACK_SIGNING_SECRET not configured, skipping webhook verification");
     return true; // Allow in development when not configured
@@ -91,7 +92,7 @@ export async function verifyJiraWebhook(
   body: string,
   signatureHeader: string | null,
 ): Promise<boolean> {
-  const secret = process.env.JIRA_WEBHOOK_SECRET;
+  const secret = env("JIRA_WEBHOOK_SECRET");
   if (!secret) {
     logger.warn("JIRA_WEBHOOK_SECRET not configured, skipping webhook verification");
     return true; // Allow in development when not configured

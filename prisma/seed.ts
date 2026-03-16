@@ -65,63 +65,77 @@ async function main() {
   console.log(`Upserted ${employees.length} employees`);
 
   // Create user accounts for login
-  // Seed passwords — safe for dev/staging only; production uses SSO/external auth
-  const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD || "admin" + "123";
-  const SEED_USER_PW = process.env.SEED_USER_PASSWORD || "user" + "123";
-  const SEED_LEAD_PW = process.env.SEED_LEAD_PASSWORD || "lead" + "123";
-  const defaultPassword = await bcrypt.hash(SEED_ADMIN_PW, 10);
-  const userPassword = await bcrypt.hash(SEED_USER_PW, 10);
-  const leadPassword = await bcrypt.hash(SEED_LEAD_PW, 10);
+  // Credentials MUST be supplied via environment variables — no fallback defaults.
+  // If any password env var is missing, user creation is skipped entirely.
+  const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD;
+  const SEED_USER_PW = process.env.SEED_USER_PASSWORD;
+  const SEED_LEAD_PW = process.env.SEED_LEAD_PASSWORD;
 
   // Build employee lookup by email for stable references
   const emp = Object.fromEntries(employees.map((e) => [e.email, e]));
 
-  const userData = [
-    { email: "manager@ops.com", name: "Ops Manager", role: UserRole.admin, password: defaultPassword, employeeId: null as string | null },
-    { email: "carol@ops.com", name: "Carol Davies", role: UserRole.lead, password: leadPassword, employeeId: emp["carol@ops.com"]?.id ?? null },
-    { email: "alice@ops.com", name: "Alice Chen", role: UserRole.employee, password: userPassword, employeeId: emp["alice@ops.com"]?.id ?? null },
-    { email: "bob@ops.com", name: "Bob Martinez", role: UserRole.employee, password: userPassword, employeeId: emp["bob@ops.com"]?.id ?? null },
-    { email: "david@ops.com", name: "David Park", role: UserRole.employee, password: userPassword, employeeId: emp["david@ops.com"]?.id ?? null },
-    { email: "eva@ops.com", name: "Eva Kowalski", role: UserRole.employee, password: userPassword, employeeId: emp["eva@ops.com"]?.id ?? null },
-    { email: "frank@ops.com", name: "Frank Osei", role: UserRole.employee, password: userPassword, employeeId: emp["frank@ops.com"]?.id ?? null },
-    { email: "grace@ops.com", name: "Grace Thompson", role: UserRole.employee, password: userPassword, employeeId: emp["grace@ops.com"]?.id ?? null },
-    { email: "kenji@ops.com", name: "Kenji Yamamoto", role: UserRole.employee, password: userPassword, employeeId: emp["kenji@ops.com"]?.id ?? null },
-    { email: "liam@ops.com", name: "Liam O'Brien", role: UserRole.employee, password: userPassword, employeeId: emp["liam@ops.com"]?.id ?? null },
-    { email: "maria@ops.com", name: "Maria Santos", role: UserRole.employee, password: userPassword, employeeId: emp["maria@ops.com"]?.id ?? null },
-    { email: "nikhil@ops.com", name: "Nikhil Patel", role: UserRole.employee, password: userPassword, employeeId: emp["nikhil@ops.com"]?.id ?? null },
-    { email: "sophie@ops.com", name: "Sophie Laurent", role: UserRole.employee, password: userPassword, employeeId: emp["sophie@ops.com"]?.id ?? null },
-    { email: "tom@ops.com", name: "Tom Nakamura", role: UserRole.employee, password: userPassword, employeeId: emp["tom@ops.com"]?.id ?? null },
-    { email: "yuki@ops.com", name: "Yuki Tanaka", role: UserRole.employee, password: userPassword, employeeId: emp["yuki@ops.com"]?.id ?? null },
-  ];
-
-  console.log("Creating user accounts...");
-  try {
-    await prisma.$transaction(
-      userData.map((data) =>
-        prisma.user.upsert({
-          where: { email: data.email },
-          update: { employeeId: data.employeeId, name: data.name, role: data.role },
-          create: data,
-        })
-      )
+  if (!SEED_ADMIN_PW || !SEED_USER_PW || !SEED_LEAD_PW) {
+    const missing = [
+      !SEED_ADMIN_PW && "SEED_ADMIN_PASSWORD",
+      !SEED_USER_PW && "SEED_USER_PASSWORD",
+      !SEED_LEAD_PW && "SEED_LEAD_PASSWORD",
+    ].filter(Boolean);
+    console.warn(
+      `WARNING: Skipping user account creation — missing required env vars: ${missing.join(", ")}. ` +
+      "Set these environment variables to seed user accounts."
     );
-  } catch (userError) {
-    console.error("USER SEED TRANSACTION FAILED:", userError);
-    console.log("Attempting individual user upserts...");
-    for (const data of userData) {
-      try {
-        await prisma.user.upsert({
-          where: { email: data.email },
-          update: { employeeId: data.employeeId, name: data.name, role: data.role },
-          create: data,
-        });
-      } catch (indivError) {
-        console.error(`  Failed to upsert user ${data.email}:`, indivError);
+  } else {
+    const defaultPassword = await bcrypt.hash(SEED_ADMIN_PW, 10);
+    const userPassword = await bcrypt.hash(SEED_USER_PW, 10);
+    const leadPassword = await bcrypt.hash(SEED_LEAD_PW, 10);
+
+    const userData = [
+      { email: "manager@ops.com", name: "Ops Manager", role: UserRole.admin, password: defaultPassword, employeeId: null as string | null },
+      { email: "carol@ops.com", name: "Carol Davies", role: UserRole.lead, password: leadPassword, employeeId: emp["carol@ops.com"]?.id ?? null },
+      { email: "alice@ops.com", name: "Alice Chen", role: UserRole.employee, password: userPassword, employeeId: emp["alice@ops.com"]?.id ?? null },
+      { email: "bob@ops.com", name: "Bob Martinez", role: UserRole.employee, password: userPassword, employeeId: emp["bob@ops.com"]?.id ?? null },
+      { email: "david@ops.com", name: "David Park", role: UserRole.employee, password: userPassword, employeeId: emp["david@ops.com"]?.id ?? null },
+      { email: "eva@ops.com", name: "Eva Kowalski", role: UserRole.employee, password: userPassword, employeeId: emp["eva@ops.com"]?.id ?? null },
+      { email: "frank@ops.com", name: "Frank Osei", role: UserRole.employee, password: userPassword, employeeId: emp["frank@ops.com"]?.id ?? null },
+      { email: "grace@ops.com", name: "Grace Thompson", role: UserRole.employee, password: userPassword, employeeId: emp["grace@ops.com"]?.id ?? null },
+      { email: "kenji@ops.com", name: "Kenji Yamamoto", role: UserRole.employee, password: userPassword, employeeId: emp["kenji@ops.com"]?.id ?? null },
+      { email: "liam@ops.com", name: "Liam O'Brien", role: UserRole.employee, password: userPassword, employeeId: emp["liam@ops.com"]?.id ?? null },
+      { email: "maria@ops.com", name: "Maria Santos", role: UserRole.employee, password: userPassword, employeeId: emp["maria@ops.com"]?.id ?? null },
+      { email: "nikhil@ops.com", name: "Nikhil Patel", role: UserRole.employee, password: userPassword, employeeId: emp["nikhil@ops.com"]?.id ?? null },
+      { email: "sophie@ops.com", name: "Sophie Laurent", role: UserRole.employee, password: userPassword, employeeId: emp["sophie@ops.com"]?.id ?? null },
+      { email: "tom@ops.com", name: "Tom Nakamura", role: UserRole.employee, password: userPassword, employeeId: emp["tom@ops.com"]?.id ?? null },
+      { email: "yuki@ops.com", name: "Yuki Tanaka", role: UserRole.employee, password: userPassword, employeeId: emp["yuki@ops.com"]?.id ?? null },
+    ];
+
+    console.log("Creating user accounts...");
+    try {
+      await prisma.$transaction(
+        userData.map((data) =>
+          prisma.user.upsert({
+            where: { email: data.email },
+            update: { employeeId: data.employeeId, name: data.name, role: data.role },
+            create: data,
+          })
+        )
+      );
+    } catch (userError) {
+      console.error("USER SEED TRANSACTION FAILED:", userError);
+      console.log("Attempting individual user upserts...");
+      for (const data of userData) {
+        try {
+          await prisma.user.upsert({
+            where: { email: data.email },
+            update: { employeeId: data.employeeId, name: data.name, role: data.role },
+            create: data,
+          });
+        } catch (indivError) {
+          console.error(`  Failed to upsert user ${data.email}:`, indivError);
+        }
       }
     }
-  }
 
-  console.log("Upserted user accounts");
+    console.log("Upserted user accounts");
+  }
 
   // Create time periods
   const periodData = [

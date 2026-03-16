@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, emailSyncSchema } from "@/lib/validation";
+import { env } from "@/lib/env";
 
 /**
  * POST /api/integrations/email
@@ -59,16 +60,16 @@ export async function GET() {
   if (auth instanceof NextResponse) return auth;
 
   const configured =
-    !!process.env.IMAP_HOST &&
-    !!process.env.IMAP_USER &&
-    !!process.env.IMAP_PASSWORD;
+    !!env("IMAP_HOST") &&
+    !!env("IMAP_USER") &&
+    !!env("IMAP_PASSWORD");
 
   return apiSuccess({
     configured,
-    inbox: configured ? process.env.IMAP_USER : null,
+    inbox: configured ? env("IMAP_USER") : null,
     smtpConfigured:
-      !!process.env.SMTP_HOST &&
-      !!process.env.SMTP_USER &&
-      !!process.env.SMTP_PASSWORD,
+      !!env("SMTP_HOST") &&
+      !!env("SMTP_USER") &&
+      !!env("SMTP_PASSWORD"),
   });
 }
