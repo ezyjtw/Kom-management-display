@@ -348,7 +348,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
                 <label className="block text-sm font-medium mb-1">Channel Type</label>
                 <select
                   value={registerForm.channelType}
-                  onChange={(e) => setRegisterForm((f) => ({ ...f, channelType: e.target.value as any }))}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, channelType: e.target.value as "client" | "service_provider" | "internal" }))}
                   className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
                 >
                   <option value="client">Client</option>

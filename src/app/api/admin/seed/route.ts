@@ -10,8 +10,19 @@ import { z } from "zod";
  * POST /api/admin/seed
  * Manually trigger employee + user seeding. Admin only.
  * Idempotent — uses upserts so safe to re-run.
+ *
+ * SECURITY: Blocked in production unless ALLOW_SEED=true is explicitly set.
+ * This prevents accidental seeding of production databases with test data.
  */
 export async function POST() {
+  // Gate: block in production unless explicitly allowed
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED !== "true") {
+    return NextResponse.json(
+      { success: false, error: "Seed endpoint is disabled in production. Set ALLOW_SEED=true to override." },
+      { status: 403 },
+    );
+  }
+
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
@@ -99,6 +110,15 @@ export async function POST() {
 
     // ── Users ──
     const emp = Object.fromEntries(employees.map((e) => [e.email, e]));
+
+    // In production, seed passwords MUST be provided via env vars — no defaults.
+    const isProduction = process.env.NODE_ENV === "production";
+    if (isProduction && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_USER_PASSWORD || !process.env.SEED_LEAD_PASSWORD)) {
+      return NextResponse.json(
+        { success: false, error: "SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set in production" },
+        { status: 400 },
+      );
+    }
     const SEED_ADMIN_PW = process.env.SEED_ADMIN_PASSWORD || "admin123";
     const SEED_USER_PW = process.env.SEED_USER_PASSWORD || "user123";
     const SEED_LEAD_PW = process.env.SEED_LEAD_PASSWORD || "lead123";

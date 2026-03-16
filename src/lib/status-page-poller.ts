@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 
@@ -97,9 +98,9 @@ export async function pollStatusPage(
             title: incident.title,
             severity: incident.severity,
             status: incident.status,
-            affectedComponents: incident.affectedComponents as any,
+            affectedComponents: incident.affectedComponents as Prisma.InputJsonValue,
             resolvedAt: incident.resolvedAt,
-            rawPayload: incident.rawPayload as any,
+            rawPayload: incident.rawPayload as Prisma.InputJsonValue,
             polledAt: new Date(),
           },
         });
@@ -112,10 +113,10 @@ export async function pollStatusPage(
             title: incident.title,
             severity: incident.severity,
             status: incident.status,
-            affectedComponents: incident.affectedComponents as any,
+            affectedComponents: incident.affectedComponents as Prisma.InputJsonValue,
             startedAt: incident.startedAt,
             resolvedAt: incident.resolvedAt,
-            rawPayload: incident.rawPayload as any,
+            rawPayload: incident.rawPayload as Prisma.InputJsonValue,
           },
         });
 

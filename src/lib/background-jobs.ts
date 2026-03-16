@@ -16,6 +16,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 export type JobType =
@@ -83,7 +84,7 @@ export async function registerDefaultJobs(): Promise<void> {
           type: job.type,
           cronExpression: job.cronExpression,
           isRecurring: true,
-          payload: (job.payload ?? {}) as any,
+          payload: (job.payload ?? {}) as Prisma.InputJsonValue,
           status: "pending",
           nextRunAt: new Date(),
         },
@@ -119,7 +120,7 @@ export async function enqueueJob(
   const job = await prisma.backgroundJob.create({
     data: {
       type,
-      payload: payload as any,
+      payload: payload as Prisma.InputJsonValue,
       nextRunAt: opts?.runAt ?? new Date(),
       maxAttempts: opts?.maxAttempts ?? 3,
       isRecurring: false,

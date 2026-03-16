@@ -20,12 +20,12 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   if (!session?.user) return null;
 
   return {
-    id: (session.user as any).id as string,
+    id: session.user.id || "",
     name: session.user.name || "Unknown",
     email: session.user.email || "",
-    role: (session.user as any).role as string,
-    employeeId: (session.user as any).employeeId as string | null,
-    team: (session.user as any).team as string | null,
+    role: session.user.role || "employee",
+    employeeId: session.user.employeeId ?? null,
+    team: session.user.team ?? null,
   };
 }
 

@@ -65,15 +65,17 @@ export async function GET(
             description = "Case opened";
             break;
           case "travel_rule_email_sent":
-            description = `Email sent to ${(details as any).recipientEmail || "counterparty"}`;
+            description = `Email sent to ${(details.recipientEmail as string) || "counterparty"}`;
             break;
           case "travel_rule_case_updated": {
             const parts: string[] = [];
-            if (details.ownerChange) {
-              parts.push(`Assigned to ${(details as any).ownerChange?.newName || "someone"}`);
+            const ownerChange = details.ownerChange as { newName?: string } | undefined;
+            const statusChange = details.statusChange as { previous?: string; new?: string } | undefined;
+            if (ownerChange) {
+              parts.push(`Assigned to ${ownerChange.newName || "someone"}`);
             }
-            if (details.statusChange) {
-              parts.push(`Status: ${(details as any).statusChange?.previous} → ${(details as any).statusChange?.new}`);
+            if (statusChange) {
+              parts.push(`Status: ${statusChange.previous} → ${statusChange.new}`);
             }
             description = parts.length > 0 ? parts.join("; ") : "Case updated";
             break;
@@ -82,7 +84,7 @@ export async function GET(
             description = "Note added";
             break;
           case "travel_rule_bulk_action":
-            description = `Bulk action: ${(details as any).action || "update"}`;
+            description = `Bulk action: ${(details.action as string) || "update"}`;
             break;
           default:
             description = entry.action.replace(/_/g, " ");

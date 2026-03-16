@@ -3,6 +3,9 @@ import "./globals.css";
 import { SessionProvider } from "@/components/shared/SessionProvider";
 import { AppShell } from "@/components/shared/AppShell";
 
+// Validate environment variables at startup — fails fast on misconfiguration in production
+import "@/lib/env";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,

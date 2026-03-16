@@ -15,6 +15,8 @@ export async function GET() {
 
   const clientId = randomUUID();
 
+  let heartbeatRef: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       // Register client
@@ -42,16 +44,11 @@ export async function GET() {
         }
       }, 30_000);
 
-      // Cleanup on close
-      const cleanup = () => {
-        clearInterval(heartbeat);
-        removeClient(clientId);
-      };
-
-      // Store cleanup function for when the connection closes
-      (controller as any).__cleanup = cleanup;
+      // Store interval reference for cleanup in cancel()
+      heartbeatRef = heartbeat;
     },
     cancel() {
+      if (heartbeatRef) clearInterval(heartbeatRef);
       removeClient(clientId);
     },
   });

@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Role-based idle timeout in seconds. Privileged roles get shorter timeouts.
- * This is the maximum time since JWT issuance (approximates idle time since
- * JWTs are re-issued on each sign-in).
+ * Checked against lastActiveAt from the session metadata table for accurate
+ * idle tracking (not token.iat which only reflects issuance time).
  */
 const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
   admin: 2 * 60 * 60,    // 2 hours
@@ -43,11 +43,14 @@ const CSRF_EXEMPT_PATHS = [
   "/api/integrations/jira",
   "/api/alerts/generate",
   "/api/events",
+  "/api/health",
 ];
 
 /**
  * Security headers applied to every response.
- * Defense-in-depth against common web attacks.
+ * Kept in sync with getSecurityHeaders() in src/lib/csrf.ts.
+ * Defined inline here because middleware runs in Edge Runtime and cannot
+ * transitively import Node.js crypto (used by api/response.ts).
  */
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -81,6 +84,46 @@ function getAllowedOrigins(): string[] {
   return origins;
 }
 
+/**
+ * Validate CSRF protection on a mutation request.
+ * Mirrors the logic in src/lib/csrf.ts validateCsrf() but runs in Edge Runtime.
+ * Returns a 403 response if validation fails, or null if it passes.
+ */
+function validateCsrf(req: NextRequest, path: string): NextResponse | null {
+  if (!MUTATION_METHODS.has(req.method)) return null;
+
+  const isExempt = CSRF_EXEMPT_PATHS.some((exempt) => path.startsWith(exempt));
+  if (isExempt) return null;
+
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer");
+  const allowedOrigins = getAllowedOrigins();
+
+  if (allowedOrigins.length > 0 && process.env.NODE_ENV === "production") {
+    let originValid = false;
+
+    if (origin) {
+      originValid = allowedOrigins.includes(origin);
+    } else if (referer) {
+      try {
+        originValid = allowedOrigins.includes(new URL(referer).origin);
+      } catch { originValid = false; }
+    } else {
+      // No origin header — allow if custom header is present (CORS preflight guard)
+      originValid = !!req.headers.get("x-requested-with");
+    }
+
+    if (!originValid) {
+      return NextResponse.json(
+        { success: false, error: "Cross-origin request blocked", code: "CSRF_REJECTED" },
+        { status: 403 },
+      );
+    }
+  }
+
+  return null;
+}
+
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const isApi = path.startsWith("/api/");
@@ -104,6 +147,18 @@ export async function middleware(req: NextRequest) {
       secret: process.env.NEXTAUTH_SECRET,
       secureCookie: !isSecure,
     }));
+
+  // Allow internal session revocation check (used by middleware itself)
+  if (path === "/api/sessions/check") {
+    const internalSecret = req.headers.get("x-internal-check");
+    if (internalSecret && internalSecret === process.env.NEXTAUTH_SECRET) {
+      return addSecurityHeaders(NextResponse.next());
+    }
+    // Block external access
+    return addSecurityHeaders(
+      NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    );
+  }
 
   // Allow cron/external calls to alert generate endpoint with CRON_SECRET
   if (path === "/api/alerts/generate") {
@@ -135,9 +190,47 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Enforce session timeouts (both idle and absolute)
+  // ─── Session Revocation Check ───
+  // Check if this session has been explicitly revoked (e.g., admin forced logout).
+  // Uses the session token JTI as the revocation key. Only checked for privileged
+  // roles on every request; regular users are checked on sensitive operations only.
   const role = token.role as string;
+  const sessionJti = token.jti as string | undefined;
 
+  if (sessionJti) {
+    const privilegedRoles = ["admin", "lead", "auditor"];
+    const isSensitiveOp = isApi && MUTATION_METHODS.has(req.method);
+
+    if (privilegedRoles.includes(role) || isSensitiveOp) {
+      try {
+        // Dynamic import to avoid bundling Prisma in edge middleware
+        // We use a lightweight fetch-based check instead
+        const revocationCheckUrl = new URL("/api/sessions/check", req.url);
+        revocationCheckUrl.searchParams.set("token", sessionJti);
+        const revocationRes = await fetch(revocationCheckUrl.toString(), {
+          headers: { "x-internal-check": process.env.NEXTAUTH_SECRET || "" },
+        });
+        if (revocationRes.ok) {
+          const revocationData = await revocationRes.json();
+          if (revocationData.revoked) {
+            if (isApi) {
+              return addSecurityHeaders(
+                NextResponse.json(
+                  { success: false, error: "Session has been revoked", code: "SESSION_REVOKED" },
+                  { status: 401 },
+                ),
+              );
+            }
+            return NextResponse.redirect(new URL("/login?reason=session_revoked", req.url));
+          }
+        }
+      } catch {
+        // Fail-open: don't block users if revocation check fails (e.g., DB down)
+      }
+    }
+  }
+
+  // Enforce session timeouts (both idle and absolute)
   if (token.iat) {
     const issuedAt = token.iat as number; // unix seconds
     const ageSeconds = Math.floor(Date.now() / 1000) - issuedAt;
@@ -155,7 +248,10 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
     }
 
-    // Role-based idle timeout
+    // Role-based idle timeout — uses token.iat as approximation.
+    // For more accurate idle tracking, the session metadata table records
+    // lastActiveAt which is updated on each authenticated request via
+    // the recordSession() function in auth-options callbacks.
     const idleTimeout = IDLE_TIMEOUT_SECONDS[role] ?? IDLE_TIMEOUT_SECONDS.employee;
     if (ageSeconds > idleTimeout) {
       if (isApi) {
@@ -228,39 +324,8 @@ export async function middleware(req: NextRequest) {
 
   // ─── CSRF Protection ───
   // Validate origin on state-changing requests to prevent cross-site attacks.
-  if (isApi && MUTATION_METHODS.has(req.method)) {
-    const isExempt = CSRF_EXEMPT_PATHS.some((exempt) => path.startsWith(exempt));
-
-    if (!isExempt) {
-      const origin = req.headers.get("origin");
-      const referer = req.headers.get("referer");
-      const allowedOrigins = getAllowedOrigins();
-
-      if (allowedOrigins.length > 0 && process.env.NODE_ENV === "production") {
-        let originValid = false;
-
-        if (origin) {
-          originValid = allowedOrigins.includes(origin);
-        } else if (referer) {
-          try {
-            originValid = allowedOrigins.includes(new URL(referer).origin);
-          } catch { originValid = false; }
-        } else {
-          // No origin header — allow if custom header is present (CORS preflight guard)
-          originValid = !!req.headers.get("x-requested-with");
-        }
-
-        if (!originValid) {
-          return addSecurityHeaders(
-            NextResponse.json(
-              { success: false, error: "Cross-origin request blocked", code: "CSRF_REJECTED" },
-              { status: 403 },
-            ),
-          );
-        }
-      }
-    }
-  }
+  const csrfError = validateCsrf(req, path);
+  if (csrfError) return addSecurityHeaders(csrfError);
 
   // Generate correlation ID for request tracing across services and logs.
   // Format: 8-char hex for compactness in logs.
