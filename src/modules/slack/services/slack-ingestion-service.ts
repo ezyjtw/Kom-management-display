@@ -183,9 +183,9 @@ export async function syncChannelMessages(channelId: string): Promise<{
       // If message has replies, enqueue reply sync
       if (msg.reply_count && msg.reply_count > 0) {
         await enqueueJob(
-          "sync_slack_replies" as any,
+          "sync_slack_replies",
           { channelId, threadTs: msg.ts },
-          { deduplicationKey: `slack_replies_${channelId}_${msg.ts}` } as any,
+          { deduplicationKey: `slack_replies_${channelId}_${msg.ts}` },
         );
         repliesEnqueued++;
       }

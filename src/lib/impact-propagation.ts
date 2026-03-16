@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { enqueueJob } from "@/lib/background-jobs";
 import type { JobType } from "@/lib/background-jobs";
@@ -100,7 +101,7 @@ export async function propagateIncidentToClients(
 
       await prisma.clientImpactRecord.update({
         where: { id: existing.id },
-        data: { affectedServices: merged as any },
+        data: { affectedServices: merged as Prisma.InputJsonValue },
       });
 
       results.push({
@@ -115,7 +116,7 @@ export async function propagateIncidentToClients(
           incidentId,
           clientName: dep.clientName,
           clientAccountId: dep.clientAccountId,
-          affectedServices: intersection as any,
+          affectedServices: intersection as Prisma.InputJsonValue,
           impactStatus: "potential",
           impactStartAt: incident.startedAt,
         },

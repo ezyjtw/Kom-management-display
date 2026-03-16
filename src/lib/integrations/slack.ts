@@ -27,7 +27,7 @@ export async function syncSlackChannel(channelId: string, queue: string = "Trans
 
   // Fetch channel info
   const channelInfo = await client.conversations.info({ channel: channelId });
-  const channelName = (channelInfo.channel as any)?.name || channelId;
+  const channelName = (channelInfo.channel as { name?: string })?.name || channelId;
 
   // Fetch recent messages (last 100)
   const result = await client.conversations.history({

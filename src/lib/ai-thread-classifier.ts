@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { isAiEnabled } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
@@ -247,7 +248,7 @@ ${JSON.stringify(incidentsSummary)}`;
     await prisma.commsThread.update({
       where: { id: threadId },
       data: {
-        aiClassification: classification as any,
+        aiClassification: classification as unknown as Prisma.InputJsonValue,
         aiClassifiedAt: new Date(),
         aiUrgencyScore: classification.urgencyScore,
       },
@@ -368,7 +369,7 @@ export async function createDraftIncident(
       where: { id: incident.id },
       data: {
         detectionSource: "ai_slack",
-        affectedServices: classification.affectedServices as any,
+        affectedServices: classification.affectedServices as Prisma.InputJsonValue,
       },
     });
 

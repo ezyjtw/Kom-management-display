@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { checkLoginRateLimit, resetLoginRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { recordSession } from "@/lib/session-revocation";
 
 async function logLoginAudit(userId: string, email: string, success: boolean) {
   try {
@@ -97,18 +98,29 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as any).role;
-        token.employeeId = (user as any).employeeId;
-        token.team = (user as any).team;
+        token.role = user.role;
+        token.employeeId = user.employeeId;
+        token.team = user.team;
+
+        // Record session in metadata table for revocation tracking
+        if (token.jti && token.sub) {
+          recordSession({
+            userId: token.sub,
+            sessionToken: token.jti,
+            expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8h
+          }).catch(() => {
+            // Session recording should never break login
+          });
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.sub;
-        (session.user as any).role = token.role;
-        (session.user as any).employeeId = token.employeeId;
-        (session.user as any).team = token.team;
+        session.user.id = token.sub;
+        session.user.role = token.role;
+        session.user.employeeId = token.employeeId;
+        session.user.team = token.team;
       }
       return session;
     },
