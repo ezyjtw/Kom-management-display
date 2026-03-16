@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOverallScore, getActiveScoringConfig } from "@/lib/scoring";
 import { computeTravelRuleAging } from "@/lib/sla";
 import type { Category, CategoryWeight, EmployeeOverview } from "@/types";
+import { logger } from "@/lib/logger";
 
 // ─── Types ───
 
@@ -55,7 +56,7 @@ export const dashboardService = {
       ]);
       return { employees: employeeData, opsData };
     } catch (error) {
-      console.error("dashboardService.loadDashboardData failed:", error);
+      logger.error("dashboardService.loadDashboardData failed", { error: error instanceof Error ? error.message : String(error) });
       return { employees: [], opsData: null };
     }
   },
@@ -219,7 +220,7 @@ async function loadOpsData(): Promise<OpsData | null> {
   async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
     try { return await fn(); } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[ops] ${label} query failed:`, msg);
+      logger.error(`Ops ${label} query failed`, { error: msg });
       errors.push(label);
       return fallback;
     }
@@ -230,7 +231,7 @@ async function loadOpsData(): Promise<OpsData | null> {
     try {
       await prisma.$queryRaw`SELECT 1`;
     } catch (err) {
-      console.error("[ops] Database unreachable:", err instanceof Error ? err.message : err);
+      logger.error("Ops database unreachable", { error: err instanceof Error ? err.message : String(err) });
       return {
         comms: { totalActive: 0, breachedCount: 0, unassignedCount: 0 },
         travelRule: { openCount: 0, redCount: 0, amberCount: 0 },
@@ -349,7 +350,7 @@ async function loadOpsData(): Promise<OpsData | null> {
       _errors: errors.length > 0 ? errors : undefined,
     };
   } catch (err) {
-    console.error("[ops] loadOpsData failed:", err instanceof Error ? err.message : err);
+    logger.error("Ops loadOpsData failed", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
