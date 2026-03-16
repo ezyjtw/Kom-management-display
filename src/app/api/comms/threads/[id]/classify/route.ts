@@ -5,6 +5,9 @@ import { apiSuccess, handleApiError, apiForbiddenError } from "@/lib/api/respons
 import { enqueueJob } from "@/lib/background-jobs";
 import { createAuditEntry } from "@/lib/api/audit";
 import { NextResponse } from "next/server";
+import { z } from "zod";
+
+const classifyParamsSchema = z.object({ id: z.string().min(1) });
 
 /**
  * POST /api/comms/threads/[id]/classify
@@ -27,7 +30,12 @@ export async function POST(
       return apiForbiddenError("Only leads and admins can trigger AI classification");
     }
 
-    const { id: threadId } = await params;
+    const resolvedParams = await params;
+    const paramsParsed = classifyParamsSchema.safeParse(resolvedParams);
+    if (!paramsParsed.success) {
+      return apiForbiddenError("Invalid thread ID");
+    }
+    const { id: threadId } = resolvedParams;
 
     const jobId = await enqueueJob("classify_thread", { threadId });
 

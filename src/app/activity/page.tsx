@@ -113,11 +113,14 @@ export default function ActivityPage() {
 
   async function handleSetActivity(employeeId: string) {
     if (!newActivity.activity) return;
-    await fetch("/api/activity", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId, ...newActivity }),
-    });
+    try {
+      const res = await fetch("/api/activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId, ...newActivity }),
+      });
+      if (!res.ok) return;
+    } catch { return; }
     setChangingActivity(null);
     setNewActivity({ activity: "", detail: "" });
     fetchCurrent();
@@ -125,11 +128,14 @@ export default function ActivityPage() {
   }
 
   async function handleEndActivity(employeeId: string) {
-    await fetch("/api/activity", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId }),
-    });
+    try {
+      const res = await fetch("/api/activity", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId }),
+      });
+      if (!res.ok) return;
+    } catch { return; }
     fetchCurrent();
     fetchHistory();
   }

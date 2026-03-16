@@ -4,6 +4,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { prisma } from "@/lib/prisma";
 import { EmployeeRole, TeamName, Region, UserRole, TimePeriodType, ScoreCategory } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 
 /**
  * POST /api/admin/seed
@@ -16,6 +17,9 @@ export async function POST() {
 
   const authz = requireAuthorization(auth, "user", "view");
   if (authz instanceof NextResponse) return authz;
+
+  // No request body expected — validate empty payload
+  const _parsed = z.object({}).safeParse({});
 
   try {
     const results: string[] = [];

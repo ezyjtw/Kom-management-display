@@ -65,6 +65,8 @@ export function NotificationToast() {
           return (
             <div
               key={toast.id}
+              role="alert"
+              aria-live="assertive"
               className={`pointer-events-auto border-l-4 rounded-lg p-3 shadow-lg bg-card border border-border ${config.color} animate-in slide-in-from-right duration-300`}
             >
               <div className="flex items-start gap-2">
@@ -82,6 +84,7 @@ export function NotificationToast() {
                 <button
                   onClick={() => dismiss(toast.id)}
                   className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                  aria-label="Dismiss notification"
                 >
                   <X size={14} />
                 </button>

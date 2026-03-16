@@ -42,28 +42,34 @@ export default function ScreeningPage() {
   async function handleReclassify(id: string) {
     const classification = prompt("New classification (legitimate, dust, scam):");
     if (!classification || !["legitimate", "dust", "scam"].includes(classification)) return;
-    await fetch("/api/screening", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, classification }),
-    });
+    try {
+      const res = await fetch("/api/screening", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, classification }),
+      });
+      if (!res.ok) { setError(`Reclassify failed (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/screening", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        transactionId: form.get("transactionId"),
-        asset: form.get("asset"),
-        amount: parseFloat(form.get("amount") as string) || 0,
-        direction: form.get("direction"),
-        screeningStatus: form.get("screeningStatus"),
-      }),
-    });
+    try {
+      const res = await fetch("/api/screening", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: form.get("transactionId"),
+          asset: form.get("asset"),
+          amount: parseFloat(form.get("amount") as string) || 0,
+          direction: form.get("direction"),
+          screeningStatus: form.get("screeningStatus"),
+        }),
+      });
+      if (!res.ok) { setError(`Create failed (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     setShowForm(false);
     fetchData();
   }
@@ -136,7 +142,7 @@ export default function ScreeningPage() {
             {data.entries
               .filter((e) => {
                 if (tab === "health") return true;
-                if (tab === "classifications") return e.classification !== "unclassified" || e.classification === "unclassified";
+                if (tab === "classifications") return e.classification !== "unclassified";
                 if (tab === "alerts") return e.analyticsStatus !== "none";
                 return true;
               })

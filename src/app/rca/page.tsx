@@ -150,48 +150,66 @@ export default function RcaPage() {
   }
 
   async function updateRcaStatus(incidentId: string, rcaStatus: string, extra?: Record<string, unknown>) {
-    await fetch("/api/incidents", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: incidentId, rcaStatus, ...extra }),
-    });
+    try {
+      const res = await fetch("/api/incidents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: incidentId, rcaStatus, ...extra }),
+      });
+      if (!res.ok) { setError(`Failed to update RCA status (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function raiseRca(incidentId: string) {
     const deadline = prompt("SLA deadline (YYYY-MM-DD):");
-    await fetch("/api/incidents", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: incidentId,
-        rcaStatus: "awaiting_rca",
-        rcaRaisedAt: new Date().toISOString(),
-        rcaSlaDeadline: deadline ? new Date(deadline).toISOString() : null,
-      }),
-    });
+    if (deadline === null) return;
+    const parsedDeadline = deadline ? new Date(deadline) : null;
+    if (parsedDeadline && isNaN(parsedDeadline.getTime())) {
+      alert("Invalid date format. Please use YYYY-MM-DD.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/incidents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: incidentId,
+          rcaStatus: "awaiting_rca",
+          rcaRaisedAt: new Date().toISOString(),
+          rcaSlaDeadline: parsedDeadline ? parsedDeadline.toISOString() : null,
+        }),
+      });
+      if (!res.ok) { setError(`Failed to raise RCA (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function setDocumentRef(incidentId: string) {
     const ref = prompt("RCA document URL or reference:");
     if (!ref) return;
-    await fetch("/api/incidents", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: incidentId, rcaDocumentRef: ref }),
-    });
+    try {
+      const res = await fetch("/api/incidents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: incidentId, rcaDocumentRef: ref }),
+      });
+      if (!res.ok) { setError(`Failed to set document ref (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function linkTicket(incidentId: string) {
     const ticketRef = prompt("External ticket reference (e.g. FB-1234):");
     if (!ticketRef) return;
-    await fetch("/api/rca/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ incidentId, action: "link", ticketRef }),
-    });
+    try {
+      const res = await fetch("/api/rca/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId, action: "link", ticketRef }),
+      });
+      if (!res.ok) { setError(`Failed to link ticket (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
@@ -199,31 +217,41 @@ export default function RcaPage() {
     const reason = prompt("Why should this ticket not be closed?");
     if (!reason) return;
     const jiraComment = prompt("Comment to post on the Jira ticket (leave blank to skip):");
-    await fetch("/api/rca/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ incidentId, action: "dispute", reason, jiraComment: jiraComment || "" }),
-    });
+    if (jiraComment === null) return;
+    try {
+      const res = await fetch("/api/rca/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId, action: "dispute", reason, jiraComment: jiraComment || "" }),
+      });
+      if (!res.ok) { setError(`Failed to dispute closure (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function requestReopen(incidentId: string) {
     const jiraComment = prompt("Message to provider requesting reopen:");
     if (!jiraComment) return;
-    await fetch("/api/rca/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ incidentId, action: "reopen_request", reason: jiraComment, jiraComment }),
-    });
+    try {
+      const res = await fetch("/api/rca/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId, action: "reopen_request", reason: jiraComment, jiraComment }),
+      });
+      if (!res.ok) { setError(`Failed to request reopen (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function resolveDispute(incidentId: string) {
-    await fetch("/api/rca/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ incidentId, action: "resolve_dispute", reason: "Ticket reopened by provider" }),
-    });
+    try {
+      const res = await fetch("/api/rca/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId, action: "resolve_dispute", reason: "Ticket reopened by provider" }),
+      });
+      if (!res.ok) { setError(`Failed to resolve dispute (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 

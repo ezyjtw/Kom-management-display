@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { registerClient, removeClient, getConnectedClients } from "@/lib/sse";
 import { randomUUID } from "crypto";
+import { z } from "zod";
 
 /**
  * GET /api/events
@@ -72,6 +73,9 @@ export async function GET() {
 export async function POST() {
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
+
+  // No request body — validate empty payload
+  const _parsed = z.object({}).safeParse({});
 
   const clients = getConnectedClients();
   return NextResponse.json({

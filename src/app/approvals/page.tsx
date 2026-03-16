@@ -57,12 +57,20 @@ export default function ApprovalsPage() {
   }
 
   async function handleAction(requestId: string, action: string, riskLevel: string) {
-    const notes = action !== "approved" ? prompt(`Notes for ${action}:`) || "" : "";
-    await fetch("/api/approvals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, action, riskLevel, notes }),
-    });
+    let notes = "";
+    if (action !== "approved") {
+      const input = prompt(`Notes for ${action}:`);
+      if (input === null) return;
+      notes = input;
+    }
+    try {
+      const res = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action, riskLevel, notes }),
+      });
+      if (!res.ok) { setError(`Action failed (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 

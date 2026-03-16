@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { z } from "zod";
 
 /**
  * GET /api/alerts/generate
@@ -34,6 +35,10 @@ export async function POST(request: NextRequest) {
 
   const authz = requireAuthorization(auth, "alert", "view");
   if (authz instanceof NextResponse) return authz;
+
+  // No request body — validate empty payload
+  const _parsed = z.object({}).safeParse({});
+
   return generateAlerts();
 }
 

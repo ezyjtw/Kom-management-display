@@ -163,31 +163,37 @@ export default function IncidentsPage() {
   }
 
   async function handleStatusChange(id: string, newStatus: string) {
-    await fetch("/api/incidents", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        status: newStatus,
-        update: newStatus === "resolved"
-          ? "Incident resolved"
-          : newStatus === "monitoring"
-            ? "Moved to monitoring"
-            : "Status updated",
-        updateType: newStatus === "resolved" ? "resolution" : "update",
-      }),
-    });
+    try {
+      const res = await fetch("/api/incidents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          status: newStatus,
+          update: newStatus === "resolved"
+            ? "Incident resolved"
+            : newStatus === "monitoring"
+              ? "Moved to monitoring"
+              : "Status updated",
+          updateType: newStatus === "resolved" ? "resolution" : "update",
+        }),
+      });
+      if (!res.ok) { setError(`Status update failed (${res.status})`); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchIncidents();
   }
 
   async function handleAddUpdate(id: string) {
     if (!updateText.trim()) return;
     setUpdatingId(id);
-    await fetch("/api/incidents", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, update: updateText }),
-    });
+    try {
+      const res = await fetch("/api/incidents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, update: updateText }),
+      });
+      if (!res.ok) { setError(`Failed to add update (${res.status})`); setUpdatingId(null); return; }
+    } catch (err) { setError(err instanceof Error ? err.message : "Network error"); setUpdatingId(null); return; }
     setUpdateText("");
     setUpdatingId(null);
     fetchIncidents();

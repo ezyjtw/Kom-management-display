@@ -33,27 +33,36 @@ export default function FeatureFlagsPage() {
   }
 
   async function toggleFlag(flag: FeatureFlag) {
-    await fetch("/api/feature-flags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...flag, enabled: !flag.enabled }),
-    });
+    try {
+      const res = await fetch("/api/feature-flags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...flag, enabled: !flag.enabled }),
+      });
+      if (!res.ok) return;
+    } catch { return; }
     fetchData();
   }
 
   async function deleteFlag(key: string) {
     if (!confirm(`Delete feature flag "${key}"?`)) return;
-    await fetch(`/api/feature-flags?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/feature-flags?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+      if (!res.ok) return;
+    } catch { return; }
     fetchData();
   }
 
   async function addFlag() {
     if (!newFlag.key || !newFlag.name) return;
-    await fetch("/api/feature-flags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newFlag),
-    });
+    try {
+      const res = await fetch("/api/feature-flags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newFlag),
+      });
+      if (!res.ok) return;
+    } catch { return; }
     setNewFlag({ key: "", name: "", description: "", enabled: false, percentage: 100 });
     setShowAdd(false);
     fetchData();

@@ -75,11 +75,14 @@ export default function TransactionConfirmationsPage() {
       if (!reason) return;
       body.reason = reason;
     }
-    await fetch("/api/transaction-confirmations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    try {
+      const res = await fetch("/api/transaction-confirmations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return;
+    } catch { return; }
     fetchData();
   }
 
