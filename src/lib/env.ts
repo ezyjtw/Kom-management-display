@@ -14,7 +14,13 @@ const envSchema = z.object({
   // ─── Required ───
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   NEXTAUTH_SECRET: z.string().min(16, "NEXTAUTH_SECRET must be at least 16 characters"),
-  NEXTAUTH_URL: z.string().url("NEXTAUTH_URL must be a valid URL"),
+  NEXTAUTH_URL: z.string().transform((v) => {
+    // Auto-prepend https:// if the value looks like a bare domain
+    if (v && !v.startsWith("http://") && !v.startsWith("https://")) {
+      return `https://${v}`;
+    }
+    return v;
+  }).pipe(z.string().url("NEXTAUTH_URL must be a valid URL")),
 
   // ─── Optional with defaults ───
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

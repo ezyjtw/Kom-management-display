@@ -74,5 +74,14 @@ if [ -z "$NEXTAUTH_URL" ] && [ -n "$RAILWAY_PUBLIC_DOMAIN" ]; then
   echo "Auto-set NEXTAUTH_URL=${NEXTAUTH_URL}"
 fi
 
+# Normalize NEXTAUTH_URL: prepend https:// if set but missing a protocol
+case "$NEXTAUTH_URL" in
+  http://*|https://*) ;;  # already has protocol
+  ?*)
+    export NEXTAUTH_URL="https://${NEXTAUTH_URL}"
+    echo "Normalized NEXTAUTH_URL=${NEXTAUTH_URL}"
+    ;;
+esac
+
 echo "Starting server..."
 exec node server.js
