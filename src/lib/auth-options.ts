@@ -103,10 +103,12 @@ export const authOptions: NextAuthOptions = {
         token.team = user.team;
 
         // Record session in metadata table for revocation tracking
-        if (token.jti && token.sub) {
+        const jti = token.jti as string | undefined;
+        const sub = token.sub as string | undefined;
+        if (jti && sub) {
           recordSession({
-            userId: token.sub,
-            sessionToken: token.jti,
+            userId: sub,
+            sessionToken: jti,
             expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8h
           }).catch(() => {
             // Session recording should never break login
@@ -117,10 +119,10 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub;
-        session.user.role = token.role;
-        session.user.employeeId = token.employeeId;
-        session.user.team = token.team;
+        session.user.id = token.sub ?? undefined;
+        session.user.role = (token.role as string) ?? undefined;
+        session.user.employeeId = (token.employeeId as string | null) ?? null;
+        session.user.team = (token.team as string | null) ?? null;
       }
       return session;
     },
