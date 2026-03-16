@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-user";
 import { isSessionRevoked } from "@/lib/session-revocation";
 
 /**
  * GET /api/sessions/check?token=<jti>
  *
  * Internal endpoint used by middleware to check if a session has been revoked.
- * Protected by a shared secret header to prevent external abuse.
- * Not listed in the middleware matcher — runs unauthenticated by design.
+ * Accepts either:
+ *   1. A valid user session (via requireAuth), OR
+ *   2. An internal shared-secret header (x-internal-check) for middleware calls.
  */
 export async function GET(request: NextRequest) {
-  // Verify internal call via shared secret
+  // Allow internal middleware calls via shared secret
   const internalSecret = request.headers.get("x-internal-check");
-  if (!internalSecret || internalSecret !== process.env.NEXTAUTH_SECRET) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const isInternalCall = internalSecret && internalSecret === process.env.NEXTAUTH_SECRET;
+
+  if (!isInternalCall) {
+    // Fall back to standard session auth
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
   }
 
   const token = request.nextUrl.searchParams.get("token");
