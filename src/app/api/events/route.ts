@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth-user";
+import { requireAuth, requireRole } from "@/lib/auth-user";
 import { registerClient, removeClient, getConnectedClients } from "@/lib/sse";
 import { randomUUID } from "crypto";
 
@@ -9,13 +9,8 @@ import { randomUUID } from "crypto";
  * Clients connect and receive events like SLA breaches, incidents, etc.
  */
 export async function GET() {
-  const auth = await getAuthUser();
-  if (!auth) {
-    return NextResponse.json(
-      { success: false, error: "Authentication required" },
-      { status: 401 },
-    );
-  }
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
 
   const clientId = randomUUID();
 
@@ -75,13 +70,8 @@ export async function GET() {
  * Get SSE client info (admin only) or broadcast a test event.
  */
 export async function POST() {
-  const auth = await getAuthUser();
-  if (!auth || (auth.role !== "admin" && auth.role !== "lead")) {
-    return NextResponse.json(
-      { success: false, error: "Admin or Lead role required" },
-      { status: 403 },
-    );
-  }
+  const auth = await requireRole("admin", "lead");
+  if (auth instanceof NextResponse) return auth;
 
   const clients = getConnectedClients();
   return NextResponse.json({
