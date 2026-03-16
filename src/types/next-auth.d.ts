@@ -1,13 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import NextAuth, { DefaultSession, DefaultUser } from "next-auth";
-import { JWT, DefaultJWT } from "next-auth/jwt";
+import "next-auth";
+import "next-auth/jwt";
 
 /**
  * Augment NextAuth types to include custom session/token fields.
  * This eliminates all `as any` casts in auth-options.ts and auth-user.ts.
  */
 declare module "next-auth" {
-  interface User extends DefaultUser {
+  interface User {
     role?: string;
     employeeId?: string | null;
     team?: string | null;
@@ -27,7 +26,7 @@ declare module "next-auth" {
 }
 
 declare module "next-auth/jwt" {
-  interface JWT extends DefaultJWT {
+  interface JWT {
     role?: string;
     employeeId?: string | null;
     team?: string | null;
