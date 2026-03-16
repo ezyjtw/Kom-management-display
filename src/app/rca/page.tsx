@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   RefreshCw, AlertTriangle, FileSearch, Clock, CheckCircle2, XCircle,
   ExternalLink, ChevronDown, ChevronUp, Link2, MessageSquareWarning,
-  RotateCcw, Ticket,
+  RotateCcw, Ticket, Users, Send, Zap, BarChart3,
 } from "lucide-react";
 import { RcaStatusBadge } from "@/components/shared/StatusBadge";
 import { formatDistanceToNow } from "date-fns";
@@ -57,6 +57,26 @@ interface RcaIncident {
   ticketEvents: TicketEvent[];
   prematureClosures: number;
   disputeCount: number;
+  // Stream 3 fields
+  detectionSource: string;
+  clientImpactCount: number;
+  clientNotifiedCount: number;
+  firstClientNotifiedAt: string | null;
+  affectedServices: string[];
+  clientImpacts?: Array<{
+    id: string;
+    clientName: string;
+    affectedServices: string[];
+    impactStatus: string;
+    clientNotifiedAt: string | null;
+  }>;
+  commsDrafts?: Array<{
+    id: string;
+    clientName: string;
+    status: string;
+    sendChannel: string;
+    sentAt: string | null;
+  }>;
 }
 
 interface RcaData {
@@ -513,6 +533,133 @@ export default function RcaPage() {
                               </span>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Detection Story */}
+                    {inc.detectionSource && inc.detectionSource !== "manual" && (
+                      <div className="bg-primary/5 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                          <Zap size={12} className="text-primary" />
+                          Detection Story
+                        </p>
+                        <p className="text-xs text-foreground/80">
+                          Detected via <span className="font-medium text-primary">{inc.detectionSource === "ai_slack" ? "AI Slack Classification" : inc.detectionSource === "status_page" ? "Status Page Poller" : inc.detectionSource}</span>
+                          {inc.affectedServices?.length > 0 && (
+                            <> affecting <span className="font-medium">{inc.affectedServices.join(", ")}</span></>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Client Impact Summary */}
+                    {(inc.clientImpactCount > 0 || (inc.clientImpacts && inc.clientImpacts.length > 0)) && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                          <Users size={12} />
+                          Client Impact Summary
+                          <span className="ml-1 text-foreground">({inc.clientImpactCount} client{inc.clientImpactCount !== 1 ? "s" : ""} affected, {inc.clientNotifiedCount} notified)</span>
+                        </p>
+                        {inc.clientImpacts && inc.clientImpacts.length > 0 && (
+                          <div className="space-y-1">
+                            {inc.clientImpacts.map((impact) => (
+                              <div key={impact.id} className="flex items-center gap-2 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  impact.clientNotifiedAt ? "bg-emerald-400" : impact.impactStatus === "confirmed" ? "bg-red-400" : "bg-amber-400"
+                                }`} />
+                                <span className="font-medium text-foreground/80">{impact.clientName}</span>
+                                <span className="text-muted-foreground">
+                                  {impact.affectedServices.join(", ")}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                  impact.impactStatus === "confirmed" ? "bg-red-500/10 text-red-400" :
+                                  impact.impactStatus === "resolved" ? "bg-emerald-500/10 text-emerald-400" :
+                                  "bg-amber-500/10 text-amber-400"
+                                }`}>
+                                  {impact.impactStatus}
+                                </span>
+                                {impact.clientNotifiedAt && (
+                                  <span className="text-emerald-400 flex items-center gap-0.5">
+                                    <CheckCircle2 size={10} /> Notified
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Comms Timeline */}
+                    {inc.commsDrafts && inc.commsDrafts.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                          <Send size={12} />
+                          Comms Timeline
+                        </p>
+                        <div className="space-y-1">
+                          {inc.commsDrafts.map((draft) => (
+                            <div key={draft.id} className="flex items-center gap-2 text-xs">
+                              <div className={`w-2 h-2 rounded-full ${
+                                draft.status === "sent" ? "bg-emerald-400" :
+                                draft.status === "failed" ? "bg-red-400" :
+                                draft.status === "dismissed" ? "bg-gray-400" :
+                                "bg-amber-400"
+                              }`} />
+                              <span className="text-foreground/80">{draft.clientName}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                draft.status === "sent" ? "bg-emerald-500/10 text-emerald-400" :
+                                draft.status === "failed" ? "bg-red-500/10 text-red-400" :
+                                draft.status === "dismissed" ? "bg-muted text-muted-foreground" :
+                                "bg-amber-500/10 text-amber-400"
+                              }`}>
+                                {draft.status}
+                              </span>
+                              <span className="text-muted-foreground">via {draft.sendChannel}</span>
+                              {draft.sentAt && (
+                                <span className="text-muted-foreground">
+                                  {formatDistanceToNow(new Date(draft.sentAt), { addSuffix: true })}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Vendor Response Analysis */}
+                    {inc.ticketEvents.length > 0 && (
+                      <div className="bg-muted/20 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                          <BarChart3 size={12} />
+                          Vendor Response Analysis
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Ticket Events</p>
+                            <p className="text-sm font-bold text-foreground">{inc.ticketEvents.length}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Premature Closures</p>
+                            <p className={`text-sm font-bold ${inc.prematureClosures > 0 ? "text-red-400" : "text-foreground"}`}>
+                              {inc.prematureClosures}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Disputes</p>
+                            <p className={`text-sm font-bold ${inc.disputeCount > 0 ? "text-orange-400" : "text-foreground"}`}>
+                              {inc.disputeCount}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Resolution</p>
+                            <p className="text-sm font-bold text-foreground">
+                              {inc.resolvedAt
+                                ? `${Math.round((new Date(inc.resolvedAt).getTime() - new Date(inc.startedAt).getTime()) / 3600000)}h`
+                                : "Ongoing"}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     )}

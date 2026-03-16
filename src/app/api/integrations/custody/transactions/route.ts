@@ -5,6 +5,7 @@ import {
   isCustodyConfigured,
 } from "@/lib/integrations/custody";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 
 /**
@@ -20,6 +21,9 @@ import { apiSuccess, handleApiError } from "@/lib/api/response";
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "transaction_confirmation", "view");
+  if (authz instanceof NextResponse) return authz;
 
   if (!isCustodyConfigured()) {
     return apiSuccess({

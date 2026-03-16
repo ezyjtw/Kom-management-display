@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
+import { wrapUntrustedContent } from "@/lib/ai";
+import { validateBody, complianceBotSchema } from "@/lib/validation";
 
 const SYSTEM_PROMPT = `You are the KMR Compliance Bot, an expert compliance assistant. Your role is to answer compliance-related questions based on the regulations and guidance published by the following regulators:
 
@@ -22,15 +25,19 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  try {
-    const { messages } = await request.json();
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+  try {
+    const body = await request.json();
+    const parsed = validateBody(complianceBotSchema, body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Messages array is required" },
+        { success: false, error: parsed.error },
         { status: 400 }
       );
     }
+    const { messages } = parsed.data;
 
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
@@ -46,7 +53,7 @@ export async function POST(request: NextRequest) {
       { role: "system" as const, content: SYSTEM_PROMPT },
       ...messages.map((m: { role: string; content: string }) => ({
         role: m.role as "user" | "assistant",
-        content: m.content,
+        content: m.role === "user" ? wrapUntrustedContent(m.content) : m.content,
       })),
     ];
 

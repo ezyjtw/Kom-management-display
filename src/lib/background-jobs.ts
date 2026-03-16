@@ -26,7 +26,23 @@ export type JobType =
   | "check_staking"
   | "poll_custody"
   | "check_confirmations"
-  | "cleanup_sessions";
+  | "cleanup_sessions"
+  | "sync_slack_channel"
+  | "sync_slack_replies"
+  | "classify_thread"
+  | "draft_client_comms"
+  | "poll_status_pages"
+  | "score_vendor_reliability";
+
+/**
+ * Job priority levels — lower number = higher priority.
+ */
+export enum JobPriority {
+  CRITICAL = 0,
+  HIGH = 1,
+  NORMAL = 2,
+  LOW = 3,
+}
 
 export interface JobDefinition {
   type: JobType;
@@ -53,6 +69,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "poll_custody", cronExpression: "*/2 * * * *" },     // Every 2 mins
     { type: "check_confirmations", cronExpression: "*/5 * * * *" }, // Every 5 mins
     { type: "cleanup_sessions", cronExpression: "0 2 * * *" },   // Daily at 2am
+    { type: "sync_slack_channel", cronExpression: "*/2 * * * *" }, // Every 2 mins
   ];
 
   for (const job of defaultJobs) {
@@ -82,8 +99,23 @@ export async function registerDefaultJobs(): Promise<void> {
 export async function enqueueJob(
   type: JobType,
   payload: Record<string, unknown> = {},
-  opts?: { runAt?: Date; maxAttempts?: number },
+  opts?: { runAt?: Date; maxAttempts?: number; deduplicationKey?: string; priority?: JobPriority },
 ): Promise<string> {
+  // If a deduplication key is provided, skip if a pending/running job exists with the same key
+  if (opts?.deduplicationKey) {
+    const existing = await prisma.backgroundJob.findFirst({
+      where: {
+        type,
+        status: { in: ["pending", "running", "retrying"] },
+        deduplicationKey: opts.deduplicationKey,
+      },
+    });
+    if (existing) {
+      logger.job(type, `Job deduplicated (key=${opts.deduplicationKey}): ${existing.id}`);
+      return existing.id;
+    }
+  }
+
   const job = await prisma.backgroundJob.create({
     data: {
       type,
@@ -91,6 +123,8 @@ export async function enqueueJob(
       nextRunAt: opts?.runAt ?? new Date(),
       maxAttempts: opts?.maxAttempts ?? 3,
       isRecurring: false,
+      priority: opts?.priority ?? JobPriority.NORMAL,
+      ...(opts?.deduplicationKey ? { deduplicationKey: opts.deduplicationKey } : {}),
     },
   });
 
@@ -108,13 +142,16 @@ export async function claimNextJob(): Promise<{
   payload: unknown;
   attempts: number;
 } | null> {
-  // Find the oldest pending job that's due
+  // Find the highest-priority pending job that's due
+  // Priority ordering: 0=critical, 1=high, 2=normal, 3=low (ascending)
+  // Within same priority, oldest first (nextRunAt ascending)
   const job = await prisma.backgroundJob.findFirst({
     where: {
       status: { in: ["pending", "retrying"] },
       nextRunAt: { lte: new Date() },
+      deadLetteredAt: null, // Exclude dead-lettered jobs
     },
-    orderBy: { nextRunAt: "asc" },
+    orderBy: [{ priority: "asc" }, { nextRunAt: "asc" }],
   });
 
   if (!job) return null;
@@ -195,12 +232,15 @@ export async function failJob(jobId: string, error: string): Promise<void> {
     });
     logger.job(job.type, `Job will retry in ${backoffMs / 1000}s: ${jobId}`, { error });
   } else {
+    // Move to dead letter queue — preserve the job for inspection
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: {
         status: "failed",
         error,
         completedAt: new Date(),
+        deadLetteredAt: new Date(),
+        deadLetterReason: `Exhausted ${job.maxAttempts} attempts. Last error: ${error}`,
       },
     });
 
@@ -216,11 +256,13 @@ export async function failJob(jobId: string, error: string): Promise<void> {
           completedAt: null,
           result: undefined,
           attempts: 0,
+          deadLetteredAt: null,
+          deadLetterReason: "",
         },
       });
     }
 
-    logger.error(`Job failed permanently: ${jobId}`, { type: job.type, error });
+    logger.error(`Job dead-lettered: ${jobId}`, { type: job.type, error });
   }
 }
 
@@ -254,6 +296,53 @@ export async function getJobQueueStatus() {
     summary: { pending, running, failed, completed },
     recurringJobs: jobs,
   };
+}
+
+/**
+ * Get dead-lettered jobs for review/replay.
+ */
+export async function getDeadLetterJobs(limit = 50) {
+  return prisma.backgroundJob.findMany({
+    where: {
+      deadLetteredAt: { not: null },
+    },
+    orderBy: { deadLetteredAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      payload: true,
+      error: true,
+      attempts: true,
+      maxAttempts: true,
+      priority: true,
+      deduplicationKey: true,
+      deadLetteredAt: true,
+      deadLetterReason: true,
+      createdAt: true,
+    },
+  });
+}
+
+/**
+ * Replay a dead-lettered job — resets it for re-processing.
+ */
+export async function replayDeadLetterJob(jobId: string): Promise<void> {
+  await prisma.backgroundJob.update({
+    where: { id: jobId },
+    data: {
+      status: "pending",
+      attempts: 0,
+      error: "",
+      nextRunAt: new Date(),
+      startedAt: null,
+      completedAt: null,
+      deadLetteredAt: null,
+      deadLetterReason: "",
+    },
+  });
+  logger.info(`Dead-letter job replayed: ${jobId}`);
 }
 
 /**

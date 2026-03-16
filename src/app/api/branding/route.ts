@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateBrandingSchema } from "@/lib/validation";
 
 const MAX_LOGO_SIZE = 512 * 1024; // 512 KB max for base64 logo
 
@@ -45,8 +47,13 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "branding", "view");
+  if (authz instanceof NextResponse) return authz;
+
   try {
     const body = await request.json();
+    const parsed = validateBody(updateBrandingSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { appName, subtitle, logoData } = body;
 
     // Validate logo size if provided

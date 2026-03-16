@@ -11,6 +11,8 @@ import {
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { emitHighRiskTransaction } from "@/lib/sse";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, createTransactionConfirmationSchema } from "@/lib/validation";
 
 /**
  * GET /api/transaction-confirmations
@@ -19,6 +21,9 @@ import { emitHighRiskTransaction } from "@/lib/sse";
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "transaction_confirmation", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -74,6 +79,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createTransactionConfirmationSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action } = body;
 
     if (!action) {

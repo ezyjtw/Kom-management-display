@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, createOnCallSchema } from "@/lib/validation";
 
 /**
  * GET /api/schedule/on-call
@@ -11,6 +13,9 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -65,6 +70,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createOnCallSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { employeeId, date, team, shiftType } = body;
 
     if (!employeeId || !date || !team) {

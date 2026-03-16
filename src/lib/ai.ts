@@ -143,6 +143,17 @@ async function complete(req: CompletionRequest): Promise<string | null> {
   }
 }
 
+// ─── Untrusted content wrapping ──────────────────────────────────────────────
+
+/**
+ * Wrap user-provided or external content in `<untrusted_input>` tags
+ * so the LLM can distinguish system instructions from untrusted data.
+ * This mitigates prompt-injection attacks.
+ */
+export function wrapUntrustedContent(content: string): string {
+  return `<untrusted_input>\n${content}\n</untrusted_input>`;
+}
+
 // ─── Public AI functions ────────────────────────────────────────────────────
 
 /**
@@ -165,7 +176,7 @@ Generate a concise morning briefing for the ops team. Use short bullet points gr
 Start with any critical items (incidents, SLA breaches), then status overview, then action items.
 Use plain text with markdown formatting. Be direct and specific — no filler.
 If there are active incidents, lead with those. If everything is clear, say so briefly.`,
-    userMessage: `Generate the morning ops briefing from this data:\n\n${JSON.stringify(data, null, 2)}`,
+    userMessage: `Generate the morning ops briefing from this data:\n\n${wrapUntrustedContent(JSON.stringify(data, null, 2))}`,
     maxTokens: 1024,
   });
 }
@@ -191,7 +202,7 @@ Priority levels:
 - P3: Routine queries, informational, low-impact administrative
 
 Respond with ONLY valid JSON: {"priority":"P0","reason":"one sentence explanation"}`,
-    userMessage: JSON.stringify(thread),
+    userMessage: wrapUntrustedContent(JSON.stringify(thread)),
     maxTokens: 256,
   });
 
@@ -220,7 +231,7 @@ export async function draftIncidentImpact(incident: {
 Given an incident title, provider, severity, and description, draft a concise operational impact statement.
 Focus on: what operations are affected, what clients might notice, and what workarounds exist.
 Keep it to 2-3 sentences. Be specific to digital asset custody operations (transactions, signing, staking, settlements).`,
-    userMessage: JSON.stringify(incident),
+    userMessage: wrapUntrustedContent(JSON.stringify(incident)),
     maxTokens: 512,
   });
 }
@@ -242,7 +253,7 @@ export async function analyseClientPattern(client: {
 Analyse this client's recent activity pattern and provide a 1-2 sentence insight.
 Focus on: repeated issues, escalation patterns, potential relationship risks, or positive signals.
 If nothing notable, respond with just "No notable patterns."`,
-    userMessage: JSON.stringify(client),
+    userMessage: wrapUntrustedContent(JSON.stringify(client)),
     maxTokens: 256,
   });
 }
@@ -264,7 +275,7 @@ Draft a professional email to a counterparty VASP requesting missing travel rule
 The email should be formal, reference the specific transaction, and clearly state what information is needed.
 Follow FATF Travel Rule requirements (originator/beneficiary name, address, account).
 Return ONLY the email body text (no subject line, no headers).`,
-    userMessage: JSON.stringify(caseData),
+    userMessage: wrapUntrustedContent(JSON.stringify(caseData)),
     maxTokens: 512,
   });
 }
@@ -355,7 +366,7 @@ Analyse the token and provide a structured assessment covering:
 9. **recommendation**: Your overall recommendation — "approve" (low risk, strong demand), "approve_with_conditions" (manageable risks, worth supporting with safeguards), "further_review" (significant unknowns, needs deeper investigation), or "reject" (unacceptable risk or regulatory exposure). Include a 1-2 sentence rationale.
 
 Respond with ONLY valid JSON matching this structure. Be specific to institutional custody operations. Base your analysis on the token's known characteristics as of your knowledge cutoff.`,
-    userMessage: `Research this token for custody onboarding:\n\n${JSON.stringify(token, null, 2)}`,
+    userMessage: `Research this token for custody onboarding:\n\n${wrapUntrustedContent(JSON.stringify(token, null, 2))}`,
     maxTokens: 3072,
   });
 
@@ -395,7 +406,7 @@ Given daily check results, produce a concise Jira ticket summary grouped by cate
 Lead with issues found, then confirmations. Use bullet points.
 Format: "## Daily Ops Check — [date]" then categories as ### headings.
 Mark issues with ⚠️ and passes with ✅. Keep it brief and actionable.`,
-    userMessage: `Generate a Jira summary for these daily check results:\n\n${JSON.stringify(data, null, 2)}`,
+    userMessage: `Generate a Jira summary for these daily check results:\n\n${wrapUntrustedContent(JSON.stringify(data, null, 2))}`,
     maxTokens: 1024,
   });
 }
@@ -425,7 +436,7 @@ export async function analyseStakingAnomaly(wallet: {
 Explain why this staking wallet's reward may be late or its balance shows a variance.
 Consider: reward model timing, minimum thresholds, validator behavior, chain-specific delays, test wallets, cold staking specifics.
 Provide a 1-2 sentence explanation that an operator can use to decide if action is needed.`,
-    userMessage: JSON.stringify(wallet),
+    userMessage: wrapUntrustedContent(JSON.stringify(wallet)),
     maxTokens: 256,
   });
 }
@@ -449,7 +460,7 @@ export async function classifyScreeningRisk(entry: {
 Given transaction details and screening data, classify the risk level and suggest an action.
 Consider: amount thresholds, asset risk profile, screening status, direction, and existing classification.
 Respond with ONLY valid JSON: {"riskLevel":"low|medium|high|critical","reasoning":"brief explanation","suggestedAction":"clear|review|escalate|block"}`,
-    userMessage: JSON.stringify(entry),
+    userMessage: wrapUntrustedContent(JSON.stringify(entry)),
     maxTokens: 256,
   });
 
@@ -485,7 +496,7 @@ Draft a concise RCA summary covering:
 5. **Preventive Measures** — what changes will prevent recurrence
 
 Use markdown formatting. Be specific to digital asset custody operations. Keep it to one page.`,
-    userMessage: JSON.stringify(incident),
+    userMessage: wrapUntrustedContent(JSON.stringify(incident)),
     maxTokens: 1024,
   });
 }
@@ -512,7 +523,7 @@ Draft a concise escalation note for a compliance reviewer, including:
 - Specific questions for compliance to address
 
 Keep it professional and under 200 words. Use bullet points.`,
-    userMessage: JSON.stringify(request),
+    userMessage: wrapUntrustedContent(JSON.stringify(request)),
     maxTokens: 512,
   });
 }
@@ -538,7 +549,7 @@ Analyse these stuck/slow transactions and identify patterns:
 - Any common factors
 
 Provide a brief operational summary (3-5 bullet points) that an operator can use in a daily check report.`,
-    userMessage: `Stuck/slow transactions:\n\n${JSON.stringify(transactions, null, 2)}`,
+    userMessage: `Stuck/slow transactions:\n\n${wrapUntrustedContent(JSON.stringify(transactions, null, 2))}`,
     maxTokens: 512,
   });
 }
@@ -573,9 +584,9 @@ For each suggestion, provide:
 
 Do NOT suggest tokens that already appear in the existing registry.
 Respond with ONLY a valid JSON array.`,
-    userMessage: `Current token registry:\n${JSON.stringify(context.existingTokens, null, 2)}\n\n${
+    userMessage: `Current token registry:\n${wrapUntrustedContent(JSON.stringify(context.existingTokens, null, 2))}\n\n${
       context.clientDemandSignals?.length
-        ? `Recent client demand signals:\n${JSON.stringify(context.clientDemandSignals, null, 2)}`
+        ? `Recent client demand signals:\n${wrapUntrustedContent(JSON.stringify(context.clientDemandSignals, null, 2))}`
         : "No specific client demand signals provided."
     }`,
     maxTokens: 2048,

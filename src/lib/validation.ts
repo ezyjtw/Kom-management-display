@@ -222,6 +222,7 @@ export const enqueueJobSchema = z.object({
   type: z.enum([
     "sync_slack", "sync_email", "sync_jira", "check_sla",
     "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
+    "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
   ]),
   payload: z.record(z.string(), z.unknown()).default({}),
 });
@@ -254,6 +255,307 @@ export const listQuerySchema = z.object({
 export const dateRangeSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+});
+
+// ─── Activity Schemas ───
+
+export const createActivitySchema = z.object({
+  employeeId: z.string().min(1),
+  activity: z.enum(["project", "bau", "queue_monitoring", "lunch", "break", "meeting", "admin", "training"]),
+  detail: z.string().max(500).default(""),
+});
+
+export const endActivitySchema = z.object({
+  id: z.string().min(1).optional(),
+  employeeId: z.string().min(1).optional(),
+}).refine((d) => d.id || d.employeeId, { message: "id or employeeId required" });
+
+// ─── Comms Alert Schema ───
+
+export const updateCommsAlertSchema = z.object({
+  alertId: z.string().min(1),
+  action: z.enum(["acknowledge", "resolve"]),
+});
+
+// ─── Thread Note Schema ───
+
+export const createThreadNoteSchema = z.object({
+  content: z.string().min(1).max(5000),
+});
+
+// ─── Thread Status Schema ───
+
+export const updateThreadStatusSchema = z.object({
+  status: z.string().min(1).max(50),
+  reason: z.string().max(2000).optional(),
+});
+
+// ─── Thread Take Schema ───
+
+export const takeThreadSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+
+// ─── Thread Transfer Schema ───
+
+export const transferThreadSchema = z.object({
+  toUserId: z.string().min(1),
+  reason: z.string().max(2000).optional(),
+  handoverNote: z.string().max(2000).optional(),
+});
+
+// ─── Thread Secondaries Schema ───
+
+export const updateSecondariesSchema = z.object({
+  action: z.enum(["add", "remove"]),
+  userId: z.string().min(1),
+});
+
+// ─── Token Review Schemas ───
+
+export const createTokenSchema = z.object({
+  action: z.literal("create"),
+  symbol: z.string().min(1).max(20),
+  name: z.string().min(1).max(200),
+  network: z.string().max(100).default(""),
+  contractAddress: z.string().max(500).default(""),
+  tokenType: z.string().max(50).default("native"),
+  riskLevel: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  marketCapTier: z.string().max(50).default("unknown"),
+  notes: z.string().max(5000).default(""),
+  custodianSupport: z.array(z.string()).optional(),
+  stakingAvailable: z.boolean().default(false),
+  fireblocksSupport: z.boolean().optional(),
+  ledgerSupport: z.boolean().optional(),
+  notabeneSupport: z.boolean().optional(),
+  jiraTicket: z.string().max(500).optional(),
+  complianceDoc: z.string().max(500).optional(),
+  launchDate: z.string().max(100).optional(),
+  founders: z.string().max(1000).optional(),
+  website: z.string().max(500).optional(),
+  supportedNetworks: z.array(z.string()).optional(),
+  whitepaper: z.string().max(500).optional(),
+  explorer: z.string().max(500).optional(),
+  blockchainAnalytics: z.string().max(100).optional(),
+  travelRuleNotabene: z.boolean().optional(),
+  priceFeedCoingecko: z.boolean().optional(),
+  consensusMechanism: z.string().max(200).optional(),
+  privacyToken: z.boolean().optional(),
+  smartContractReview: z.boolean().optional(),
+  smartContractReviewNotes: z.string().max(5000).optional(),
+  jurisdictionStatus: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateTokenStatusSchema = z.object({
+  action: z.literal("update_status"),
+  tokenId: z.string().min(1),
+  newStatus: z.enum(["proposed", "under_review", "compliance_review", "approved", "rejected", "live"]),
+  reason: z.string().max(2000).optional(),
+});
+
+export const addTokenSignalSchema = z.object({
+  action: z.literal("add_signal"),
+  tokenId: z.string().min(1),
+  signalType: z.string().min(1).max(100),
+  source: z.string().max(500).default(""),
+  description: z.string().max(2000).default(""),
+  weight: z.number().min(0).max(100).default(1),
+});
+
+export const updateTokenSchema = z.object({
+  action: z.literal("update"),
+  tokenId: z.string().min(1),
+  riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+  riskNotes: z.string().max(5000).optional(),
+  regulatoryNotes: z.string().max(5000).optional(),
+  sanctionsCheck: z.boolean().optional(),
+  amlRiskAssessed: z.boolean().optional(),
+  stakingAvailable: z.boolean().optional(),
+  marketCapTier: z.string().max(50).optional(),
+  notes: z.string().max(5000).optional(),
+  network: z.string().max(100).optional(),
+  contractAddress: z.string().max(500).optional(),
+  chainalysisSupport: z.boolean().optional(),
+  notabeneSupport: z.boolean().optional(),
+  fireblocksSupport: z.boolean().optional(),
+  ledgerSupport: z.boolean().optional(),
+  custodianSupport: z.array(z.string()).optional(),
+  vendorNotes: z.record(z.string(), z.string()).optional(),
+  supportedNetworks: z.array(z.string()).optional(),
+  jurisdictionStatus: z.record(z.string(), z.unknown()).optional(),
+  jiraTicket: z.string().max(500).optional(),
+  complianceDoc: z.string().max(500).optional(),
+  launchDate: z.string().max(100).optional(),
+  founders: z.string().max(1000).optional(),
+  website: z.string().max(500).optional(),
+  whitepaper: z.string().max(500).optional(),
+  explorer: z.string().max(500).optional(),
+  blockchainAnalytics: z.string().max(100).optional(),
+  travelRuleNotabene: z.boolean().optional(),
+  priceFeedCoingecko: z.boolean().optional(),
+  consensusMechanism: z.string().max(200).optional(),
+  privacyToken: z.boolean().optional(),
+  smartContractReview: z.boolean().optional(),
+  smartContractReviewNotes: z.string().max(5000).optional(),
+});
+
+export const saveTokenResearchSchema = z.object({
+  action: z.literal("save_research"),
+  tokenId: z.string().min(1),
+  researchResult: z.record(z.string(), z.unknown()),
+  recommendation: z.string().max(500).optional(),
+});
+
+export const tokenActionSchema = z.discriminatedUnion("action", [
+  createTokenSchema,
+  updateTokenStatusSchema,
+  addTokenSignalSchema,
+  updateTokenSchema,
+  saveTokenResearchSchema,
+]);
+
+// ─── Travel Rule Case Schemas ───
+
+export const updateTravelRuleCaseSchema = z.object({
+  status: z.string().max(50).optional(),
+  counterpartyVasp: z.string().max(500).optional(),
+  emailSentTo: z.string().max(500).optional(),
+  emailSentAt: z.string().datetime().optional(),
+  notes: z.string().max(5000).optional(),
+  assignedTo: z.string().max(200).optional(),
+});
+
+export const createTravelRuleCaseNoteSchema = z.object({
+  content: z.string().min(1).max(5000),
+});
+
+export const approveCustodySchema = z.object({
+  requestId: z.string().min(1).max(500).optional(),
+  action: z.enum(["check_status"]).optional(),
+});
+
+// ─── Staking Schemas ───
+
+export const createStakingWalletSchema = z.object({
+  action: z.literal("create"),
+  asset: z.string().min(1).max(50),
+  network: z.string().min(1).max(100),
+  walletAddress: z.string().max(500).default(""),
+  validatorName: z.string().max(200).default(""),
+  stakedAmount: z.number().min(0).default(0),
+  rewardModel: z.string().max(100).default(""),
+  expectedRewardFrequencyHours: z.number().min(0).default(24),
+  minimumThreshold: z.number().min(0).default(0),
+  isColdStaking: z.boolean().default(false),
+  isTestWallet: z.boolean().default(false),
+});
+
+export const updateStakingWalletSchema = z.object({
+  action: z.literal("update"),
+  walletId: z.string().min(1),
+  stakedAmount: z.number().min(0).optional(),
+  onChainBalance: z.number().min(0).optional(),
+  platformBalance: z.number().min(0).optional(),
+  validatorName: z.string().max(200).optional(),
+  rewardStatus: z.string().max(50).optional(),
+  notes: z.string().max(5000).optional(),
+});
+
+// ─── Approval Schemas ───
+
+export const approvalActionSchema = z.object({
+  action: z.enum(["approve", "reject", "reassign"]),
+  requestId: z.string().min(1),
+  reason: z.string().max(2000).optional(),
+  assignTo: z.string().max(200).optional(),
+});
+
+// ─── AI Assist Schema ───
+
+export const aiAssistSchema = z.object({
+  action: z.string().min(1).max(100),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+// ─── Compliance Bot Schema ───
+
+export const complianceBotSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(10000),
+  })).min(1),
+});
+
+// ─── Schedule Schemas ───
+
+export const createOnCallSchema = z.object({
+  employeeId: z.string().min(1),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  notes: z.string().max(2000).default(""),
+});
+
+export const createPtoSchema = z.object({
+  employeeId: z.string().min(1),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  type: z.string().max(50).default("annual_leave"),
+  notes: z.string().max(2000).default(""),
+});
+
+export const createRotaSchema = z.object({
+  employeeId: z.string().min(1),
+  date: z.string().min(1),
+  shift: z.string().min(1).max(50),
+  notes: z.string().max(2000).default(""),
+});
+
+export const createHolidaySchema = z.object({
+  name: z.string().min(1).max(200),
+  date: z.string().min(1),
+  region: z.string().max(100).default("Global"),
+});
+
+// ─── Project Update Schema ───
+
+export const createProjectUpdateSchema = z.object({
+  message: z.string().min(1).max(5000),
+  status: z.string().max(50).optional(),
+});
+
+// ─── Project Member Schema ───
+
+export const projectMemberSchema = z.object({
+  action: z.enum(["add", "remove"]),
+  employeeId: z.string().min(1),
+  role: z.string().max(50).default("member"),
+});
+
+// ─── Email Sync Schema ───
+
+export const emailSyncSchema = z.object({
+  queue: z.string().max(100).optional(),
+});
+
+// ─── VASP Directory Schema ───
+
+export const createVaspSchema = z.object({
+  name: z.string().min(1).max(200),
+  did: z.string().max(500).default(""),
+  country: z.string().max(100).default(""),
+  website: z.string().max(500).default(""),
+  contactEmail: z.string().max(255).default(""),
+  notes: z.string().max(2000).default(""),
+});
+
+// ─── RCA Ticket Schema ───
+
+export const createRcaTicketSchema = z.object({
+  incidentId: z.string().min(1),
+  title: z.string().min(1).max(500),
+  description: z.string().max(5000).default(""),
+  assignedTo: z.string().max(200).default(""),
+  priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
 });
 
 // ─── Helper ───

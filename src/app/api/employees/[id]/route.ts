@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
-import { apiSuccess, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiNotFoundError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, updateEmployeeSchema } from "@/lib/validation";
 
 export async function GET(
   _request: NextRequest,
@@ -10,6 +12,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const employee = await prisma.employee.findUnique({
@@ -56,6 +61,8 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    const parsed = validateBody(updateEmployeeSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { name, role, team, region, active } = body;
 
     const data: Record<string, unknown> = {};

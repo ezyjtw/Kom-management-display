@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, safeErrorMessage } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 
 /**
  * GET /api/travel-rule/cases/:id/activity
@@ -14,6 +15,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "travel_rule_case", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const [auditEntries, notes] = await Promise.all([

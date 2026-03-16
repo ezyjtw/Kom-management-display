@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createThreadNoteSchema } from "@/lib/validation";
 
 /**
  * POST /api/comms/threads/:id/notes
@@ -15,16 +17,17 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "thread_note", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { content } = body;
-
-    if (!content || typeof content !== "string" || content.trim().length === 0) {
-      return apiValidationError("content is required");
-    }
+    const parsed = validateBody(createThreadNoteSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { content } = parsed.data;
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },

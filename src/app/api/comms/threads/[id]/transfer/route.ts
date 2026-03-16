@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, transferThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
 
 /**
@@ -17,12 +19,19 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "thread", "reassign");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { newOwnerId, reason, handoverNote } = body;
+    const parsed = validateBody(transferThreadSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const newOwnerId = parsed.data.toUserId;
+    const reason = parsed.data.reason;
+    const handoverNote = parsed.data.handoverNote;
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },

@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 /**
  * Input sanitization and XSS prevention utilities.
  *
@@ -167,6 +169,31 @@ export function escapeForLog(input: string, maxLength = 500): string {
     .replace(/\t/g, "\\t")
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1F\x7F]/g, "");
+}
+
+/**
+ * Sanitise a Slack message for safe storage.
+ *
+ * - Replaces user mentions (<@U123ABC>) with [mention]
+ * - Replaces channel references (<#C123|general>) with [channel]
+ * - Replaces broadcast mentions (<!here>, <!channel>, <!everyone>) with [broadcast]
+ * - Extracts display text from labelled URLs (<https://...|label> -> label)
+ * - Replaces bare URLs with [link]
+ * - Truncates to 4000 characters
+ */
+export function sanitiseSlackMessage(text: string): string {
+  if (!text) return "";
+  let clean = text;
+  clean = clean.replace(/<@[A-Z0-9]+>/g, "[mention]");
+  clean = clean.replace(/<#[A-Z0-9]+\|[^>]+>/g, "[channel]");
+  clean = clean.replace(/<!here>|<!channel>|<!everyone>/g, "[broadcast]");
+  clean = clean.replace(/<https?:\/\/[^|>]+\|([^>]+)>/g, "$1");
+  clean = clean.replace(/<https?:\/\/[^>]+>/g, "[link]");
+  if (clean.length > 4000) {
+    logger.warn("Slack message truncated", { originalLength: clean.length });
+    clean = clean.substring(0, 4000);
+  }
+  return clean.trim();
 }
 
 /**

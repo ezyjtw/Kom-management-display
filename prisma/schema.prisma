@@ -329,7 +329,20 @@ model CommsThread {
   tslaDeadline       DateTime? // Time-since-last-action deadline
   linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
 
+  // Stream 2: Slack thread fields
+  slackChannelId    String? // FK -> SlackChannel
+  slackRootTs       String? // root message ts — the thread identifier in Slack
+  slackThreadTs     String? // same as slackRootTs for root messages
+  isSlackThread     Boolean   @default(false) // true if reply_count > 0
+  slackReplyCount   Int?      // latest known reply count
+  slackLastReplyTs  String?   // ts of newest reply — reply sync cursor
+  // Stream 3: AI classification fields
+  aiClassification  Json?
+  aiClassifiedAt    DateTime?
+  aiUrgencyScore    Int       @default(0)
+
   owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
+  slackChannel        SlackChannel?         @relation(fields: [slackChannelId], references: [id])
   messages            CommsMessage[]
   ownershipChanges    OwnershipChange[]
   alerts              Alert[]
@@ -337,6 +350,7 @@ model CommsThread {
   threadParticipants  ThreadParticipant[]
   threadLinkedRecords ThreadLinkedRecord[]
 
+  @@unique([slackChannelId, slackRootTs])
   @@index([ownerUserId])
   @@index([status])
   @@index([queue])
@@ -346,22 +360,31 @@ model CommsThread {
   @@index([ownerUserId, status])
   @@index([priority, ttoDeadline])
   @@index([lastMessageAt])
+  @@index([aiUrgencyScore])
 }
 
 model CommsMessage {
-  id          String   @id @default(cuid())
-  threadId    String
-  timestamp   DateTime @default(now())
-  authorName  String
-  authorEmail String   @default("")
-  authorType  String // external, internal
-  bodySnippet String
-  bodyLink    String   @default("") // link to full content
-  attachments Json     @default("[]") // JSON: [{name, size, type}]
+  id             String    @id @default(cuid())
+  threadId       String
+  timestamp      DateTime  @default(now())
+  authorName     String
+  authorEmail    String    @default("")
+  authorType     String // external, internal
+  bodySnippet    String
+  bodyLink       String    @default("") // link to full content
+  attachments    Json      @default("[]") // JSON: [{name, size, type}]
+  // Stream 2: Slack message fields
+  slackTs        String?   // Slack message ts — unique within thread
+  slackUserId    String?   // Slack user ID of author
+  slackThreadTs  String?   // thread_ts of parent thread
+  isRootMessage  Boolean   @default(false)
+  slackReactions Json?     // [{name: string, count: number}]
+  editedAt       DateTime?
 
   thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   messageAttachments MessageAttachment[]
 
+  @@unique([threadId, slackTs])
   @@index([threadId])
 }
 
@@ -796,9 +819,17 @@ model Incident {
   externalTicketLastSyncAt    DateTime? // when we last polled the ticket
   externalTicketDisputed      Boolean               @default(false) // true if provider closed prematurely and we dispute
   externalTicketDisputeReason String                @default("") // why we disagree with closure
+  // Stream 3: Impact chain fields
+  affectedServices            Json                  @default("[]")
+  detectionSource             String                @default("manual") // manual|ai_slack|status_page
+  clientImpactCount           Int                   @default(0)
+  clientNotifiedCount         Int                   @default(0)
+  firstClientNotifiedAt       DateTime?
+
   updates                     IncidentUpdate[]
   alerts                      Alert[]
   ticketEvents                ExternalTicketEvent[]
+  clientImpacts               ClientImpactRecord[]
   reportedBy                  Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
   resolvedBy                  Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
   rcaResponsible              Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
@@ -1333,25 +1364,152 @@ enum JobStatus {
 }
 
 model BackgroundJob {
-  id          String    @id @default(cuid())
-  type        String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_custody
-  status      JobStatus @default(pending)
-  payload     Json      @default("{}") // job-specific configuration
-  result      Json?     // job output
-  error       String    @default("")
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(3)
-  nextRunAt   DateTime  @default(now())
-  startedAt   DateTime?
-  completedAt DateTime?
+  id               String    @id @default(cuid())
+  type             String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_custody
+  status           JobStatus @default(pending)
+  payload          Json      @default("{}") // job-specific configuration
+  result           Json?     // job output
+  error            String    @default("")
+  attempts         Int       @default(0)
+  maxAttempts      Int       @default(3)
+  nextRunAt        DateTime  @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
   // Schedule
-  cronExpression String @default("") // e.g. "*/5 * * * *" for every 5 mins
-  isRecurring Boolean   @default(false)
-  lastRunAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  cronExpression   String    @default("") // e.g. "*/5 * * * *" for every 5 mins
+  isRecurring      Boolean   @default(false)
+  lastRunAt        DateTime?
+  // Stream 1: priority + deduplication
+  priority         Int       @default(2) // 0=critical 1=high 2=normal 3=low
+  deduplicationKey String?   // unique job identity for dedup
+  deadLetteredAt   DateTime?
+  deadLetterReason String    @default("")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([status, nextRunAt])
   @@index([type])
   @@index([isRecurring, status])
+  @@index([deduplicationKey])
+}
+
+// ─── Stream 2: Slack Thread Architecture ───
+
+model SlackChannel {
+  id             String    @id @default(cuid())
+  channelId      String    @unique // Slack channel ID e.g. C04ABCDEF
+  channelName    String // display name e.g. client-acme
+  channelType    String // client | service_provider | internal
+  linkedEntityId String? // FK ref to client prefs or provider
+  isActive       Boolean   @default(true)
+  syncCursor     String? // oldest ts already synced (incremental)
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  threads CommsThread[]
+}
+
+// ─── Stream 3: Intelligent Comms & Impact Chain ───
+
+model ServiceProvider {
+  id               String    @id @default(cuid())
+  name             String    @unique
+  providerType     String // wallet_tech|travel_rule|analytics|exchange|other
+  services         Json // string[] of service names this provider offers
+  slackChannelId   String? // references SlackChannel.channelId
+  statusPageUrl    String?
+  statusPageType   String? // statuspage | pagerduty | custom
+  contactEmail     String?
+  isActive         Boolean   @default(true)
+
+  dependencies     ClientServiceDependency[]
+  statusEvents     StatusPageEvent[]
+  reliabilityScores VendorReliabilityScore[]
+}
+
+model ClientServiceDependency {
+  id              String   @id @default(cuid())
+  clientName      String // matches ClientContactPreference.clientName
+  clientAccountId String   @default("")
+  providerId      String
+  serviceNames    Json // string[] of specific services used
+  source          String // custody_api | manual
+  lastSyncedAt    DateTime?
+
+  provider ServiceProvider @relation(fields: [providerId], references: [id])
+
+  @@unique([clientName, providerId])
+}
+
+model ClientImpactRecord {
+  id                    String    @id @default(cuid())
+  incidentId            String
+  clientName            String
+  clientAccountId       String    @default("")
+  affectedServices      Json
+  impactStatus          String    @default("potential") // potential|confirmed|resolved
+  estimatedImpact       String    @default("")
+  clientNotifiedAt      DateTime?
+  notifiedByEmployeeId  String?
+  impactStartAt         DateTime?
+  impactEndAt           DateTime?
+  impactDurationMins    Int?
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+
+  @@unique([incidentId, clientName])
+}
+
+model ClientCommsDraft {
+  id                    String    @id @default(cuid())
+  incidentId            String
+  clientImpactRecordId  String
+  clientName            String
+  aiDraft               String    @default("") // original AI draft — never overwritten
+  finalMessage          String    @default("") // as-sent, after any human edits
+  sendChannel           String // slack | email
+  sendChannelId         String // Slack channel ID or email address
+  status                String    @default("draft") // draft|approved|sent|dismissed|failed
+  approvedByEmployeeId  String?
+  approvedAt            DateTime?
+  sentAt                DateTime?
+  deliveryStatus        String    @default("pending") // pending|delivered|failed
+  deliveryError         String    @default("")
+  createdAt             DateTime  @default(now())
+}
+
+model StatusPageEvent {
+  id                 String    @id @default(cuid())
+  providerId         String
+  externalId         String // provider's own incident ID
+  title              String
+  severity           String // critical|major|minor|maintenance
+  status             String // investigating|identified|monitoring|resolved
+  affectedComponents Json
+  startedAt          DateTime
+  resolvedAt         DateTime?
+  linkedThreadId     String?
+  linkedIncidentId   String?
+  rawPayload         Json
+  polledAt           DateTime  @default(now())
+
+  provider ServiceProvider @relation(fields: [providerId], references: [id])
+
+  @@unique([providerId, externalId])
+}
+
+model VendorReliabilityScore {
+  id                String   @id @default(cuid())
+  providerId        String
+  periodStart       DateTime
+  periodEnd         DateTime
+  incidentCount     Int      @default(0)
+  avgResolutionMins Float    @default(0)
+  clientImpactCount Int      @default(0)
+  rcaReceivedRate   Float    @default(0)
+  disputeCount      Int      @default(0)
+  reliabilityScore  Float    @default(100) // 0-100, lower = worse
+  computedAt        DateTime @default(now())
+
+  provider ServiceProvider @relation(fields: [providerId], references: [id])
 }

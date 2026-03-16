@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
   getJobQueueStatus,
   registerDefaultJobs,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/background-jobs";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, enqueueJobSchema } from "@/lib/validation";
 
 const VALID_JOB_TYPES: JobType[] = [
   "sync_slack", "sync_email", "sync_jira", "check_sla",
@@ -25,6 +27,9 @@ const VALID_JOB_TYPES: JobType[] = [
 export async function GET() {
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "background_job", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const status = await getJobQueueStatus();
@@ -48,6 +53,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(enqueueJobSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action } = body;
 
     if (!action) {

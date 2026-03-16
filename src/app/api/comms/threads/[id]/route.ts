@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
 
 export async function GET(
@@ -12,6 +14,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const thread = await prisma.commsThread.findUnique({
@@ -79,6 +84,9 @@ export async function PATCH(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authzPatch = requireAuthorization(auth, "thread", "update");
+  if (authzPatch instanceof NextResponse) return authzPatch;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { generateReport, type ReportType } from "@/lib/pdf-report";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -18,6 +19,9 @@ const VALID_REPORT_TYPES: ReportType[] = [
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "report", "view");
+  if (authz instanceof NextResponse) return authz;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.expensive);
   if (limited) return limited;

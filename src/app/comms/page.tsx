@@ -16,10 +16,11 @@ import {
 } from "lucide-react";
 import type { ThreadSummary } from "@/types";
 
-type ViewTab = "all" | "unassigned" | "my_threads" | "overdue";
+type ViewTab = "all" | "unassigned" | "my_threads" | "overdue" | "needs_triage";
 
 const viewTabs: { key: ViewTab; label: string; icon: typeof Inbox }[] = [
   { key: "all", label: "All Threads", icon: Inbox },
+  { key: "needs_triage", label: "Needs Triage", icon: AlertTriangle },
   { key: "unassigned", label: "Unassigned", icon: Clock },
   { key: "my_threads", label: "My Threads", icon: User },
   { key: "overdue", label: "Overdue / SLA Breach", icon: AlertTriangle },
@@ -70,6 +71,10 @@ export default function CommsPage() {
     if (priorityFilter && t.priority !== priorityFilter) return false;
     if (queueFilter && t.queue !== queueFilter) return false;
     if (sourceFilter && t.source !== sourceFilter) return false;
+    // Needs Triage filter: aiUrgencyScore >= 3 AND status not Done/Closed
+    if (activeView === "needs_triage") {
+      return (t.aiUrgencyScore ?? 0) >= 3 && !["Done", "Closed"].includes(t.status);
+    }
     return true;
   });
 
@@ -79,6 +84,9 @@ export default function CommsPage() {
   ).length;
 
   const unassignedCount = threads.filter((t) => t.status === "Unassigned").length;
+  const needsTriageCount = threads.filter(
+    (t) => (t.aiUrgencyScore ?? 0) >= 3 && !["Done", "Closed"].includes(t.status)
+  ).length;
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -182,6 +190,11 @@ export default function CommsPage() {
               {tab.key === "overdue" && overdueCount > 0 && (
                 <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                   {overdueCount}
+                </span>
+              )}
+              {tab.key === "needs_triage" && needsTriageCount > 0 && (
+                <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  {needsTriageCount}
                 </span>
               )}
               {tab.key === "unassigned" && unassignedCount > 0 && (

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createTravelRuleCaseNoteSchema } from "@/lib/validation";
 
 /**
  * POST /api/travel-rule/cases/:id/notes
@@ -17,11 +19,16 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "travel_rule_case", "view");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createTravelRuleCaseNoteSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { content } = body;
 
     if (!content || typeof content !== "string" || !content.trim()) {

@@ -36,6 +36,7 @@ import {
   Cog,
   Flag,
   Monitor,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
@@ -73,6 +74,7 @@ const navSections = [
       { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/rca", label: "RCA Tracker", icon: FileSearch },
       { href: "/clients", label: "Client Issues", icon: Users },
+      { href: "/client-comms", label: "Client Comms", icon: Send },
       { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/briefing", label: "AI Briefing", icon: Sparkles },
@@ -106,6 +108,27 @@ export function Sidebar({ user }: SidebarProps) {
   const isAdmin = user?.role === "admin" || user?.role === "lead";
   const [mobileOpen, setMobileOpen] = useState(false);
   const { branding } = useBranding();
+  const [clientCommsDraftCount, setClientCommsDraftCount] = useState(0);
+
+  // Fetch client comms draft count
+  useEffect(() => {
+    async function fetchDraftCount() {
+      try {
+        const res = await fetch("/api/client-comms?status=draft");
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          const total = json.data.reduce(
+            (acc: number, g: { drafts: unknown[] }) => acc + (g.drafts?.length || 0),
+            0,
+          );
+          setClientCommsDraftCount(total);
+        }
+      } catch { /* silent */ }
+    }
+    fetchDraftCount();
+    const interval = setInterval(fetchDraftCount, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Close sidebar on route change
   useEffect(() => {
@@ -192,6 +215,11 @@ export function Sidebar({ user }: SidebarProps) {
                     >
                       <Icon size={18} />
                       {item.label}
+                      {item.href === "/client-comms" && clientCommsDraftCount > 0 && (
+                        <span className="ml-auto bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                          {clientCommsDraftCount}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

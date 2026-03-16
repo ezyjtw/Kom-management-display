@@ -27,6 +27,15 @@ export interface ThreadSummary {
   lastActionAt: string | null;
   createdAt: string;
   slaStatus: SlaStatus;
+  // Stream 3: AI classification fields
+  aiUrgencyScore?: number;
+  aiClassification?: {
+    summary?: string;
+    category?: string;
+    [key: string]: unknown;
+  } | null;
+  aiClassifiedAt?: string | null;
+  slackChannelType?: string | null;
 }
 
 export interface SlaStatus {

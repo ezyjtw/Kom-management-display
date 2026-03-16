@@ -6,7 +6,7 @@ import type { ThreadPriority } from "@/types";
 
 let slackClient: WebClient | null = null;
 
-function getSlackClient(): WebClient | null {
+export function getSlackClient(): WebClient | null {
   if (!process.env.SLACK_BOT_TOKEN) return null;
   if (!slackClient) {
     slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -16,6 +16,10 @@ function getSlackClient(): WebClient | null {
 
 /**
  * Fetch messages from a Slack channel and upsert them as CommsThreads.
+ *
+ * @deprecated Use `syncChannelMessages` from `@/modules/slack/services/slack-ingestion-service`
+ * instead. This function does not use the SlackChannel registry, rate limiter,
+ * or circuit breaker, and will be removed in a future release.
  */
 export async function syncSlackChannel(channelId: string, queue: string = "Transaction Operations") {
   const client = getSlackClient();

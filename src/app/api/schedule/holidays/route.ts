@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { validateBody, createHolidaySchema } from "@/lib/validation";
 
 /**
  * GET /api/schedule/holidays
@@ -11,6 +13,9 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "employee", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -59,6 +64,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createHolidaySchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { date, name, region } = body;
 
     if (!date || !name) {

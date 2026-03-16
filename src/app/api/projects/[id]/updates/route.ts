@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, createProjectUpdateSchema } from "@/lib/validation";
 
 /**
  * GET /api/projects/[id]/updates
@@ -14,6 +16,9 @@ export async function GET(
 ) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "project", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     const { id } = await params;
@@ -58,6 +63,8 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
+    const parsed = validateBody(createProjectUpdateSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { content, type, progress } = body;
 
     if (!content) {

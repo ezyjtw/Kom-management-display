@@ -6,6 +6,7 @@ import { incidentService } from "@/modules/incidents/services/incident-service";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { IncidentFilters } from "@/modules/incidents/services/incident-service";
+import { validateBody, createIncidentSchema } from "@/lib/validation";
 
 /**
  * GET /api/incidents
@@ -75,6 +76,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createIncidentSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { title, provider, severity, description, impact, linkedThreadIds, linkedTransactionIds } = body;
 
     if (!title || !provider) {

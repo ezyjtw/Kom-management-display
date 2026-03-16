@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
   isAiEnabled,
   getProviderName,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/ai";
 import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, aiAssistSchema } from "@/lib/validation";
 
 /**
  * POST /api/ai/assist
@@ -50,8 +52,13 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "thread", "view");
+  if (authz instanceof NextResponse) return authz;
+
   try {
     const body = await request.json();
+    const parsed = validateBody(aiAssistSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { action, data } = body;
 
     if (!action) {

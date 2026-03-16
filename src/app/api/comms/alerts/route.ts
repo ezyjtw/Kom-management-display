@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, updateCommsAlertSchema } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "alert", "view");
+  if (authz instanceof NextResponse) return authz;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || "active";
@@ -36,20 +44,17 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "alert", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { alertId, action } = body;
-
-    if (!alertId || !action) {
-      return apiValidationError("Missing alertId or action");
-    }
-
-    if (!["acknowledge", "resolve"].includes(action)) {
-      return apiValidationError("Invalid action. Must be acknowledge or resolve");
-    }
+    const parsed = validateBody(updateCommsAlertSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { alertId, action } = parsed.data;
 
     const data: Record<string, unknown> = {};
     if (action === "acknowledge") {

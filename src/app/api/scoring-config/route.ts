@@ -13,6 +13,7 @@ import { requireRole } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiForbiddenError, apiValidationError, handleApiError } from "@/lib/api/response";
+import { validateBody, createScoringConfigSchema } from "@/lib/validation";
 
 export async function GET() {
   try {
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(createScoringConfigSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { version, config, notes } = body;
 
     if (!version || !config) {

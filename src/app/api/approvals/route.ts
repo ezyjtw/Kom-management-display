@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
+import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { isCustodyConfigured, fetchPendingRequests } from "@/lib/integrations/custody";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { validateBody, approvalActionSchema } from "@/lib/validation";
 
 /**
  * Categorize a pending request into a swimlane and risk level.
@@ -36,6 +38,9 @@ function categorizeRequest(req: {
 export async function GET() {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+
+  const authz = requireAuthorization(auth, "transaction_confirmation", "view");
+  if (authz instanceof NextResponse) return authz;
 
   try {
     if (!isCustodyConfigured()) {
@@ -82,6 +87,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(approvalActionSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const { requestId, action, notes } = body;
 
     if (!requestId || !action) {
