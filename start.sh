@@ -23,6 +23,26 @@ done
 # Run migrations unless explicitly skipped (e.g. SKIP_MIGRATIONS=true)
 if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then
   echo "Running database migrations (production — fail-fast)..."
+
+  # Auto-resolve previously failed migrations (P3009).
+  # Our migrations use idempotent SQL (IF NOT EXISTS, DO $$ EXCEPTION blocks),
+  # so marking them as rolled-back and re-running is safe.
+  FAILED_MIGRATIONS=$(node -e "
+    const { PrismaClient } = require('@prisma/client');
+    const p = new PrismaClient();
+    p.\$queryRaw\`SELECT migration_name FROM _prisma_migrations WHERE rolled_back_at IS NULL AND finished_at IS NULL AND logs IS NOT NULL\`
+      .then(rows => { rows.forEach(r => console.log(r.migration_name)); p.\$disconnect(); })
+      .catch(() => p.\$disconnect());
+  " 2>/dev/null)
+
+  if [ -n "$FAILED_MIGRATIONS" ]; then
+    echo "Found failed migrations, resolving..."
+    for migration in $FAILED_MIGRATIONS; do
+      echo "  Marking '$migration' as rolled back..."
+      node node_modules/prisma/build/index.js migrate resolve --rolled-back "$migration" 2>&1 || true
+    done
+  fi
+
   node node_modules/prisma/build/index.js migrate deploy || {
     echo "FATAL: Migration failed in production. Aborting startup."
     exit 1
