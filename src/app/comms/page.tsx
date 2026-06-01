@@ -283,7 +283,7 @@ export default function CommsPage() {
                       <span className="text-xs text-muted-foreground">was {thread.priority}</span>
                       <button
                         onClick={async () => {
-                          await fetch(`/api/comms/threads/${threadId}/status`, {
+                          await fetch(`/api/comms/threads/${threadId}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ priority: suggestion.priority }),

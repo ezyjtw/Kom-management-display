@@ -3,10 +3,21 @@ import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiConflictError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
+
+const THREAD_TRANSITIONS: Record<string, string[]> = {
+  Unassigned: ["Assigned"],
+  Assigned: ["InProgress", "WaitingExternal", "WaitingInternal", "Unassigned"],
+  InProgress: ["WaitingExternal", "WaitingInternal", "PendingHandover", "Done", "Closed"],
+  WaitingExternal: ["InProgress", "Done", "Closed"],
+  WaitingInternal: ["InProgress", "Done", "Closed"],
+  PendingHandover: ["Assigned", "InProgress"],
+  Done: ["Closed"],
+  Closed: [],
+};
 
 export async function GET(
   _request: NextRequest,
@@ -180,6 +191,19 @@ export async function PATCH(
       return apiValidationError("linkedRecords must be an array");
     }
 
+    // Optimistic locking: reject stale writes
+    if (body.lastActionAt) {
+      const clientTs = new Date(body.lastActionAt).getTime();
+      const serverTs = thread.lastActionAt
+        ? new Date(thread.lastActionAt).getTime()
+        : 0;
+      if (clientTs < serverTs) {
+        return apiConflictError(
+          "This thread was modified by another user. Please refresh and try again."
+        );
+      }
+    }
+
     const data: Record<string, unknown> = {};
     const now = new Date();
     const auditDetails: Record<string, unknown> = {};
@@ -225,8 +249,19 @@ export async function PATCH(
       }
     }
 
-    // Handle status change
+    // Handle status change with state machine validation
     if (status && status !== thread.status) {
+      const allowed = THREAD_TRANSITIONS[thread.status] ?? [];
+      if (!allowed.includes(status)) {
+        if (isPrivileged && ["Done", "Closed"].includes(thread.status) && status === "InProgress") {
+          // Admins/leads can reopen terminal threads to InProgress
+        } else {
+          return apiConflictError(
+            `Cannot transition from "${thread.status}" to "${status}". ` +
+            `Allowed: ${allowed.length ? allowed.join(", ") : "none (thread is terminal)"}.`
+          );
+        }
+      }
       auditDetails.statusChange = {
         previousStatus: thread.status,
         newStatus: status,

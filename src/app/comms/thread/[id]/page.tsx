@@ -37,15 +37,35 @@ export default function ThreadDetailPage() {
     }
   }, [params.id]);
 
+  useEffect(() => {
+    if (!params.id) return;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetch(`/api/comms/threads/${params.id}`)
+        .then((r) => r.json())
+        .then((json) => { if (json.success) setThread(json.data); })
+        .catch(() => {});
+    }, 45_000);
+    return () => clearInterval(interval);
+  }, [params.id]);
+
   async function handleStatusChange(status: string) {
-    const res = await fetch(`/api/comms/threads/${params.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const json = await res.json();
-    if (json.success) {
-      setThread((prev) => prev ? { ...prev, status, lastActionAt: new Date().toISOString() } : prev);
+    const previousThread = thread;
+    setThread((prev) => prev ? { ...prev, status, lastActionAt: new Date().toISOString() } : prev);
+    try {
+      const res = await fetch(`/api/comms/threads/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setThread(previousThread);
+        alert(json.error || "Failed to update status");
+      }
+    } catch {
+      setThread(previousThread);
+      alert("Network error — status change reverted");
     }
   }
 

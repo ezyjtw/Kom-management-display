@@ -3,9 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { sendTravelRuleEmail } from "@/lib/travel-rule-email";
-import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateTravelRuleCaseSchema } from "@/lib/validation";
+
+const TRAVEL_RULE_TRANSITIONS: Record<string, string[]> = {
+  Open: ["Investigating", "PendingResponse", "Escalated", "Resolved"],
+  Investigating: ["PendingResponse", "Escalated", "Resolved"],
+  PendingResponse: ["Investigating", "Escalated", "Resolved"],
+  Escalated: ["Investigating", "Resolved"],
+  Resolved: [],
+};
 
 /**
  * GET /api/travel-rule/cases/:id
@@ -196,6 +204,13 @@ export async function PATCH(
     }
 
     if (body.status) {
+      const allowed = TRAVEL_RULE_TRANSITIONS[travelCase.status] ?? [];
+      if (!allowed.includes(body.status)) {
+        return apiConflictError(
+          `Cannot transition from "${travelCase.status}" to "${body.status}". ` +
+          `Allowed: ${allowed.length ? allowed.join(", ") : "none (case is terminal)"}.`
+        );
+      }
       data.status = body.status;
       auditDetails.statusChange = {
         previous: travelCase.status,
@@ -217,6 +232,19 @@ export async function PATCH(
 
     if (Object.keys(data).length === 0) {
       return apiSuccess(travelCase);
+    }
+
+    // Optimistic locking: reject stale writes
+    if (body.updatedAt) {
+      const clientUpdatedAt = new Date(body.updatedAt).getTime();
+      const serverUpdatedAt = travelCase.updatedAt
+        ? new Date(travelCase.updatedAt).getTime()
+        : 0;
+      if (clientUpdatedAt < serverUpdatedAt) {
+        return apiConflictError(
+          "This case was modified by another user. Please refresh and try again."
+        );
+      }
     }
 
     const updated = await prisma.travelRuleCase.update({
