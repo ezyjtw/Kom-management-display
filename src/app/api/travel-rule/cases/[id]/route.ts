@@ -52,8 +52,12 @@ export async function GET(
       if (accessError) return accessError;
     }
 
-    // Mask sensitive counterparty/PII fields for non-admin roles
-    const safeCase = maskSensitiveFields(travelCase, "travel_rule_case", auth.role);
+    // Mask sensitive counterparty/PII fields — exempt the case owner who
+    // legitimately needs senderAddress/receiverAddress for their workflow
+    const actorId = auth.employeeId || auth.id;
+    const safeCase = maskSensitiveFields(travelCase, "travel_rule_case", auth.role, {
+      isOwner: travelCase.ownerUserId === actorId,
+    });
 
     return apiSuccess({ ...safeCase, ownerName });
   } catch (error) {

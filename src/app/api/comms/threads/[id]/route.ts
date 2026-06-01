@@ -86,8 +86,14 @@ export async function GET(
         })
       : [];
 
-    // Mask sensitive fields (e.g. participant PII) for non-admin roles
-    const safeThread = maskSensitiveFields(thread, "thread", auth.role);
+    // Mask sensitive fields (e.g. participant PII) — exempt the thread owner
+    // and secondary collaborators who need participant data for their workflow
+    const callerEmployeeId = auth.employeeId || auth.id;
+    const isThreadOwnerOrCollaborator =
+      thread.ownerUserId === callerEmployeeId || secondaryIds.includes(callerEmployeeId);
+    const safeThread = maskSensitiveFields(thread, "thread", auth.role, {
+      isOwner: isThreadOwnerOrCollaborator,
+    });
 
     return apiSuccess({ ...safeThread, slaStatus, secondaryOwners });
   } catch (error) {

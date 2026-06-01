@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateSecondariesSchema } from "@/lib/validation";
@@ -23,11 +23,22 @@ export async function GET(
   try {
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
-      select: { secondaryOwnerIds: true },
+      select: { secondaryOwnerIds: true, ownerUserId: true, owner: { select: { team: true } } },
     });
 
     if (!thread) {
       return apiNotFoundError("Thread");
+    }
+
+    if (thread.ownerUserId) {
+      const secondaryIds: string[] = typeof thread.secondaryOwnerIds === "string"
+        ? JSON.parse(thread.secondaryOwnerIds || "[]")
+        : ((thread.secondaryOwnerIds as string[]) ?? []);
+      const accessError = requireRecordAccess(auth, authzGet.scope, {
+        ownerIds: [thread.ownerUserId, ...secondaryIds],
+        team: thread.owner?.team ?? null,
+      });
+      if (accessError) return accessError;
     }
 
     const rawIds = thread.secondaryOwnerIds;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createThreadNoteSchema } from "@/lib/validation";
@@ -31,10 +31,24 @@ export async function POST(
 
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
+      include: { owner: { select: { team: true } } },
     });
 
     if (!thread) {
       return apiNotFoundError("Thread");
+    }
+
+    // Object-level authorization: employees (own scope) can only add notes
+    // to threads they own or collaborate on. Unowned threads stay accessible.
+    if (thread.ownerUserId) {
+      const secondaryIds: string[] = typeof thread.secondaryOwnerIds === "string"
+        ? JSON.parse(thread.secondaryOwnerIds || "[]")
+        : ((thread.secondaryOwnerIds as string[]) ?? []);
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerIds: [thread.ownerUserId, ...secondaryIds],
+        team: thread.owner?.team ?? null,
+      });
+      if (accessError) return accessError;
     }
 
     const now = new Date();
