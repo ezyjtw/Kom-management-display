@@ -33,8 +33,14 @@ export async function verifySlackWebhook(
 ): Promise<boolean> {
   const signingSecret = env("SLACK_SIGNING_SECRET");
   if (!signingSecret) {
-    logger.warn("SLACK_SIGNING_SECRET not configured, skipping webhook verification");
-    return true; // Allow in development when not configured
+    // Fail CLOSED in production: an unsigned/unverifiable webhook must not be
+    // trusted. Only skip verification in non-production for local testing.
+    if (env("NODE_ENV") === "production") {
+      logger.security("SLACK_SIGNING_SECRET not configured — rejecting webhook in production");
+      return false;
+    }
+    logger.warn("SLACK_SIGNING_SECRET not configured, skipping webhook verification (non-production only)");
+    return true;
   }
 
   if (!timestamp || !signature) {
@@ -94,8 +100,13 @@ export async function verifyJiraWebhook(
 ): Promise<boolean> {
   const secret = env("JIRA_WEBHOOK_SECRET");
   if (!secret) {
-    logger.warn("JIRA_WEBHOOK_SECRET not configured, skipping webhook verification");
-    return true; // Allow in development when not configured
+    // Fail CLOSED in production (see verifySlackWebhook).
+    if (env("NODE_ENV") === "production") {
+      logger.security("JIRA_WEBHOOK_SECRET not configured — rejecting webhook in production");
+      return false;
+    }
+    logger.warn("JIRA_WEBHOOK_SECRET not configured, skipping webhook verification (non-production only)");
+    return true;
   }
 
   if (!signatureHeader) {

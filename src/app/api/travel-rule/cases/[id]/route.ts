@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { sendTravelRuleEmail } from "@/lib/travel-rule-email";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -29,25 +29,33 @@ export async function GET(
       return apiNotFoundError("Case");
     }
 
-    // Resolve owner name
+    // Resolve owner name (and team, for object-level scope checks)
     let ownerName: string | null = null;
+    let ownerTeam: string | null = null;
     if (travelCase.ownerUserId) {
       const emp = await prisma.employee.findUnique({
         where: { id: travelCase.ownerUserId },
-        select: { name: true },
+        select: { name: true, team: true },
       });
       ownerName = emp?.name ?? null;
+      ownerTeam = emp?.team ?? null;
     }
 
-    // Look up VASP contact if we have a Notabene transfer
-    let vaspContact = null;
-    if (travelCase.notabeneTransferId) {
-      // Try to find by the transfer's counterparty VASP
-      // For now return all contacts so the UI can pick one
-      vaspContact = null;
+    // Object-level authorization: a junior employee (scope "own") must not be
+    // able to read regulated cases owned by someone else. Unowned cases remain
+    // visible so they can be picked up (mirrors the PATCH claim semantics).
+    if (travelCase.ownerUserId) {
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerId: travelCase.ownerUserId,
+        team: ownerTeam,
+      });
+      if (accessError) return accessError;
     }
 
-    return apiSuccess({ ...travelCase, ownerName });
+    // Mask sensitive counterparty/PII fields for non-admin roles
+    const safeCase = maskSensitiveFields(travelCase, "travel_rule_case", auth.role);
+
+    return apiSuccess({ ...safeCase, ownerName });
   } catch (error) {
     return handleApiError(error, "GET /api/travel-rule/cases/[id]");
   }

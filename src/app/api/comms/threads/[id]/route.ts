@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeSlaStatus, computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateThreadSchema } from "@/lib/validation";
@@ -22,7 +22,7 @@ export async function GET(
     const thread = await prisma.commsThread.findUnique({
       where: { id: params.id },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, team: true } },
         messages: {
           orderBy: { timestamp: "asc" },
         },
@@ -51,6 +51,20 @@ export async function GET(
       return apiNotFoundError("Thread");
     }
 
+    // Object-level authorization. Owners and secondary collaborators always
+    // have access; otherwise the matrix scope is enforced against the thread's
+    // owner/team. Unowned threads stay visible so they can be claimed.
+    const threadSecondaryIds: string[] = typeof thread.secondaryOwnerIds === "string"
+      ? JSON.parse(thread.secondaryOwnerIds || "[]")
+      : ((thread.secondaryOwnerIds as string[]) ?? []);
+    if (thread.ownerUserId) {
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerIds: [thread.ownerUserId, ...threadSecondaryIds],
+        team: thread.owner?.team ?? null,
+      });
+      if (accessError) return accessError;
+    }
+
     const slaStatus = computeSlaStatus({
       createdAt: thread.createdAt,
       ownerUserId: thread.ownerUserId,
@@ -72,7 +86,10 @@ export async function GET(
         })
       : [];
 
-    return apiSuccess({ ...thread, slaStatus, secondaryOwners });
+    // Mask sensitive fields (e.g. participant PII) for non-admin roles
+    const safeThread = maskSensitiveFields(thread, "thread", auth.role);
+
+    return apiSuccess({ ...safeThread, slaStatus, secondaryOwners });
   } catch (error) {
     return handleApiError(error, "GET /api/comms/threads/[id]");
   }
