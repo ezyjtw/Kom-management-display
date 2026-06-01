@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "transaction_confirmation", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -89,28 +92,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(approvalActionSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { requestId, action, notes } = body;
-
-    if (!requestId || !action) {
-      return apiValidationError("requestId and action are required");
-    }
+    const { requestId, action, reason } = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
 
-    if (action === "approved" && isCustodyConfigured()) {
-      const { approveRequest } = await import("@/lib/integrations/custody");
-      await approveRequest(requestId);
-    }
-
-    // Log the audit entry
+    // Persist audit BEFORE calling external API to ensure traceability
     await prisma.$transaction([
       prisma.approvalAuditEntry.create({
         data: {
           requestId,
           action,
           performedById: actorId,
-          riskLevel: body.riskLevel || "medium",
-          notes: notes || "",
+          riskLevel: "medium",
+          notes: reason || "",
         },
       }),
       prisma.auditLog.create({
@@ -119,10 +113,15 @@ export async function POST(request: NextRequest) {
           entityType: "approval",
           entityId: requestId,
           userId: actorId,
-          details: JSON.stringify({ action, notes }),
+          details: JSON.stringify({ action, reason }),
         },
       }),
     ]);
+
+    if (action === "approve" && isCustodyConfigured()) {
+      const { approveRequest } = await import("@/lib/integrations/custody");
+      await approveRequest(requestId);
+    }
 
     return apiSuccess(undefined, undefined, 201);
   } catch (error) {

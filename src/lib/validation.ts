@@ -75,6 +75,34 @@ export const createIncidentSchema = z.object({
   severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
   description: z.string().max(5000).default(""),
   impact: z.string().max(5000).default(""),
+  linkedThreadIds: z.array(z.string()).max(50).optional(),
+  linkedTransactionIds: z.array(z.string()).max(50).optional(),
+});
+
+export const updateIncidentSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["active", "monitoring", "resolved"]).optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  impact: z.string().max(5000).optional(),
+  update: z.string().max(5000).optional(),
+  updateType: z.string().max(50).optional(),
+  linkedThreadIds: z.array(z.string()).max(50).optional(),
+  linkedTransactionIds: z.array(z.string()).max(50).optional(),
+  linkAlertIds: z.array(z.string()).max(50).optional(),
+  rcaStatus: z.enum(["not_required", "raised", "awaiting_rca", "rca_received", "follow_up_pending", "closed"]).optional(),
+  rcaDocumentRef: z.string().max(500).optional(),
+  rcaResponsibleId: z.string().max(200).optional(),
+  rcaSlaDeadline: z.string().datetime().optional(),
+  rcaFollowUpItems: z.array(z.object({
+    title: z.string().min(1).max(500),
+    status: z.string().max(50),
+    assigneeId: z.string().max(200).optional(),
+  })).max(50).optional(),
+  externalTicketRef: z.string().max(500).optional(),
+  externalTicketUrl: z.string().max(500).optional(),
+  externalTicketStatus: z.string().max(100).optional(),
+  externalTicketDisputed: z.boolean().optional(),
+  externalTicketDisputeReason: z.string().max(2000).optional(),
 });
 
 // ─── Screening Schemas ───
@@ -86,6 +114,24 @@ export const createScreeningSchema = z.object({
   amount: z.number().min(0).default(0),
   direction: z.enum(["IN", "OUT"]).default("IN"),
   screeningStatus: z.enum(["not_submitted", "submitted", "processing", "completed", "exception"]).default("not_submitted"),
+  classification: z.string().max(50).optional(),
+  isKnownException: z.boolean().optional(),
+  exceptionReason: z.string().max(2000).optional(),
+  analyticsAlertId: z.string().max(500).optional(),
+  analyticsStatus: z.string().max(50).optional(),
+  complianceReviewStatus: z.string().max(50).optional(),
+  notes: z.string().max(5000).optional(),
+});
+
+export const updateScreeningSchema = z.object({
+  id: z.string().min(1),
+  classification: z.string().max(50).optional(),
+  screeningStatus: z.enum(["not_submitted", "submitted", "processing", "completed", "exception"]).optional(),
+  analyticsStatus: z.string().max(50).optional(),
+  complianceReviewStatus: z.string().max(50).optional(),
+  notes: z.string().max(5000).optional(),
+  isKnownException: z.boolean().optional(),
+  exceptionReason: z.string().max(2000).optional(),
 });
 
 // ─── Travel Rule Schemas ───
@@ -125,6 +171,21 @@ export const createSettlementSchema = z.object({
   custodyWallet: z.string().max(500).default(""),
 });
 
+export const updateSettlementSchema = z.object({
+  id: z.string().min(1),
+  action: z.enum(["match_tx", "maker_confirm", "checker_approve", "flag_mismatch", "escalate", "update_delegation", "complete"]).optional(),
+  onChainTxHash: z.string().max(500).optional(),
+  matchStatus: z.string().max(50).optional(),
+  matchNote: z.string().max(2000).optional(),
+  escalationNote: z.string().max(2000).optional(),
+  delegationStatus: z.string().max(100).optional(),
+  delegatedAmount: z.number().min(0).optional(),
+  skipChecker: z.boolean().optional(),
+  status: z.string().max(50).optional(),
+  fireblockssTxId: z.string().max(500).optional(),
+  oesSignerGroup: z.string().max(200).optional(),
+});
+
 // ─── Alert Schemas ───
 
 export const updateAlertSchema = z.object({
@@ -157,6 +218,32 @@ export const createUsdcRampSchema = z.object({
   fiatCurrency: z.string().max(10).default("USD"),
   fiatAmount: z.number().min(0).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
+  bankReference: z.string().max(500).optional(),
+  instructionRef: z.string().max(500).optional(),
+  custodyWalletId: z.string().max(500).optional(),
+  ssiDetails: z.string().max(2000).optional(),
+  notes: z.string().max(5000).optional(),
+});
+
+export const updateUsdcRampSchema = z.object({
+  id: z.string().min(1),
+  action: z.enum(["advance_status", "maker_confirm", "checker_approve", "add_evidence", "update_checks", "flag_buffer", "notify_client", "reject"]).optional(),
+  status: z.string().max(50).optional(),
+  makerNote: z.string().max(2000).optional(),
+  checkerNote: z.string().max(2000).optional(),
+  kycAmlOk: z.boolean().optional(),
+  ssiVerified: z.boolean().optional(),
+  walletWhitelisted: z.boolean().optional(),
+  gasWalletOk: z.boolean().optional(),
+  expressEnabled: z.boolean().optional(),
+  evidenceRef: z.string().max(500).optional(),
+  rejectionReason: z.string().max(2000).optional(),
+  onChainTxHash: z.string().max(500).optional(),
+  issuerConfirmation: z.string().max(500).optional(),
+  holdingWalletId: z.string().max(500).optional(),
+  notes: z.string().max(5000).optional(),
+  bankReference: z.string().max(500).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
 });
 
 // ─── Project Schemas ───
@@ -179,6 +266,18 @@ export const updateDailyCheckItemSchema = z.object({
   notes: z.string().max(2000).default(""),
 });
 
+export const updateDailyCheckPatchSchema = z.union([
+  z.object({
+    itemId: z.string().min(1),
+    status: z.enum(["pending", "pass", "issues_found", "skipped"]).optional(),
+    notes: z.string().max(2000).optional(),
+  }),
+  z.object({
+    runId: z.string().min(1),
+    jiraSummary: z.string().max(5000).optional(),
+  }),
+]);
+
 // ─── Transaction Confirmation Schemas ───
 
 export const createTransactionConfirmationSchema = z.object({
@@ -196,6 +295,33 @@ export const confirmationActionSchema = z.object({
   confirmationId: z.string().min(1),
   reason: z.string().max(2000).optional(),
 });
+
+export const transactionConfirmationPostSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    transactionId: z.string().min(1).max(500),
+    requestId: z.string().max(500).optional(),
+    asset: z.string().min(1).max(50),
+    amount: z.number().min(0),
+    direction: z.string().min(1).max(20),
+    account: z.string().max(500).default(""),
+    workspace: z.string().max(500).default(""),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+  }),
+  z.object({
+    action: z.literal("acknowledge"),
+    confirmationId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("sign_off"),
+    confirmationId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("escalate"),
+    confirmationId: z.string().min(1),
+    reason: z.string().min(1).max(2000),
+  }),
+]);
 
 // ─── Feature Flag Schemas ───
 
@@ -423,6 +549,13 @@ export const updateTravelRuleCaseSchema = z.object({
   emailSentAt: z.string().datetime().optional(),
   notes: z.string().max(5000).optional(),
   assignedTo: z.string().max(200).optional(),
+  ownerUserId: z.string().max(200).optional().nullable(),
+  action: z.enum(["send_email"]).optional(),
+  recipientEmail: z.string().email().max(255).optional(),
+  recipientName: z.string().max(200).optional(),
+  resolutionType: z.string().max(100).optional(),
+  resolutionNote: z.string().max(5000).optional(),
+  updatedAt: z.string().datetime().optional(),
 });
 
 export const createTravelRuleCaseNoteSchema = z.object({
@@ -437,17 +570,26 @@ export const approveCustodySchema = z.object({
 // ─── Staking Schemas ───
 
 export const createStakingWalletSchema = z.object({
-  action: z.literal("create"),
+  action: z.literal("create").optional(),
   asset: z.string().min(1).max(50),
   network: z.string().min(1).max(100),
-  walletAddress: z.string().max(500).default(""),
+  walletAddress: z.string().min(1).max(500),
+  rewardModel: z.string().min(1).max(100),
   validatorName: z.string().max(200).default(""),
   stakedAmount: z.number().min(0).default(0),
-  rewardModel: z.string().max(100).default(""),
   expectedRewardFrequencyHours: z.number().min(0).default(24),
   minimumThreshold: z.number().min(0).default(0),
   isColdStaking: z.boolean().default(false),
   isTestWallet: z.boolean().default(false),
+  clientName: z.string().max(200).optional(),
+  stakeDate: z.string().datetime().optional().nullable(),
+  expectedFirstRewardDate: z.string().datetime().optional().nullable(),
+  expectedNextRewardAt: z.string().datetime().optional().nullable(),
+  onChainBalance: z.number().min(0).optional().nullable(),
+  platformBalance: z.number().min(0).optional().nullable(),
+  varianceThreshold: z.number().min(0).default(0.01),
+  tags: z.array(z.string().max(100)).max(50).default([]),
+  notes: z.string().max(5000).default(""),
 });
 
 export const updateStakingWalletSchema = z.object({
@@ -459,6 +601,24 @@ export const updateStakingWalletSchema = z.object({
   validatorName: z.string().max(200).optional(),
   rewardStatus: z.string().max(50).optional(),
   notes: z.string().max(5000).optional(),
+});
+
+export const updateStakingPatchSchema = z.object({
+  id: z.string().min(1),
+  validator: z.string().max(200).optional(),
+  stakedAmount: z.number().min(0).optional(),
+  clientName: z.string().max(200).optional(),
+  isColdStaking: z.boolean().optional(),
+  isTestWallet: z.boolean().optional(),
+  lastRewardAt: z.string().max(100).nullable().optional(),
+  expectedNextRewardAt: z.string().max(100).nullable().optional(),
+  actualFirstRewardDate: z.string().max(100).nullable().optional(),
+  onChainBalance: z.number().min(0).nullable().optional(),
+  platformBalance: z.number().min(0).nullable().optional(),
+  varianceThreshold: z.number().min(0).optional(),
+  tags: z.array(z.string().max(100)).max(50).optional(),
+  notes: z.string().max(5000).optional(),
+  status: z.string().max(50).optional(),
 });
 
 // ─── Approval Schemas ───
@@ -483,7 +643,7 @@ export const complianceBotSchema = z.object({
   messages: z.array(z.object({
     role: z.enum(["user", "assistant"]),
     content: z.string().min(1).max(10000),
-  })).min(1),
+  })).min(1).max(50),
 });
 
 // ─── Schedule Schemas ───

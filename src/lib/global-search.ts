@@ -9,6 +9,17 @@
 
 import { prisma } from "@/lib/prisma";
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  return `${local[0]}***@${domain}`;
+}
+
+function maskAddress(addr: string): string {
+  if (addr.length <= 10) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 export interface SearchResult {
   id: string;
   module: string;
@@ -154,7 +165,7 @@ async function searchTravelRuleCases(q: string, limit: number): Promise<SearchRe
     module: "travel_rule",
     type: "case",
     title: `${c.asset} ${c.amount} ${c.direction}`,
-    subtitle: `TX: ${c.transactionId} · ${c.status}`,
+    subtitle: `TX: ${maskAddress(c.transactionId)} · ${c.status}`,
     url: `/travel-rule`,
     relevance: c.transactionId.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,
   }));
@@ -202,7 +213,7 @@ async function searchEmployees(q: string, limit: number): Promise<SearchResult[]
     module: "employees",
     type: "employee",
     title: e.name,
-    subtitle: `${e.email} · ${e.role} · ${e.team}`,
+    subtitle: `${maskEmail(e.email)} · ${e.role} · ${e.team}`,
     url: `/employee/${e.id}`,
     relevance: e.name.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,
   }));
@@ -227,7 +238,7 @@ async function searchStakingWallets(q: string, limit: number): Promise<SearchRes
     id: w.id,
     module: "staking",
     type: "wallet",
-    title: `${w.asset} — ${w.clientName || w.walletAddress.substring(0, 16) + "..."}`,
+    title: `${w.asset} — ${w.clientName || maskAddress(w.walletAddress)}`,
     subtitle: `${w.stakedAmount.toLocaleString()} staked · ${w.status}`,
     url: `/staking`,
     relevance: w.walletAddress.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,

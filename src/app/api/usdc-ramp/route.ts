@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, createUsdcRampSchema } from "@/lib/validation";
+import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/validation";
 
 /**
  * GET /api/usdc-ramp
@@ -91,6 +91,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "usdc_ramp", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -98,41 +101,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createUsdcRampSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const {
-      clientName, clientAccount, direction, amount, fiatCurrency, fiatAmount,
-      bankReference, instructionRef, custodyWalletId, ssiDetails, priority,
-      notes,
-    } = body;
-
-    if (!clientName || !direction || !amount) {
-      return apiValidationError("clientName, direction, and amount are required");
-    }
-    if (direction !== "onramp" && direction !== "offramp") {
-      return apiValidationError("direction must be 'onramp' or 'offramp'");
-    }
-
-    if (isNaN(parseFloat(amount))) {
-      return apiValidationError("amount must be a valid number");
-    }
-
-    if (fiatAmount && isNaN(parseFloat(fiatAmount))) {
-      return apiValidationError("fiatAmount must be a valid number");
-    }
+    const data = parsed.data;
 
     const ticket = await prisma.usdcRampRequest.create({
       data: {
-        clientName,
-        clientAccount: clientAccount || "",
-        direction,
-        amount: parseFloat(amount),
-        fiatCurrency: fiatCurrency || "USD",
-        fiatAmount: fiatAmount ? parseFloat(fiatAmount) : null,
-        bankReference: bankReference || "",
-        instructionRef: instructionRef || "",
-        custodyWalletId: custodyWalletId || "",
-        ssiDetails: ssiDetails || "",
-        priority: priority || "normal",
-        notes: notes || "",
+        clientName: data.clientName,
+        clientAccount: data.clientAccount ?? "",
+        direction: data.direction,
+        amount: data.amount,
+        fiatCurrency: data.fiatCurrency ?? "USD",
+        fiatAmount: data.fiatAmount ?? null,
+        bankReference: data.bankReference ?? "",
+        instructionRef: data.instructionRef ?? "",
+        custodyWalletId: data.custodyWalletId ?? "",
+        ssiDetails: data.ssiDetails ?? "",
+        priority: data.priority ?? "normal",
+        notes: data.notes ?? "",
         status: "instruction_received",
         requestedAt: new Date(),
       },
@@ -165,16 +149,17 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "usdc_ramp", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { id, action, ...fields } = body;
-
-    if (!id) {
-      return apiValidationError("id is required");
-    }
+    const parsed = validateBody(updateUsdcRampSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { id, action, ...fields } = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
     const data: Record<string, unknown> = {};
@@ -195,12 +180,17 @@ export async function PATCH(request: NextRequest) {
         if (fields.status) data.status = fields.status;
         break;
 
-      case "checker_approve":
+      case "checker_approve": {
+        const existing = await prisma.usdcRampRequest.findUnique({ where: { id }, select: { makerById: true } });
+        if (existing?.makerById === actorId) {
+          return apiForbiddenError("Checker cannot be the same person as the maker");
+        }
         data.checkerById = actorId;
         data.checkerAt = new Date();
         if (fields.checkerNote) data.checkerNote = fields.checkerNote;
         if (fields.status) data.status = fields.status;
         break;
+      }
 
       case "update_checks":
         if (fields.kycAmlOk !== undefined) data.kycAmlOk = fields.kycAmlOk;
@@ -215,10 +205,10 @@ export async function PATCH(request: NextRequest) {
         if (!ticket) {
           return apiNotFoundError("Ticket");
         }
-        let existing: string[] = [];
-        try { existing = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
-        existing.push(fields.evidenceRef || "");
-        data.evidence = JSON.stringify(existing);
+        let existingEvidence: string[] = [];
+        try { existingEvidence = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
+        existingEvidence.push(fields.evidenceRef || "");
+        data.evidence = JSON.stringify(existingEvidence);
         break;
       }
 
@@ -236,7 +226,6 @@ export async function PATCH(request: NextRequest) {
         break;
 
       default:
-        // Simple field updates
         if (fields.status) data.status = fields.status;
         if (fields.onChainTxHash !== undefined) data.onChainTxHash = fields.onChainTxHash;
         if (fields.issuerConfirmation !== undefined) data.issuerConfirmation = fields.issuerConfirmation;

@@ -54,22 +54,27 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(updateBrandingSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { appName, subtitle, logoData } = body;
+    const validatedData = parsed.data;
 
     // Validate logo size if provided
-    if (logoData && logoData.length > MAX_LOGO_SIZE) {
+    if (validatedData.logoData && validatedData.logoData.length > MAX_LOGO_SIZE) {
       return apiValidationError("Logo file is too large. Maximum size is 512 KB.");
     }
 
-    // Validate logo is a data URL if provided
-    if (logoData && !logoData.startsWith("data:image/")) {
-      return apiValidationError("Logo must be a valid image (PNG, JPEG, or SVG).");
+    // Validate logo is a data URL — block SVG (XSS vector via embedded scripts)
+    if (validatedData.logoData) {
+      if (!validatedData.logoData.startsWith("data:image/")) {
+        return apiValidationError("Logo must be a valid image data URL.");
+      }
+      if (validatedData.logoData.startsWith("data:image/svg")) {
+        return apiValidationError("SVG uploads are not allowed for security reasons. Use PNG or JPEG.");
+      }
     }
 
     const updateData: Record<string, unknown> = {};
-    if (appName !== undefined) updateData.appName = String(appName).slice(0, 100);
-    if (subtitle !== undefined) updateData.subtitle = String(subtitle).slice(0, 200);
-    if (logoData !== undefined) updateData.logoData = logoData;
+    if (validatedData.appName !== undefined) updateData.appName = validatedData.appName;
+    if (validatedData.subtitle !== undefined) updateData.subtitle = validatedData.subtitle;
+    if (validatedData.logoData !== undefined) updateData.logoData = validatedData.logoData;
 
     const config = await prisma.brandingConfig.upsert({
       where: { id: "singleton" },
