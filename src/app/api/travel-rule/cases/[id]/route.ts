@@ -81,6 +81,9 @@ export async function PATCH(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authzPatch = requireAuthorization(auth, "travel_rule_case", "update");
+  if (authzPatch instanceof NextResponse) return authzPatch;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -98,11 +101,25 @@ export async function PATCH(
       return apiNotFoundError("Case");
     }
 
-    // RBAC: owner, lead, admin can update
+    // Object-level scope check for owned cases
     const isPrivileged = ["admin", "lead"].includes(auth.role);
     const isOwner = travelCase.ownerUserId === actorId;
-    if (!isPrivileged && !isOwner && travelCase.ownerUserId) {
-      return apiForbiddenError("Only the assigned owner or a lead/admin can update this case");
+    if (travelCase.ownerUserId) {
+      const ownerEmp = await prisma.employee.findUnique({
+        where: { id: travelCase.ownerUserId },
+        select: { team: true },
+      });
+      const accessError = requireRecordAccess(auth, authzPatch.scope, {
+        ownerId: travelCase.ownerUserId,
+        team: ownerEmp?.team ?? null,
+      });
+      if (accessError) return accessError;
+    } else if (!isPrivileged) {
+      // Unowned case: non-privileged users may only claim it (set ownerUserId to self)
+      const isClaim = body.ownerUserId === actorId && Object.keys(body).filter(k => k !== "ownerUserId").length === 0;
+      if (!isClaim) {
+        return apiForbiddenError("Unowned cases can only be claimed, not modified directly");
+      }
     }
 
     // Handle send_email action
