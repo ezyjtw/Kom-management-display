@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiNotFoundError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { validateBody, updateEmployeeSchema } from "@/lib/validation";
 
 export async function GET(
@@ -39,7 +39,20 @@ export async function GET(
       return apiNotFoundError("Employee");
     }
 
-    return apiSuccess(employee);
+    // Object-level authorization: a lead (team scope) may only read employees
+    // on their own team; an employee may only read their own record. The
+    // employee record is its own "owner" (matched against the caller's
+    // employeeId), and its team gates the team scope.
+    const accessError = requireRecordAccess(auth, authz.scope, {
+      ownerId: employee.id,
+      team: employee.team,
+    });
+    if (accessError) return accessError;
+
+    // Mask sensitive fields (e.g. email) for non-admin roles
+    const safeEmployee = maskSensitiveFields(employee, "employee", auth.role);
+
+    return apiSuccess(safeEmployee);
   } catch (error) {
     return handleApiError(error, "employee GET");
   }

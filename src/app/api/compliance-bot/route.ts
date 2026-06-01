@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import Groq from "groq-sdk";
 import { wrapUntrustedContent } from "@/lib/ai";
 import { validateBody, complianceBotSchema } from "@/lib/validation";
 import { apiSuccess, apiValidationError, apiError, handleApiError } from "@/lib/api/response";
+import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
+import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
+
+/**
+ * Disclaimer appended in code to every reply. The model is instructed to give
+ * authoritative guidance (a deliberate product decision), so this footer is the
+ * control that keeps AI output from being mistaken for a formal compliance
+ * sign-off. It is added server-side and cannot be removed via prompt injection.
+ */
+const AI_DISCLAIMER =
+  "\n\n---\n_AI-generated guidance for internal use — not a formal compliance sign-off. " +
+  "Material decisions (e.g. token go/no-go, regulatory filings, customer-facing positions) " +
+  "require MLRO or board approval per our compliance framework._";
 
 const SYSTEM_PROMPT = `You are a senior compliance officer at KMR, a digital asset custody firm licensed by JFSC, FCA, VARA, and under MiCAR. You have deep expertise across all four regulatory frameworks and speak with the authority of an in-house compliance team member — not an external advisor.
 
@@ -32,6 +46,11 @@ export async function POST(request: NextRequest) {
 
   const authz = requireAuthorization(auth, "thread", "view");
   if (authz instanceof NextResponse) return authz;
+
+  // LLM calls are expensive; rate-limit to prevent cost/DoS abuse by any
+  // authenticated user.
+  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.expensive);
+  if (limited) return limited;
 
   try {
     const body = await request.json();
@@ -63,7 +82,31 @@ export async function POST(request: NextRequest) {
       max_tokens: 2048,
     });
 
-    const reply = completion.choices[0]?.message?.content || "No response generated.";
+    const rawReply = completion.choices[0]?.message?.content || "No response generated.";
+    const reply = rawReply + AI_DISCLAIMER;
+
+    // Audit every compliance query/answer. Regulators will ask what guidance
+    // the tool gave staff; this is the record. Best-effort — never block the reply.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    prisma.auditLog
+      .create({
+        data: {
+          action: "compliance_bot_query",
+          entityType: "compliance_bot",
+          entityId: auth.employeeId || auth.id,
+          userId: auth.employeeId || auth.id,
+          details: JSON.stringify({
+            question: lastUserMessage.slice(0, 2000),
+            answer: rawReply.slice(0, 4000),
+            model: "llama-3.3-70b-versatile",
+          }),
+        },
+      })
+      .catch((err) =>
+        logger.error("Failed to audit compliance-bot query", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
 
     return apiSuccess({ reply });
   } catch (error: unknown) {

@@ -29,8 +29,9 @@ export interface SendTravelRuleEmailParams {
 export function buildHtmlEmail(params: SendTravelRuleEmailParams): string {
   const { travelCase, senderName, recipientName } = params;
   const isInbound = travelCase.direction === "IN";
+  // Escape recipientName — it is operator-supplied and interpolated into HTML.
   const greeting = recipientName
-    ? `Dear ${recipientName},`
+    ? `Dear ${escapeHtml(recipientName)},`
     : "Dear Compliance Team,";
 
   const requestType =

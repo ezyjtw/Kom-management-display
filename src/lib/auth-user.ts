@@ -1,8 +1,12 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth-options";
 import { isSessionRevoked, updateLastActive } from "@/lib/session-revocation";
 import { logger } from "@/lib/logger";
+
+/** HTTP methods that change state — these get a fail-closed revocation policy. */
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export interface AuthUser {
   id: string;
@@ -57,9 +61,29 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
           { status: 401 }
         );
       }
-    } catch {
-      // isSessionRevoked throws on DB errors; fail-open for reads.
-      // Route handlers for mutations should implement fail-closed if needed.
+    } catch (error) {
+      // isSessionRevoked throws on DB errors. Policy:
+      //   - mutations (POST/PUT/PATCH/DELETE): fail CLOSED — deny rather than
+      //     risk processing a state change for a revoked session.
+      //   - reads (GET/HEAD): fail OPEN — avoid locking everyone out on a blip.
+      // The HTTP method is forwarded by middleware as x-http-method.
+      let method = "GET";
+      try {
+        method = headers().get("x-http-method")?.toUpperCase() || "GET";
+      } catch {
+        // headers() unavailable outside a request scope — treat as read.
+      }
+      if (MUTATION_METHODS.has(method)) {
+        logger.security("Session revocation check failed on mutation — failing closed", {
+          error: error instanceof Error ? error.message : String(error),
+          method,
+        });
+        return NextResponse.json(
+          { success: false, error: "Unable to verify session state", code: "SESSION_CHECK_FAILED" },
+          { status: 503 }
+        );
+      }
+      // read path: fall through (fail open)
     }
   }
 

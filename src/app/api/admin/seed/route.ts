@@ -111,17 +111,22 @@ export async function POST() {
     // ── Users ──
     const emp = Object.fromEntries(employees.map((e) => [e.email, e]));
 
-    // In production, seed passwords MUST be provided via env vars — no defaults.
-    const isProduction = process.env.NODE_ENV === "production";
-    if (isProduction && (!env("SEED_ADMIN_PASSWORD") || !env("SEED_USER_PASSWORD") || !env("SEED_LEAD_PASSWORD"))) {
-      return apiError("SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set in production", 400, "VALIDATION_ERROR");
+    // Seed passwords MUST be provided via env vars in every environment — no
+    // default fallback. Known seed credentials (admin123/…) are a standing
+    // account-takeover risk, so user creation is refused when they are unset.
+    const SEED_ADMIN_PW = env("SEED_ADMIN_PASSWORD");
+    const SEED_USER_PW = env("SEED_USER_PASSWORD");
+    const SEED_LEAD_PW = env("SEED_LEAD_PASSWORD");
+    if (!SEED_ADMIN_PW || !SEED_USER_PW || !SEED_LEAD_PW) {
+      return apiError(
+        "SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_LEAD_PASSWORD must be set to seed user accounts",
+        400,
+        "VALIDATION_ERROR",
+      );
     }
-    const SEED_ADMIN_PW = env("SEED_ADMIN_PASSWORD") || "admin123";
-    const SEED_USER_PW = env("SEED_USER_PASSWORD") || "user123";
-    const SEED_LEAD_PW = env("SEED_LEAD_PASSWORD") || "lead123";
-    const adminHash = await bcrypt.hash(SEED_ADMIN_PW, 10);
-    const userHash = await bcrypt.hash(SEED_USER_PW, 10);
-    const leadHash = await bcrypt.hash(SEED_LEAD_PW, 10);
+    const adminHash = await bcrypt.hash(SEED_ADMIN_PW, 12);
+    const userHash = await bcrypt.hash(SEED_USER_PW, 12);
+    const leadHash = await bcrypt.hash(SEED_LEAD_PW, 12);
 
     const userData = [
       { email: "manager@ops.com", name: "Ops Manager", role: UserRole.admin, password: adminHash, employeeId: null as string | null },

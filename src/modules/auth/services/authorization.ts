@@ -108,6 +108,65 @@ export function applyScopeFilter(
 }
 
 /**
+ * Object-level authorization: verify that a *specific* record is within the
+ * user's scope. The matrix scope ("own"/"team"/"all") only constrains list
+ * queries via applyScopeFilter; by-id reads must additionally check that the
+ * fetched record belongs to the caller. Without this, an "own"-scoped employee
+ * can read any record by guessing/iterating ids (IDOR).
+ *
+ * Pass the record's owner identifier(s) and (optionally) its team. Ownership is
+ * satisfied when any owner id matches the caller's employeeId or user id.
+ */
+export function isRecordInScope(
+  user: AuthUser,
+  scope: ScopeType,
+  record: { ownerId?: string | null; ownerIds?: Array<string | null>; team?: string | null },
+): boolean {
+  switch (scope) {
+    case "all":
+      return true;
+    case "team":
+      // Prefer a team match when the record exposes a team dimension;
+      // otherwise fall back to ownership (records without a team column).
+      if (record.team != null && user.team != null) {
+        return record.team === user.team || ownerMatches(user, record);
+      }
+      return ownerMatches(user, record);
+    case "own":
+      return ownerMatches(user, record);
+    case "none":
+    default:
+      return false;
+  }
+}
+
+function ownerMatches(
+  user: AuthUser,
+  record: { ownerId?: string | null; ownerIds?: Array<string | null> },
+): boolean {
+  const ids = record.ownerIds ?? (record.ownerId !== undefined ? [record.ownerId] : []);
+  return ids.some(
+    (id) => id != null && (id === user.employeeId || id === user.id),
+  );
+}
+
+/**
+ * Guard form of isRecordInScope. Returns a 403 NextResponse when the record is
+ * out of scope, or null when access is permitted.
+ */
+export function requireRecordAccess(
+  user: AuthUser,
+  scope: ScopeType,
+  record: { ownerId?: string | null; ownerIds?: Array<string | null>; team?: string | null },
+): NextResponse | null {
+  if (isRecordInScope(user, scope, record)) return null;
+  return NextResponse.json(
+    { success: false, error: "You do not have access to this record", code: "RECORD_FORBIDDEN" },
+    { status: 403 },
+  );
+}
+
+/**
  * Mask sensitive fields in an object based on the user's role.
  */
 export function maskSensitiveFields<T extends Record<string, unknown>>(

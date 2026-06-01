@@ -1,5 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
+import { lookupSensitiveAction } from "@/modules/auth/sensitive-actions-registry";
 
 /**
  * Role-based idle timeout in seconds. Privileged roles get shorter timeouts.
@@ -20,20 +21,6 @@ const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
  * After this, user must re-authenticate. Separate from idle timeout.
  */
 const ABSOLUTE_SESSION_LIFETIME = 8 * 60 * 60; // 8 hours for all roles
-
-/**
- * Sensitive action session freshness requirements.
- * For high-risk operations, the session must have been issued recently.
- * Key format: "METHOD:path_prefix"
- */
-const SENSITIVE_ACTION_MAX_AGE: Record<string, number> = {
-  "POST:/api/users": 1 * 60 * 60,        // User creation: 1h
-  "DELETE:/api/users": 1 * 60 * 60,       // User deletion: 1h
-  "PUT:/api/scores/config": 2 * 60 * 60,  // Scoring config: 2h
-  "PUT:/api/feature-flags": 2 * 60 * 60,  // Feature flags: 2h
-  "DELETE:/api/sessions": 1 * 60 * 60,    // Session revocation: 1h
-  "POST:/api/export": 4 * 60 * 60,        // Data export: 4h
-};
 
 /** HTTP methods that modify state. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -222,24 +209,12 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/login?reason=session_expired", req.url));
     }
 
-    // Sensitive action freshness check — require recent session for high-risk ops
+    // Sensitive action freshness check — require recent session for high-risk
+    // ops. The sensitive-action registry is the single source of truth (shared
+    // with route-level audit), replacing the previously duplicated map.
     if (isApi && MUTATION_METHODS.has(req.method)) {
-      const actionKey = `${req.method}:${path}`;
-      // Check exact match then prefix match
-      let maxAge: number | undefined;
-      if (SENSITIVE_ACTION_MAX_AGE[actionKey]) {
-        maxAge = SENSITIVE_ACTION_MAX_AGE[actionKey];
-      } else {
-        for (const [pattern, age] of Object.entries(SENSITIVE_ACTION_MAX_AGE)) {
-          const [patMethod, patPath] = pattern.split(":");
-          if (patMethod === req.method && path.startsWith(patPath)) {
-            maxAge = age;
-            break;
-          }
-        }
-      }
-
-      if (maxAge && ageSeconds > maxAge) {
+      const sensitive = lookupSensitiveAction(req.method, path);
+      if (sensitive && ageSeconds > sensitive.maxSessionAgeSeconds) {
         return addSecurityHeaders(
           NextResponse.json(
             {
@@ -292,6 +267,9 @@ export async function middleware(req: NextRequest) {
       headers: new Headers({
         ...Object.fromEntries(req.headers.entries()),
         "x-correlation-id": correlationId,
+        // Forward the HTTP method so route-level auth can apply a stricter
+        // (fail-closed) session-revocation policy on state-changing requests.
+        "x-http-method": req.method,
       }),
     },
   });
@@ -372,6 +350,10 @@ export const config = {
     "/api/metrics/:path*",
     "/api/webhooks/:path*",
     "/api/compliance-bot/:path*",
+    "/api/admin/:path*",
+    "/api/branding/:path*",
+    "/api/client-comms/:path*",
+    "/api/client-preferences/:path*",
     "/client-comms/:path*",
   ],
 };
