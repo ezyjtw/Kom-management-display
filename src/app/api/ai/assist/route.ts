@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import {
@@ -21,6 +22,20 @@ import {
 import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, aiAssistSchema } from "@/lib/validation";
+
+const AI_DISCLAIMER =
+  "\n\n---\n_AI-generated guidance for internal use — not a formal compliance, legal, or regulatory sign-off. " +
+  "Material decisions (e.g. token go/no-go, screening classifications, regulatory filings) " +
+  "require MLRO or board approval per the compliance framework._";
+
+const REGULATORY_ACTIONS = new Set([
+  "research_token",
+  "suggest_tokens",
+  "classify_screening",
+  "draft_escalation",
+  "draft_rca",
+  "draft_travel_email",
+]);
 
 /**
  * POST /api/ai/assist
@@ -140,11 +155,45 @@ export async function POST(request: NextRequest) {
       return apiError("AI failed to generate a response. Try again.", 502);
     }
 
+    // Append disclaimer to regulatory-impacting AI outputs
+    const isRegulatory = REGULATORY_ACTIONS.has(action);
+    if (isRegulatory && typeof suggestion === "string") {
+      suggestion = suggestion + AI_DISCLAIMER;
+    } else if (isRegulatory && typeof suggestion === "object" && suggestion !== null) {
+      const s = suggestion as Record<string, unknown>;
+      if (typeof s.text === "string") s.text = s.text + AI_DISCLAIMER;
+      else if (typeof s.summary === "string") s.summary = s.summary + AI_DISCLAIMER;
+      else if (typeof s.content === "string") s.content = s.content + AI_DISCLAIMER;
+      else s._disclaimer = AI_DISCLAIMER.trim();
+    }
+
+    // Audit log every AI assist invocation
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: `ai_assist_${action}`,
+          entityType: "ai_assist",
+          entityId: action,
+          userId: auth.employeeId || auth.id,
+          details: JSON.stringify({
+            action,
+            isRegulatory,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      });
+    } catch {
+      // Non-blocking — audit failure must not break the AI response
+    }
+
     return apiSuccess({
       action,
       suggestion,
-      // Remind the client this is a suggestion, not an action
-      meta: { type: "suggestion", requiresApproval: true },
+      meta: {
+        type: "suggestion",
+        requiresApproval: true,
+        ...(isRegulatory ? { disclaimer: true } : {}),
+      },
     });
   } catch (error) {
     return handleApiError(error, "ai assist");

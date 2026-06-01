@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { TRAVEL_RULE_SLA } from "@/lib/sla";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -29,14 +29,42 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (matchStatus) where.matchStatus = matchStatus;
-    if (owner === "me") {
-      where.ownerUserId = auth.employeeId || auth.id;
-    } else if (owner) {
-      where.ownerUserId = owner;
+
+    // Server-side scope enforcement — prevents bulk data exfiltration by
+    // restricting list results to the caller's authorization scope.
+    const actorId = auth.employeeId || auth.id;
+    switch (authz.scope) {
+      case "own":
+        // Employees see their own cases + unowned (available for pickup)
+        where.OR = [{ ownerUserId: actorId }, { ownerUserId: null }];
+        break;
+      case "team": {
+        if (auth.team) {
+          const teamIds = (await prisma.employee.findMany({
+            where: { team: auth.team as never },
+            select: { id: true },
+          })).map(e => e.id);
+          if (owner === "me") {
+            where.ownerUserId = actorId;
+          } else if (owner && teamIds.includes(owner)) {
+            where.ownerUserId = owner;
+          } else {
+            where.OR = [{ ownerUserId: { in: teamIds } }, { ownerUserId: null }];
+          }
+        }
+        break;
+      }
+      case "all":
+        if (owner === "me") {
+          where.ownerUserId = actorId;
+        } else if (owner) {
+          where.ownerUserId = owner;
+        }
+        break;
+      case "none":
+        return apiSuccess([]);
     }
-    // ?overdue=true filters to unresolved cases older than the SLA deadline (48h).
-    // Uses createdAt rather than slaDeadline so it works even for cases
-    // created before the slaDeadline column was added.
+
     if (overdue === "true") {
       where.status = { not: "Resolved" };
       where.createdAt = {
@@ -50,7 +78,13 @@ export async function GET(request: NextRequest) {
       take: 200,
     });
 
-    return apiSuccess(cases);
+    const maskedCases = cases.map(c =>
+      maskSensitiveFields(c, "travel_rule_case", auth.role, {
+        isOwner: c.ownerUserId === actorId,
+      }),
+    );
+
+    return apiSuccess(maskedCases);
   } catch (error) {
     return handleApiError(error, "GET /api/travel-rule/cases");
   }

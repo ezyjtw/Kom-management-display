@@ -168,13 +168,16 @@ export function requireRecordAccess(
 
 /**
  * Mask sensitive fields in an object based on the user's role.
+ * When `opts.isOwner` is true the record belongs to the caller and sensitive
+ * fields are returned unmasked (the owner needs them for their workflow).
  */
 export function maskSensitiveFields<T extends Record<string, unknown>>(
   data: T,
   resource: Resource,
   userRole: string,
+  opts?: { isOwner?: boolean },
 ): T {
-  if (userRole === "admin") return data;
+  if (userRole === "admin" || opts?.isOwner) return data;
 
   const sensitiveFields = SENSITIVE_FIELDS[resource] || [];
   if (sensitiveFields.length === 0) return data;

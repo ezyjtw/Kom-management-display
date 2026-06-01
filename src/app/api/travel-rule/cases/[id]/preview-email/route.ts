@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
 import { buildHtmlEmail } from "@/lib/travel-rule-email";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -44,6 +44,18 @@ export async function POST(
 
     if (!travelCase) {
       return apiNotFoundError("Case");
+    }
+
+    if (travelCase.ownerUserId) {
+      const ownerEmp = await prisma.employee.findUnique({
+        where: { id: travelCase.ownerUserId },
+        select: { team: true },
+      });
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerId: travelCase.ownerUserId,
+        team: ownerEmp?.team ?? null,
+      });
+      if (accessError) return accessError;
     }
 
     const html = buildHtmlEmail({

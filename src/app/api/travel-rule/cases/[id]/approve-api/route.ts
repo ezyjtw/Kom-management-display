@@ -7,7 +7,7 @@ import {
   fetchTransaction,
   isCustodyConfigured,
 } from "@/lib/integrations/custody";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, approveCustodySchema } from "@/lib/validation";
@@ -48,6 +48,18 @@ export async function POST(
 
     if (!travelCase) {
       return apiNotFoundError("Case");
+    }
+
+    if (travelCase.ownerUserId) {
+      const ownerEmp = await prisma.employee.findUnique({
+        where: { id: travelCase.ownerUserId },
+        select: { team: true },
+      });
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerId: travelCase.ownerUserId,
+        team: ownerEmp?.team ?? null,
+      });
+      if (accessError) return accessError;
     }
 
     const body = await request.json();

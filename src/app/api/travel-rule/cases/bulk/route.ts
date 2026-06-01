@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, checkAuthorization } from "@/modules/auth/services/authorization";
 import { TRAVEL_RULE_SLA } from "@/lib/sla";
-import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createTravelRuleCaseSchema } from "@/lib/validation";
 
@@ -46,6 +46,18 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return apiValidationError(parsed.error);
     const { action, rows, caseIds, ownerUserId } = body;
     const actorId = auth.employeeId || auth.id;
+
+    // Action-specific authorization — bulk mutations require elevated permissions
+    if (action === "create_cases") {
+      const createAuthz = checkAuthorization(auth, "travel_rule_case", "create");
+      if (!createAuthz.allowed) return apiForbiddenError(createAuthz.reason);
+    } else if (action === "assign") {
+      const assignAuthz = checkAuthorization(auth, "travel_rule_case", "assign");
+      if (!assignAuthz.allowed) return apiForbiddenError(assignAuthz.reason);
+    } else if (action === "mark_not_required") {
+      const resolveAuthz = checkAuthorization(auth, "travel_rule_case", "resolve");
+      if (!resolveAuthz.allowed) return apiForbiddenError(resolveAuthz.reason);
+    }
 
     // create_cases: batch-create from reconciliation table rows.
     // Skips rows that already have a case (deduplication via compound unique).

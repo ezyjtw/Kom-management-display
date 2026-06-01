@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
+import { apiSuccess, apiNotFoundError, handleApiError } from "@/lib/api/response";
 
 /**
  * GET /api/travel-rule/cases/:id/activity
@@ -21,6 +21,24 @@ export async function GET(
   if (authz instanceof NextResponse) return authz;
 
   try {
+    const travelCase = await prisma.travelRuleCase.findUnique({
+      where: { id: params.id },
+      select: { id: true, ownerUserId: true },
+    });
+    if (!travelCase) return apiNotFoundError("Case");
+
+    if (travelCase.ownerUserId) {
+      const ownerEmp = await prisma.employee.findUnique({
+        where: { id: travelCase.ownerUserId },
+        select: { team: true },
+      });
+      const accessError = requireRecordAccess(auth, authz.scope, {
+        ownerId: travelCase.ownerUserId,
+        team: ownerEmp?.team ?? null,
+      });
+      if (accessError) return accessError;
+    }
+
     const [auditEntries, notes] = await Promise.all([
       prisma.auditLog.findMany({
         where: {
