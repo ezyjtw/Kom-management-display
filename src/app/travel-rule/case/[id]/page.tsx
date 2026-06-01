@@ -62,7 +62,7 @@ const STATUS_LABELS: Record<string, string> = {
   Open: "Open",
   Investigating: "Investigating",
   PendingResponse: "Pending Response",
-  AwaitingApproval: "Awaiting API Approval",
+  Escalated: "Escalated",
   Resolved: "Resolved",
 };
 
@@ -70,7 +70,7 @@ const STATUS_COLORS: Record<string, string> = {
   Open: "bg-red-500/10 text-red-400",
   Investigating: "bg-blue-500/10 text-blue-400",
   PendingResponse: "bg-amber-500/10 text-amber-400",
-  AwaitingApproval: "bg-purple-500/10 text-purple-400",
+  Escalated: "bg-orange-500/10 text-orange-400",
   Resolved: "bg-emerald-500/10 text-emerald-400",
 };
 
@@ -147,6 +147,16 @@ export default function CaseDetailPage() {
         .catch(console.error)
         .finally(() => setLoading(false));
     }
+  }, [params.id]);
+
+  useEffect(() => {
+    if (!params.id) return;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      refreshCase();
+      fetchActivity();
+    }, 45_000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   async function handleAssign() {

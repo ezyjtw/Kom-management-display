@@ -60,12 +60,12 @@ export function StatusBanners({
         </div>
       )}
 
-      {/* Awaiting API Approval */}
-      {caseData.status === "AwaitingApproval" && (
+      {/* Pending Response (includes API approvals in progress) */}
+      {caseData.status === "PendingResponse" && (
         <div className="bg-card rounded-xl border-2 border-purple-500/30 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
             <Loader2 size={16} className="text-purple-400 animate-spin" />
-            Awaiting API Approval
+            Pending Response
           </h3>
           <p className="text-xs text-muted-foreground mb-3">
             An API approval has been submitted for this transaction. The Custody API is processing the request.

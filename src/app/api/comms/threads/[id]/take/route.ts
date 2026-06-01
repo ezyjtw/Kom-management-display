@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { computeTtfaDeadline } from "@/lib/sla";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiNotFoundError, apiConflictError, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiNotFoundError, apiConflictError, apiForbiddenError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import type { ThreadPriority } from "@/types";
 import { z } from "zod";
@@ -43,6 +43,11 @@ export async function POST(
 
     if (thread.ownerUserId && auth.role !== "admin") {
       return apiConflictError("Thread is already assigned. Use transfer instead.");
+    }
+
+    // Scope check: employees can only claim threads in their team's queue
+    if (auth.role === "employee" && auth.team && thread.queue !== auth.team) {
+      return apiForbiddenError("You can only claim threads in your team's queue");
     }
 
     const now = new Date();

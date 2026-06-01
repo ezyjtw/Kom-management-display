@@ -157,14 +157,16 @@ export async function POST(request: NextRequest) {
 
     // Append disclaimer to regulatory-impacting AI outputs
     const isRegulatory = REGULATORY_ACTIONS.has(action);
-    if (isRegulatory && typeof suggestion === "string") {
-      suggestion = suggestion + AI_DISCLAIMER;
-    } else if (isRegulatory && typeof suggestion === "object" && suggestion !== null) {
-      const s = suggestion as Record<string, unknown>;
-      if (typeof s.text === "string") s.text = s.text + AI_DISCLAIMER;
-      else if (typeof s.summary === "string") s.summary = s.summary + AI_DISCLAIMER;
-      else if (typeof s.content === "string") s.content = s.content + AI_DISCLAIMER;
-      else s._disclaimer = AI_DISCLAIMER.trim();
+    if (isRegulatory) {
+      if (typeof suggestion === "string") {
+        suggestion = suggestion + AI_DISCLAIMER;
+      } else if (typeof suggestion === "object" && suggestion !== null) {
+        const s = suggestion as Record<string, unknown>;
+        if (typeof s.text === "string") s.text = s.text + AI_DISCLAIMER;
+        else if (typeof s.summary === "string") s.summary = s.summary + AI_DISCLAIMER;
+        else if (typeof s.content === "string") s.content = s.content + AI_DISCLAIMER;
+        else s._disclaimer = AI_DISCLAIMER.trim();
+      }
     }
 
     // Audit log every AI assist invocation
@@ -182,8 +184,8 @@ export async function POST(request: NextRequest) {
           }),
         },
       });
-    } catch {
-      // Non-blocking — audit failure must not break the AI response
+    } catch (auditErr) {
+      console.error("AI assist audit log failure:", String(auditErr));
     }
 
     return apiSuccess({

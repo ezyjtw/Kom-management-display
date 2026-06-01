@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
-import { requireAuthorization, checkAuthorization } from "@/modules/auth/services/authorization";
+import { requireAuthorization, checkAuthorization, isRecordInScope } from "@/modules/auth/services/authorization";
 import { TRAVEL_RULE_SLA } from "@/lib/sla";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -132,6 +132,34 @@ export async function POST(request: NextRequest) {
         return apiValidationError("caseIds and ownerUserId required for assign");
       }
 
+      // Verify each case is in the caller's scope before allowing bulk assign
+      const assignAuthzResult = checkAuthorization(auth, "travel_rule_case", "assign");
+      if (assignAuthzResult.scope !== "all") {
+        const casesToCheck = await prisma.travelRuleCase.findMany({
+          where: { id: { in: caseIds } },
+          select: { id: true, ownerUserId: true },
+        });
+        const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
+        const ownerTeams = ownerIds.length > 0
+          ? await prisma.employee.findMany({
+              where: { id: { in: ownerIds } },
+              select: { id: true, team: true },
+            })
+          : [];
+        const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
+
+        for (const c of casesToCheck) {
+          if (!c.ownerUserId) continue;
+          const inScope = isRecordInScope(auth, assignAuthzResult.scope, {
+            ownerId: c.ownerUserId,
+            team: teamMap.get(c.ownerUserId) ?? null,
+          });
+          if (!inScope) {
+            return apiForbiddenError(`Case ${c.id} is outside your scope`);
+          }
+        }
+      }
+
       await prisma.$transaction(
         caseIds.map((id: string) =>
           prisma.travelRuleCase.update({
@@ -173,6 +201,34 @@ export async function POST(request: NextRequest) {
     if (action === "mark_not_required") {
       if (!Array.isArray(caseIds) || caseIds.length === 0) {
         return apiValidationError("caseIds required for mark_not_required");
+      }
+
+      // Verify each case is in the caller's scope
+      const resolveAuthzResult = checkAuthorization(auth, "travel_rule_case", "resolve");
+      if (resolveAuthzResult.scope !== "all") {
+        const casesToCheck = await prisma.travelRuleCase.findMany({
+          where: { id: { in: caseIds } },
+          select: { id: true, ownerUserId: true },
+        });
+        const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
+        const ownerTeams = ownerIds.length > 0
+          ? await prisma.employee.findMany({
+              where: { id: { in: ownerIds } },
+              select: { id: true, team: true },
+            })
+          : [];
+        const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
+
+        for (const c of casesToCheck) {
+          if (!c.ownerUserId) continue;
+          const inScope = isRecordInScope(auth, resolveAuthzResult.scope, {
+            ownerId: c.ownerUserId,
+            team: teamMap.get(c.ownerUserId) ?? null,
+          });
+          if (!inScope) {
+            return apiForbiddenError(`Case ${c.id} is outside your scope`);
+          }
+        }
       }
 
       await prisma.$transaction(

@@ -98,6 +98,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authzPost = requireAuthorization(auth, "travel_rule_case", "create");
+  if (authzPost instanceof NextResponse) return authzPost;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 

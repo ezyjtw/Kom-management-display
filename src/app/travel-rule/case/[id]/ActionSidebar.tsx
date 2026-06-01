@@ -159,7 +159,7 @@ export function ActionSidebar(props: ActionSidebarProps) {
                   </button>
                 </div>
               </div>
-            ) : caseData.status !== "AwaitingApproval" ? (
+            ) : caseData.status !== "PendingResponse" ? (
               <button
                 onClick={() => props.onToggleApproveApi(true)}
                 className="w-full text-xs px-3 py-2 border border-purple-500/30 text-purple-400 rounded-lg hover:bg-purple-500/10 flex items-center justify-center gap-1.5"

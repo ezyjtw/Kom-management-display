@@ -16,6 +16,9 @@ import { z } from "zod";
 
 const recheckParamsSchema = z.object({ id: z.string().min(1) });
 
+const RECHECK_COOLDOWN_MS = 30_000;
+const recheckTimestamps = new Map<string, number>();
+
 /**
  * POST /api/travel-rule/cases/:id/recheck
  *
@@ -32,7 +35,7 @@ export async function POST(
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  const authz = requireAuthorization(auth, "travel_rule_case", "view");
+  const authz = requireAuthorization(auth, "travel_rule_case", "update");
   if (authz instanceof NextResponse) return authz;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
@@ -46,6 +49,12 @@ export async function POST(
   try {
     if (!isNotabeneConfigured()) {
       return apiValidationError("Notabene is not configured");
+    }
+
+    const lastRecheck = recheckTimestamps.get(params.id);
+    if (lastRecheck && Date.now() - lastRecheck < RECHECK_COOLDOWN_MS) {
+      const waitSec = Math.ceil((RECHECK_COOLDOWN_MS - (Date.now() - lastRecheck)) / 1000);
+      return apiValidationError(`Please wait ${waitSec}s before rechecking this case again`);
     }
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -123,6 +132,8 @@ export async function POST(
         data: updateData,
       });
     }
+
+    recheckTimestamps.set(params.id, Date.now());
 
     const actorId = auth.employeeId || auth.id;
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, apiConflictError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateThreadStatusSchema } from "@/lib/validation";
 
@@ -15,6 +15,17 @@ const VALID_STATUSES = [
   "Done",
   "Closed",
 ];
+
+const THREAD_TRANSITIONS: Record<string, string[]> = {
+  Unassigned: ["Assigned"],
+  Assigned: ["InProgress", "WaitingExternal", "WaitingInternal", "Unassigned"],
+  InProgress: ["WaitingExternal", "WaitingInternal", "PendingHandover", "Done", "Closed"],
+  WaitingExternal: ["InProgress", "Done", "Closed"],
+  WaitingInternal: ["InProgress", "Done", "Closed"],
+  PendingHandover: ["Assigned", "InProgress"],
+  Done: ["Closed"],
+  Closed: [],
+};
 
 /**
  * POST /api/comms/threads/:id/status
@@ -58,6 +69,24 @@ export async function POST(
 
     if (!isOwner && !isPrivileged) {
       return apiForbiddenError("Only the thread owner or a lead/admin can change status");
+    }
+
+    // State machine: validate transition (admins can force-transition from terminal states)
+    const allowed = THREAD_TRANSITIONS[thread.status] ?? [];
+    if (!allowed.includes(status)) {
+      if (isPrivileged && ["Done", "Closed"].includes(thread.status)) {
+        // Admins/leads can reopen: allow transition to InProgress
+        if (status !== "InProgress") {
+          return apiConflictError(
+            `Cannot transition from "${thread.status}" to "${status}". Admins can only reopen to "InProgress".`
+          );
+        }
+      } else {
+        return apiConflictError(
+          `Cannot transition from "${thread.status}" to "${status}". ` +
+          `Allowed: ${allowed.length ? allowed.join(", ") : "none (thread is terminal)"}.`
+        );
+      }
     }
 
     // Policy: closing requires a resolution note
