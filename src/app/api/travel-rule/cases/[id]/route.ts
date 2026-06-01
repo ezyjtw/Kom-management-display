@@ -99,6 +99,7 @@ export async function PATCH(
     const body = await request.json();
     const parsed = validateBody(updateTravelRuleCaseSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
+    const validatedBody = parsed.data;
     const actorId = auth.employeeId || auth.id;
 
     const travelCase = await prisma.travelRuleCase.findUnique({
@@ -111,7 +112,6 @@ export async function PATCH(
 
     // Object-level scope check for owned cases
     const isPrivileged = ["admin", "lead"].includes(auth.role);
-    const isOwner = travelCase.ownerUserId === actorId;
     if (travelCase.ownerUserId) {
       const ownerEmp = await prisma.employee.findUnique({
         where: { id: travelCase.ownerUserId },
@@ -123,22 +123,21 @@ export async function PATCH(
       });
       if (accessError) return accessError;
     } else if (!isPrivileged) {
-      // Unowned case: non-privileged users may only claim it (set ownerUserId to self)
-      const isClaim = body.ownerUserId === actorId && Object.keys(body).filter(k => k !== "ownerUserId").length === 0;
+      const isClaim = validatedBody.ownerUserId === actorId && Object.keys(validatedBody).filter(k => k !== "ownerUserId").length === 0;
       if (!isClaim) {
         return apiForbiddenError("Unowned cases can only be claimed, not modified directly");
       }
     }
 
     // Handle send_email action
-    if (body.action === "send_email") {
-      if (!body.recipientEmail) {
+    if (validatedBody.action === "send_email") {
+      if (!validatedBody.recipientEmail) {
         return apiValidationError("recipientEmail is required");
       }
 
       await sendTravelRuleEmail({
-        recipientEmail: body.recipientEmail,
-        recipientName: body.recipientName || "",
+        recipientEmail: validatedBody.recipientEmail,
+        recipientName: validatedBody.recipientName || "",
         travelCase,
         senderName: auth.name || "Ops Team",
       });
@@ -148,7 +147,7 @@ export async function PATCH(
           where: { id: params.id },
           data: {
             status: "PendingResponse",
-            emailSentTo: body.recipientEmail,
+            emailSentTo: validatedBody.recipientEmail,
             emailSentAt: new Date(),
           },
         }),
@@ -159,8 +158,8 @@ export async function PATCH(
             entityId: params.id,
             userId: actorId,
             details: JSON.stringify({
-              description: `Email sent to ${body.recipientEmail}`,
-              recipientEmail: body.recipientEmail,
+              description: `Email sent to ${validatedBody.recipientEmail}`,
+              recipientEmail: validatedBody.recipientEmail,
               matchStatus: travelCase.matchStatus,
               transactionId: travelCase.transactionId,
             }),
@@ -172,15 +171,14 @@ export async function PATCH(
     }
 
     // Build update data
-    const data: Record<string, unknown> = {};
+    const updateFields: Record<string, unknown> = {};
     const auditDetails: Record<string, unknown> = {};
 
-    if (body.ownerUserId !== undefined) {
-      // Validate employee exists before assignment
+    if (validatedBody.ownerUserId !== undefined) {
       let newOwnerName = "Unassigned";
-      if (body.ownerUserId) {
+      if (validatedBody.ownerUserId) {
         const emp = await prisma.employee.findUnique({
-          where: { id: body.ownerUserId },
+          where: { id: validatedBody.ownerUserId },
           select: { name: true },
         });
         if (!emp) {
@@ -188,55 +186,54 @@ export async function PATCH(
         }
         newOwnerName = emp.name;
       }
-      data.ownerUserId = body.ownerUserId || null;
+      updateFields.ownerUserId = validatedBody.ownerUserId || null;
 
       auditDetails.ownerChange = {
         previous: travelCase.ownerUserId,
-        new: body.ownerUserId,
+        new: validatedBody.ownerUserId,
         newName: newOwnerName,
       };
       auditDetails.description = `Assigned to ${newOwnerName}`;
 
-      // Auto-move from Open to Investigating when assigned
-      if (body.ownerUserId && travelCase.status === "Open") {
-        data.status = "Investigating";
+      if (validatedBody.ownerUserId && travelCase.status === "Open") {
+        updateFields.status = "Investigating";
       }
     }
 
-    if (body.status) {
+    if (validatedBody.status) {
       const allowed = TRAVEL_RULE_TRANSITIONS[travelCase.status] ?? [];
-      if (!allowed.includes(body.status)) {
+      if (!allowed.includes(validatedBody.status)) {
         return apiConflictError(
-          `Cannot transition from "${travelCase.status}" to "${body.status}". ` +
+          `Cannot transition from "${travelCase.status}" to "${validatedBody.status}". ` +
           `Allowed: ${allowed.length ? allowed.join(", ") : "none (case is terminal)"}.`
         );
       }
-      data.status = body.status;
+      updateFields.status = validatedBody.status;
       auditDetails.statusChange = {
         previous: travelCase.status,
-        new: body.status,
+        new: validatedBody.status,
       };
-      auditDetails.description = `Status: ${travelCase.status} → ${body.status}`;
-      if (body.status === "Resolved") {
-        data.resolvedAt = new Date();
-        data.resolutionType = body.resolutionType || null;
-        data.resolutionNote = body.resolutionNote || "";
-        const typeLabel = body.resolutionType === "info_obtained" ? "Information Obtained"
-          : body.resolutionType === "email_sent" ? "Resolved via Email"
-          : body.resolutionType === "not_required" ? "Travel Rule Not Required"
-          : body.resolutionType === "escalated" ? "Escalated"
-          : body.resolutionType || "Resolved";
+      auditDetails.description = `Status: ${travelCase.status} → ${validatedBody.status}`;
+      if (validatedBody.status === "Resolved") {
+        updateFields.resolvedAt = new Date();
+        updateFields.resolutionType = validatedBody.resolutionType || null;
+        updateFields.resolutionNote = validatedBody.resolutionNote || "";
+        const typeLabel = validatedBody.resolutionType === "info_obtained" ? "Information Obtained"
+          : validatedBody.resolutionType === "email_sent" ? "Resolved via Email"
+          : validatedBody.resolutionType === "not_required" ? "Travel Rule Not Required"
+          : validatedBody.resolutionType === "escalated" ? "Escalated"
+          : validatedBody.resolutionType || "Resolved";
         auditDetails.description = `Resolved — ${typeLabel}`;
       }
     }
 
-    if (Object.keys(data).length === 0) {
+    if (Object.keys(updateFields).length === 0) {
       return apiSuccess(travelCase);
     }
 
     // Optimistic locking: reject stale writes
-    if (body.updatedAt) {
-      const clientUpdatedAt = new Date(body.updatedAt).getTime();
+    if (validatedBody.updatedAt) {
+      const clientUpdatedAt = new Date(validatedBody.updatedAt).getTime();
       const serverUpdatedAt = travelCase.updatedAt
         ? new Date(travelCase.updatedAt).getTime()
         : 0;
@@ -249,7 +246,7 @@ export async function PATCH(
 
     const updated = await prisma.travelRuleCase.update({
       where: { id: params.id },
-      data,
+      data: updateFields,
     });
 
     if (Object.keys(auditDetails).length > 0) {

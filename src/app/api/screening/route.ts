@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, createScreeningSchema } from "@/lib/validation";
+import { validateBody, createScreeningSchema, updateScreeningSchema } from "@/lib/validation";
 
 /**
  * GET /api/screening
@@ -57,6 +57,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "screening", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -64,27 +67,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createScreeningSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { transactionId, asset } = body;
-
-    if (!transactionId || !asset) {
-      return apiValidationError("transactionId and asset are required");
-    }
+    const data = parsed.data;
 
     const entry = await prisma.screeningEntry.create({
       data: {
-        transactionId,
-        txHash: body.txHash || "",
-        asset,
-        amount: body.amount || 0,
-        direction: body.direction || "IN",
-        screeningStatus: body.screeningStatus || "not_submitted",
-        classification: body.classification || "unclassified",
-        isKnownException: body.isKnownException || false,
-        exceptionReason: body.exceptionReason || "",
-        analyticsAlertId: body.analyticsAlertId || "",
-        analyticsStatus: body.analyticsStatus || "none",
-        complianceReviewStatus: body.complianceReviewStatus || "none",
-        notes: body.notes || "",
+        transactionId: data.transactionId,
+        txHash: data.txHash ?? "",
+        asset: data.asset,
+        amount: data.amount ?? 0,
+        direction: data.direction ?? "IN",
+        screeningStatus: data.screeningStatus ?? "not_submitted",
+        classification: data.classification ?? "unclassified",
+        isKnownException: data.isKnownException ?? false,
+        exceptionReason: data.exceptionReason ?? "",
+        analyticsAlertId: data.analyticsAlertId ?? "",
+        analyticsStatus: data.analyticsStatus ?? "none",
+        complianceReviewStatus: data.complianceReviewStatus ?? "none",
+        notes: data.notes ?? "",
       },
     });
 
@@ -108,11 +107,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, ...fields } = body;
-
-    if (!id) {
-      return apiValidationError("id is required");
-    }
+    const parsed = validateBody(updateScreeningSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { id, ...fields } = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
     const updateData: Record<string, unknown> = {};

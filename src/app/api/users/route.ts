@@ -6,8 +6,7 @@ import bcrypt from "bcryptjs";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createUserSchema } from "@/lib/validation";
-
-const MIN_PASSWORD_LENGTH = 8;
+import { validatePassword, BCRYPT_ROUNDS } from "@/lib/password-policy";
 
 /**
  * GET /api/users
@@ -54,21 +53,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createUserSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { name, email, password, role, employeeId } = body;
+    const { name, email, password, role, employeeId } = parsed.data;
 
-    if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.includes("@") || typeof password !== "string") {
-      return apiValidationError("name (string), email (valid email), and password (string) are required");
-    }
-
-    // Validate password strength
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      return apiValidationError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
-    }
-
-    // Validate role
-    const validRoles = ["admin", "lead", "employee"];
-    if (role && !validRoles.includes(role)) {
-      return apiValidationError(`Invalid role. Must be one of: ${validRoles.join(", ")}`);
+    // Enforce password policy
+    const pwResult = validatePassword(password, { email, name });
+    if (!pwResult.valid) {
+      return apiValidationError(pwResult.errors.join("; "));
     }
 
     // Check for existing user
@@ -77,15 +67,15 @@ export async function POST(request: NextRequest) {
       return apiConflictError("A user with this email already exists");
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password: hashedPassword,
-        role: role || "employee",
-        employeeId: employeeId || null,
+        role: role ?? "employee",
+        employeeId: employeeId ?? null,
       },
       select: {
         id: true,

@@ -5,8 +5,8 @@ import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { incidentService } from "@/modules/incidents/services/incident-service";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
-import type { IncidentFilters } from "@/modules/incidents/services/incident-service";
-import { validateBody, createIncidentSchema } from "@/lib/validation";
+import type { IncidentFilters, IncidentUpdateType } from "@/modules/incidents/services/incident-service";
+import { validateBody, createIncidentSchema, updateIncidentSchema } from "@/lib/validation";
 
 /**
  * GET /api/incidents
@@ -78,34 +78,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createIncidentSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { title, provider, severity, description, impact, linkedThreadIds, linkedTransactionIds } = body;
-
-    if (!title || !provider) {
-      return apiValidationError("title and provider are required");
-    }
-
-    const validSeverities = ["low", "medium", "high", "critical"];
-    if (severity && !validSeverities.includes(severity)) {
-      return apiValidationError(`Invalid severity. Must be one of: ${validSeverities.join(", ")}`);
-    }
-    if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
-      return apiValidationError("linkedThreadIds must be an array");
-    }
-    if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
-      return apiValidationError("linkedTransactionIds must be an array");
-    }
+    const data = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
 
     const incident = await incidentService.createIncident({
-      title,
-      provider,
-      severity,
-      description,
-      impact,
+      title: data.title,
+      provider: data.provider,
+      severity: data.severity,
+      description: data.description,
+      impact: data.impact,
       reportedById: actorId,
-      linkedThreadIds,
-      linkedTransactionIds,
+      linkedThreadIds: data.linkedThreadIds,
+      linkedTransactionIds: data.linkedTransactionIds,
     });
 
     return apiSuccess(incident, undefined, 201);
@@ -129,6 +114,8 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const parsed = validateBody(updateIncidentSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
     const {
       id, status, severity, impact, update, updateType,
       linkedThreadIds, linkedTransactionIds, linkAlertIds,
@@ -136,33 +123,9 @@ export async function PATCH(request: NextRequest) {
       rcaFollowUpItems,
       externalTicketRef, externalTicketUrl, externalTicketStatus,
       externalTicketDisputed, externalTicketDisputeReason,
-    } = body;
-
-    if (!id) {
-      return apiValidationError("id is required");
-    }
+    } = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
-
-    // Validate enum fields
-    const validStatuses = ["active", "monitoring", "resolved"];
-    if (status && !validStatuses.includes(status)) {
-      return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
-    }
-    const validSeverities = ["low", "medium", "high", "critical"];
-    if (severity && !validSeverities.includes(severity)) {
-      return apiValidationError(`Invalid severity. Must be one of: ${validSeverities.join(", ")}`);
-    }
-    const validRcaStatuses = ["not_required", "raised", "awaiting_rca", "rca_received", "follow_up_pending", "closed"];
-    if (rcaStatus !== undefined && !validRcaStatuses.includes(rcaStatus)) {
-      return apiValidationError(`Invalid rcaStatus. Must be one of: ${validRcaStatuses.join(", ")}`);
-    }
-    if (linkedThreadIds && !Array.isArray(linkedThreadIds)) {
-      return apiValidationError("linkedThreadIds must be an array");
-    }
-    if (linkedTransactionIds && !Array.isArray(linkedTransactionIds)) {
-      return apiValidationError("linkedTransactionIds must be an array");
-    }
 
     // Use service for core update (status, severity, impact, linked items)
     const incident = await incidentService.updateIncident(
@@ -195,7 +158,7 @@ export async function PATCH(request: NextRequest) {
 
     // Add update note if provided
     if (update) {
-      await incidentService.addUpdate(id, actorId, update, updateType || "update");
+      await incidentService.addUpdate(id, actorId, update, (updateType || "update") as IncidentUpdateType);
     }
 
     // Link existing alerts to this incident

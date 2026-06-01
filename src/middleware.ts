@@ -346,6 +346,7 @@ export const config = {
     "/api/sessions/:path*",
     "/api/jobs/:path*",
     "/api/reports/:path*",
+    "/api/events/:path*",
     "/api/search/:path*",
     "/api/metrics/:path*",
     "/api/webhooks/:path*",

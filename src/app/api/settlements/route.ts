@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, createSettlementSchema } from "@/lib/validation";
+import { validateBody, createSettlementSchema, updateSettlementSchema } from "@/lib/validation";
 
 /**
  * GET /api/settlements
@@ -97,6 +97,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "settlement", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -104,33 +107,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createSettlementSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const {
-      settlementRef, venue, clientName, clientAccount, asset, amount,
-      direction, settlementCycle, exchangeInstructionId,
-      collateralWallet, custodyWallet,
-    } = body;
-
-    if (!settlementRef || !clientName || !asset || !amount || !direction) {
-      return apiValidationError("settlementRef, clientName, asset, amount, and direction are required");
-    }
-
-    if (isNaN(parseFloat(amount))) {
-      return apiValidationError("amount must be a valid number");
-    }
+    const data = parsed.data;
 
     const settlement = await prisma.oesSettlement.create({
       data: {
-        settlementRef,
-        venue: venue || "okx",
-        clientName,
-        clientAccount: clientAccount || "",
-        asset,
-        amount: parseFloat(amount),
-        direction,
-        settlementCycle: settlementCycle || "",
-        exchangeInstructionId: exchangeInstructionId || "",
-        collateralWallet: collateralWallet || "",
-        custodyWallet: custodyWallet || "",
+        settlementRef: data.settlementRef,
+        venue: data.venue ?? "okx",
+        clientName: data.clientName,
+        clientAccount: data.clientAccount ?? "",
+        asset: data.asset,
+        amount: data.amount,
+        direction: data.direction,
+        settlementCycle: data.settlementCycle ?? "",
+        exchangeInstructionId: data.exchangeInstructionId ?? "",
+        collateralWallet: data.collateralWallet ?? "",
+        custodyWallet: data.custodyWallet ?? "",
       },
     });
 
@@ -160,16 +151,17 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "settlement", "update");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
   try {
     const body = await request.json();
-    const { id, action, ...fields } = body;
-
-    if (!id) {
-      return apiValidationError("id is required");
-    }
+    const parsed = validateBody(updateSettlementSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { id, action, ...fields } = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
     const data: Record<string, unknown> = {};
@@ -186,11 +178,16 @@ export async function PATCH(request: NextRequest) {
         data.status = "confirmed";
         break;
 
-      case "checker_approve":
+      case "checker_approve": {
+        const existing = await prisma.oesSettlement.findUnique({ where: { id }, select: { makerById: true } });
+        if (existing?.makerById === actorId) {
+          return apiForbiddenError("Checker cannot be the same person as the maker");
+        }
         data.checkerById = actorId;
         data.checkerAt = new Date();
         data.status = "completed";
         break;
+      }
 
       case "flag_mismatch":
         data.matchStatus = fields.matchStatus || "mismatch";
@@ -206,19 +203,23 @@ export async function PATCH(request: NextRequest) {
 
       case "update_delegation":
         if (fields.delegationStatus) data.delegationStatus = fields.delegationStatus;
-        if (fields.delegatedAmount !== undefined && !isNaN(parseFloat(fields.delegatedAmount))) data.delegatedAmount = parseFloat(fields.delegatedAmount);
+        if (fields.delegatedAmount !== undefined) data.delegatedAmount = fields.delegatedAmount;
         break;
 
-      case "complete":
-        data.status = "completed";
+      case "complete": {
         if (!fields.skipChecker) {
+          const settlement = await prisma.oesSettlement.findUnique({ where: { id }, select: { makerById: true } });
+          if (settlement?.makerById === actorId) {
+            return apiForbiddenError("Checker cannot be the same person as the maker");
+          }
           data.checkerById = actorId;
           data.checkerAt = new Date();
         }
+        data.status = "completed";
         break;
+      }
 
       default:
-        // Direct field updates
         if (fields.status) data.status = fields.status;
         if (fields.matchStatus) data.matchStatus = fields.matchStatus;
         if (fields.onChainTxHash !== undefined) data.onChainTxHash = fields.onChainTxHash;

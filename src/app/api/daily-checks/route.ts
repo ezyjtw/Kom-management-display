@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, updateDailyCheckItemSchema } from "@/lib/validation";
+import { validateBody, updateDailyCheckPatchSchema } from "@/lib/validation";
 
 const DEFAULT_CHECK_ITEMS = [
   { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count" },
@@ -79,6 +79,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "daily_check", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -130,12 +133,13 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const parsed = validateBody(updateDailyCheckItemSchema, body);
+    const parsed = validateBody(updateDailyCheckPatchSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
+    const validatedData = parsed.data;
     const actorId = auth.employeeId || auth.id;
 
-    if (body.itemId) {
-      const { itemId, status, notes } = body;
+    if ("itemId" in validatedData) {
+      const { itemId, status, notes } = validatedData;
       const updateData: Record<string, unknown> = {};
       if (status) {
         updateData.status = status;
@@ -158,8 +162,8 @@ export async function PATCH(request: NextRequest) {
       return apiSuccess(item);
     }
 
-    if (body.runId) {
-      const { runId, jiraSummary } = body;
+    if ("runId" in validatedData) {
+      const { runId, jiraSummary } = validatedData;
       const run = await prisma.dailyCheckRun.update({
         where: { id: runId },
         data: { jiraSummary: jiraSummary || "" },

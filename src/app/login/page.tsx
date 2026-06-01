@@ -106,24 +106,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Demo credentials — only shown in development */}
+        {/* Dev-mode hint — no credentials exposed */}
         {process.env.NODE_ENV === "development" && (
           <div className="mt-6 bg-card border border-border rounded-xl p-4">
-            <p className="text-xs font-semibold text-muted-foreground mb-2">Demo Accounts</p>
-            <div className="space-y-1.5 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Manager (Admin):</span>
-                <code className="text-foreground">manager@ops.com / admin123</code>
-              </div>
-              <div className="flex justify-between">
-                <span>Lead:</span>
-                <code className="text-foreground">carol@ops.com / lead123</code>
-              </div>
-              <div className="flex justify-between">
-                <span>Employee:</span>
-                <code className="text-foreground">alice@ops.com / user123</code>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Development mode — use credentials from your SEED_*_PASSWORD environment variables.
+            </p>
           </div>
         )}
       </div>

@@ -1,9 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiSuccess } from "@/lib/api/response";
+import { apiSuccess, apiForbiddenError } from "@/lib/api/response";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { getIdempotencyStats } from "@/lib/idempotency";
 import { env } from "@/lib/env";
+import { requireAuth } from "@/lib/auth-user";
 
 interface ComponentHealth {
   status: "healthy" | "degraded" | "unhealthy";
@@ -21,6 +22,14 @@ interface ComponentHealth {
 export async function GET(request: NextRequest) {
   const start = Date.now();
   const deep = request.nextUrl.searchParams.get("deep") === "true";
+
+  // Deep checks require authentication to prevent information leakage
+  if (deep) {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) {
+      return apiForbiddenError("Authentication required for deep health checks");
+    }
+  }
 
   const components: Record<string, ComponentHealth> = {};
   let overallStatus: "healthy" | "degraded" | "unhealthy" = "healthy";
@@ -98,15 +107,19 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  const health = {
+  const health: Record<string, unknown> = {
     status: overallStatus,
     components,
     timestamp: new Date().toISOString(),
-    version: env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev",
-    environment: env("NODE_ENV") || "development",
-    uptime: Math.round(process.uptime()),
     responseTimeMs: Date.now() - start,
   };
+
+  // Only include detailed system info for deep (authenticated) checks
+  if (deep) {
+    health.version = env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev";
+    health.environment = env("NODE_ENV") || "development";
+    health.uptime = Math.round(process.uptime());
+  }
 
   const statusCode = overallStatus === "unhealthy" ? 503 : overallStatus === "degraded" ? 200 : 200;
   return apiSuccess(health, undefined, statusCode);

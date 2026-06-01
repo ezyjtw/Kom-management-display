@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, createStakingWalletSchema } from "@/lib/validation";
+import { validateBody, createStakingWalletSchema, updateStakingPatchSchema } from "@/lib/validation";
 
 function computeRewardHealth(wallet: { expectedNextRewardAt: Date | null; lastRewardAt: Date | null }): string {
   if (!wallet.expectedNextRewardAt) return "no_data";
@@ -80,6 +80,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
+  const authz = requireAuthorization(auth, "staking_wallet", "create");
+  if (authz instanceof NextResponse) return authz;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 
@@ -87,30 +90,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createStakingWalletSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { walletAddress, asset, rewardModel } = body;
-
-    if (!walletAddress || !asset || !rewardModel) {
-      return apiValidationError("walletAddress, asset, and rewardModel are required");
-    }
+    const data = parsed.data;
 
     const wallet = await prisma.stakingWallet.create({
       data: {
-        walletAddress,
-        asset,
-        rewardModel,
-        validator: body.validator || "",
-        stakedAmount: typeof body.stakedAmount === "number" && !isNaN(body.stakedAmount) ? body.stakedAmount : 0,
-        clientName: body.clientName || "",
-        isColdStaking: body.isColdStaking || false,
-        isTestWallet: body.isTestWallet || false,
-        stakeDate: body.stakeDate ? new Date(body.stakeDate) : null,
-        expectedFirstRewardDate: body.expectedFirstRewardDate ? new Date(body.expectedFirstRewardDate) : null,
-        expectedNextRewardAt: body.expectedNextRewardAt ? new Date(body.expectedNextRewardAt) : null,
-        onChainBalance: body.onChainBalance ?? null,
-        platformBalance: body.platformBalance ?? null,
-        varianceThreshold: body.varianceThreshold ?? 0.01,
-        tags: JSON.stringify(body.tags || []),
-        notes: body.notes || "",
+        walletAddress: data.walletAddress,
+        asset: data.asset,
+        rewardModel: data.rewardModel,
+        validator: data.validatorName ?? "",
+        stakedAmount: data.stakedAmount ?? 0,
+        clientName: data.clientName ?? "",
+        isColdStaking: data.isColdStaking ?? false,
+        isTestWallet: data.isTestWallet ?? false,
+        stakeDate: data.stakeDate ? new Date(data.stakeDate) : null,
+        expectedFirstRewardDate: data.expectedFirstRewardDate ? new Date(data.expectedFirstRewardDate) : null,
+        expectedNextRewardAt: data.expectedNextRewardAt ? new Date(data.expectedNextRewardAt) : null,
+        onChainBalance: data.onChainBalance ?? null,
+        platformBalance: data.platformBalance ?? null,
+        varianceThreshold: data.varianceThreshold ?? 0.01,
+        tags: JSON.stringify(data.tags ?? []),
+        notes: data.notes ?? "",
       },
     });
 
@@ -133,11 +132,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, ...fields } = body;
-
-    if (!id) {
-      return apiValidationError("id is required");
-    }
+    const parsed = validateBody(updateStakingPatchSchema, body);
+    if (!parsed.success) return apiValidationError(parsed.error);
+    const { id, ...fields } = parsed.data;
 
     const updateData: Record<string, unknown> = {};
     if (fields.validator !== undefined) updateData.validator = fields.validator;

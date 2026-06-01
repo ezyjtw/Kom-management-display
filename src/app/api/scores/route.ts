@@ -34,6 +34,19 @@ export async function GET(request: NextRequest) {
     // If specific employee or period requested, return filtered scores
     if (employeeId || periodId) {
       if (employeeId) {
+        // Scope check: employees can only view their own scores
+        if (authz.scope === "own" && auth.employeeId && employeeId !== auth.employeeId) {
+          return apiForbiddenError("You can only view your own scores");
+        }
+        if (authz.scope === "team" && auth.team) {
+          const targetEmp = await prisma.employee.findUnique({
+            where: { id: employeeId },
+            select: { team: true },
+          });
+          if (targetEmp && targetEmp.team !== auth.team) {
+            return apiForbiddenError("You can only view scores for your team");
+          }
+        }
         const { scores } = await scoreRepository.getScoresForEmployee(employeeId, {});
         return apiSuccess(scores);
       }

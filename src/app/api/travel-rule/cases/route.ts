@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = validateBody(createTravelRuleCaseSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
+    const data = parsed.data;
     const {
       transactionId,
       txHash,
@@ -117,13 +118,9 @@ export async function POST(request: NextRequest) {
       senderAddress,
       receiverAddress,
       matchStatus,
-      notabeneTransferId,
-      ownerUserId,
-    } = body;
-
-    if (!transactionId || !matchStatus) {
-      return apiValidationError("transactionId and matchStatus are required");
-    }
+    } = data;
+    const notabeneTransferId = (body as Record<string, unknown>).notabeneTransferId as string | undefined;
+    const ownerUserId = (body as Record<string, unknown>).ownerUserId as string | undefined;
 
     // Uniqueness is enforced by transactionId + matchStatus compound key.
     // If a case already exists for this combination, return it rather than

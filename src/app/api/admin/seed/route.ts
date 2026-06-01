@@ -18,9 +18,14 @@ import { env } from "@/lib/env";
  * This prevents accidental seeding of production databases with test data.
  */
 export async function POST() {
-  // Gate: block in production unless explicitly allowed
-  if (process.env.NODE_ENV === "production" && env("ALLOW_SEED") !== "true") {
-    return apiForbiddenError("Seed endpoint is disabled in production. Set ALLOW_SEED=true to override.");
+  // Gate: block in production — always. ALLOW_SEED only works in non-production
+  // environments to prevent any possibility of seeding production with test data.
+  if (process.env.NODE_ENV === "production") {
+    return apiForbiddenError("Seed endpoint is permanently disabled in production.");
+  }
+  // In non-production, still require explicit opt-in
+  if (env("ALLOW_SEED") !== "true") {
+    return apiForbiddenError("Seed endpoint is disabled. Set ALLOW_SEED=true to enable.");
   }
 
   const auth = await requireRole("admin");

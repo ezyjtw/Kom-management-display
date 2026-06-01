@@ -12,7 +12,7 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { emitHighRiskTransaction } from "@/lib/sse";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { validateBody, createTransactionConfirmationSchema } from "@/lib/validation";
+import { validateBody, transactionConfirmationPostSchema } from "@/lib/validation";
 
 /**
  * GET /api/transaction-confirmations
@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const riskLevel = searchParams.get("riskLevel");
-    const page = parseInt(searchParams.get("page") || "1");
-    const pageSize = parseInt(searchParams.get("pageSize") || "50");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "50") || 50));
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
@@ -79,42 +79,36 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const parsed = validateBody(createTransactionConfirmationSchema, body);
+    const parsed = validateBody(transactionConfirmationPostSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { action } = body;
-
-    if (!action) {
-      return apiValidationError("action is required (create, acknowledge, sign_off, escalate)");
-    }
+    const validatedData = parsed.data;
 
     const actorId = auth.employeeId || auth.id;
 
-    switch (action) {
+    switch (validatedData.action) {
       case "create": {
-        const { transactionId, asset, amount, direction, account, workspace, requestId } = body;
-        if (!transactionId || !asset || amount === undefined || !direction) {
-          return apiValidationError("transactionId, asset, amount, and direction are required");
-        }
-
-        const riskLevel = body.riskLevel ?? assessRiskLevel({ amount, asset, direction });
+        const riskLevel = validatedData.riskLevel ?? assessRiskLevel({
+          amount: validatedData.amount,
+          asset: validatedData.asset,
+          direction: validatedData.direction,
+        });
         const result = await createTransactionConfirmation({
-          transactionId,
-          requestId,
-          asset,
-          amount,
-          direction,
-          account,
-          workspace,
+          transactionId: validatedData.transactionId,
+          requestId: validatedData.requestId,
+          asset: validatedData.asset,
+          amount: validatedData.amount,
+          direction: validatedData.direction,
+          account: validatedData.account,
+          workspace: validatedData.workspace,
           riskLevel,
         });
 
-        // Push SSE event for medium+ risk
         if (riskLevel !== "low") {
           emitHighRiskTransaction({
             confirmationId: result.id,
-            transactionId,
-            asset,
-            amount,
+            transactionId: validatedData.transactionId,
+            asset: validatedData.asset,
+            amount: validatedData.amount,
             riskLevel,
           });
         }
@@ -123,31 +117,25 @@ export async function POST(request: NextRequest) {
       }
 
       case "acknowledge": {
-        if (!body.confirmationId) return apiValidationError("confirmationId is required");
-        await acknowledgeConfirmation(body.confirmationId, actorId);
+        await acknowledgeConfirmation(validatedData.confirmationId, actorId);
         return apiSuccess({ acknowledged: true });
       }
 
       case "sign_off": {
-        // Only admin/lead can sign off
         const roleCheck = await requireRole("admin", "lead");
         if (roleCheck instanceof NextResponse) return roleCheck;
 
-        if (!body.confirmationId) return apiValidationError("confirmationId is required");
-        await signOffConfirmation(body.confirmationId, actorId);
+        await signOffConfirmation(validatedData.confirmationId, actorId);
         return apiSuccess({ signedOff: true });
       }
 
       case "escalate": {
-        if (!body.confirmationId || !body.reason) {
-          return apiValidationError("confirmationId and reason are required");
-        }
-        await escalateConfirmation(body.confirmationId, actorId, body.reason);
+        await escalateConfirmation(validatedData.confirmationId, actorId, validatedData.reason);
         return apiSuccess({ escalated: true });
       }
 
       default:
-        return apiValidationError(`Unknown action: ${action}`);
+        return apiValidationError("Unknown action");
     }
   } catch (error) {
     return handleApiError(error, "transaction-confirmations POST");

@@ -53,14 +53,27 @@ export async function POST(
     const now = new Date();
     const userId = auth.employeeId || auth.id;
 
-    const updated = await prisma.commsThread.update({
-      where: { id: params.id },
+    // Atomic conditional update to prevent race condition when two users
+    // try to take the same thread simultaneously
+    const updateResult = await prisma.commsThread.updateMany({
+      where: {
+        id: params.id,
+        ...(auth.role !== "admin" ? { ownerUserId: null } : {}),
+      },
       data: {
         ownerUserId: userId,
         status: thread.status === "Unassigned" ? "Assigned" : thread.status,
         lastActionAt: now,
         ttfaDeadline: computeTtfaDeadline(now, thread.priority as ThreadPriority),
       },
+    });
+
+    if (updateResult.count === 0) {
+      return apiConflictError("Thread was taken by another user. Please refresh.");
+    }
+
+    const updated = await prisma.commsThread.findUnique({
+      where: { id: params.id },
       include: {
         owner: { select: { id: true, name: true } },
       },
