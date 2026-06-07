@@ -14,6 +14,7 @@ import type {
 } from "@/modules/integrations/types";
 
 import { JiraAdapter } from "@/modules/integrations/adapters/jira-adapter";
+import { ConfluenceAdapter } from "@/modules/integrations/adapters/confluence-adapter";
 import { SlackAdapter } from "@/modules/integrations/adapters/slack-adapter";
 import { EmailAdapter } from "@/modules/integrations/adapters/email-adapter";
 import { FireblocksAdapter } from "@/modules/integrations/adapters/fireblocks-adapter";
@@ -29,6 +30,7 @@ class IntegrationRegistry {
 
   constructor() {
     this.register(new JiraAdapter());
+    this.register(new ConfluenceAdapter());
     this.register(new SlackAdapter());
     this.register(new EmailAdapter());
     this.register(new FireblocksAdapter());

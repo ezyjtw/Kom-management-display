@@ -23,6 +23,7 @@ export type JobType =
   | "sync_slack"
   | "sync_email"
   | "sync_jira"
+  | "sync_confluence"
   | "check_sla"
   | "check_staking"
   | "poll_custody"
@@ -33,7 +34,8 @@ export type JobType =
   | "classify_thread"
   | "draft_client_comms"
   | "poll_status_pages"
-  | "score_vendor_reliability";
+  | "score_vendor_reliability"
+  | "compute_integration_scores";
 
 /**
  * Job priority levels — lower number = higher priority.
@@ -71,6 +73,8 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "check_confirmations", cronExpression: "*/5 * * * *" }, // Every 5 mins
     { type: "cleanup_sessions", cronExpression: "0 2 * * *" },   // Daily at 2am
     { type: "sync_slack_channel", cronExpression: "*/2 * * * *" }, // Every 2 mins
+    { type: "sync_confluence", cronExpression: "*/15 * * * *" },   // Every 15 mins
+    { type: "compute_integration_scores", cronExpression: "0 6 * * *" }, // Daily at 6am
   ];
 
   for (const job of defaultJobs) {

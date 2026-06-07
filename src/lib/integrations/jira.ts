@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { computeTtoDeadline } from "@/lib/sla";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
@@ -91,6 +92,66 @@ function mapJiraPriority(issue: JiraIssue): ThreadPriority {
 }
 
 // ---------------------------------------------------------------------------
+// Status normalization
+// ---------------------------------------------------------------------------
+
+function normalizeJiraStatus(jiraStatus: string): string {
+  const lower = jiraStatus.toLowerCase();
+  if (["to do", "open", "backlog", "new"].includes(lower)) return "open";
+  if (["in progress", "in review", "in development"].includes(lower)) return "in_progress";
+  if (["done", "closed", "resolved"].includes(lower)) return "resolved";
+  return lower;
+}
+
+async function upsertIssueState(issue: JiraIssue, threadId: string | null): Promise<void> {
+  const normalizedStatus = normalizeJiraStatus(issue.fields.status.name);
+  const isResolved = normalizedStatus === "resolved";
+
+  const employee = issue.fields.assignee?.emailAddress
+    ? await prisma.employee.findFirst({ where: { email: issue.fields.assignee.emailAddress, active: true }, select: { id: true } })
+    : null;
+
+  await prisma.jiraIssueState.upsert({
+    where: { issueKey: issue.key },
+    create: {
+      issueKey: issue.key,
+      issueId: issue.id,
+      projectKey: issue.fields.project.key,
+      summary: issue.fields.summary,
+      status: normalizedStatus,
+      jiraStatus: issue.fields.status.name,
+      priority: mapJiraPriority(issue),
+      issueType: issue.fields.issuetype.name,
+      assigneeEmail: issue.fields.assignee?.emailAddress ?? null,
+      assigneeName: issue.fields.assignee?.displayName ?? null,
+      reporterEmail: issue.fields.reporter?.emailAddress ?? null,
+      reporterName: issue.fields.reporter?.displayName ?? null,
+      labels: (issue.fields.labels ?? []) as Prisma.InputJsonValue,
+      resolvedAt: isResolved ? new Date(issue.fields.updated) : null,
+      jiraCreatedAt: new Date(issue.fields.created),
+      jiraUpdatedAt: new Date(issue.fields.updated),
+      threadId,
+      employeeId: employee?.id ?? null,
+    },
+    update: {
+      summary: issue.fields.summary,
+      status: normalizedStatus,
+      jiraStatus: issue.fields.status.name,
+      priority: mapJiraPriority(issue),
+      issueType: issue.fields.issuetype.name,
+      assigneeEmail: issue.fields.assignee?.emailAddress ?? null,
+      assigneeName: issue.fields.assignee?.displayName ?? null,
+      labels: (issue.fields.labels ?? []) as Prisma.InputJsonValue,
+      resolvedAt: isResolved ? new Date(issue.fields.updated) : null,
+      jiraUpdatedAt: new Date(issue.fields.updated),
+      lastSyncedAt: new Date(),
+      threadId,
+      employeeId: employee?.id ?? null,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Sync logic
 // ---------------------------------------------------------------------------
 
@@ -152,6 +213,7 @@ export async function syncJiraProject(
         });
       }
 
+      await upsertIssueState(issue, existing.id);
       synced.push(existing.id);
       continue;
     }
@@ -208,6 +270,7 @@ export async function syncJiraProject(
       },
     });
 
+    await upsertIssueState(issue, thread.id);
     synced.push(thread.id);
   }
 

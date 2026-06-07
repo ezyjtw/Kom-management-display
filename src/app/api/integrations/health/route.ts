@@ -17,6 +17,7 @@ import { getEnv, type Env } from "@/lib/env";
 /** Map integration source names to the BackgroundJob types that sync them. */
 const SOURCE_JOB_TYPE: Record<string, string> = {
   jira: "sync_jira",
+  confluence: "sync_confluence",
   slack: "sync_slack",
   email: "sync_email",
   fireblocks: "check_staking",
@@ -28,9 +29,10 @@ export async function GET() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
-  const sources = ["jira", "slack", "email", "fireblocks", "custody", "notabene"] as const;
+  const sources = ["jira", "confluence", "slack", "email", "fireblocks", "custody", "notabene"] as const;
   const envChecks: Record<string, string[]> = {
     jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+    confluence: ["CONFLUENCE_BASE_URL", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
     email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
     fireblocks: ["FIREBLOCKS_API_KEY"],

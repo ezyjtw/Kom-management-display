@@ -86,6 +86,7 @@ const envSchema = z.object({
 
   // Webhook secrets
   JIRA_WEBHOOK_SECRET: z.string().optional(),
+  CONFLUENCE_WEBHOOK_SECRET: z.string().optional(),
 
   // Fireblocks
   FIREBLOCKS_API_BASE_URL: z.string().optional(),

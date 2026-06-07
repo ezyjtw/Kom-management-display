@@ -17,8 +17,9 @@ import { validateBody, enqueueJobSchema } from "@/lib/validation";
 import { env } from "@/lib/env";
 
 const VALID_JOB_TYPES: JobType[] = [
-  "sync_slack", "sync_email", "sync_jira", "check_sla",
+  "sync_slack", "sync_email", "sync_jira", "sync_confluence", "check_sla",
   "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
+  "compute_integration_scores",
 ];
 
 /**
@@ -194,6 +195,18 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
       const { cleanupExpiredSessions } = await import("@/lib/session-revocation");
       const cleaned = await cleanupExpiredSessions();
       return { cleanedSessions: cleaned };
+    }
+
+    case "sync_confluence": {
+      const { syncConfluenceSpace, isConfluenceConfigured } = await import("@/lib/integrations/confluence");
+      if (!isConfluenceConfigured()) return { skipped: true, reason: "Confluence not configured" };
+      const spaceKey = (payload.spaceKey as string) || "OPS";
+      return syncConfluenceSpace(spaceKey);
+    }
+
+    case "compute_integration_scores": {
+      const { computeIntegrationScores } = await import("@/lib/scoring/integration-score-pipeline");
+      return computeIntegrationScores();
     }
 
     default:

@@ -90,6 +90,7 @@ enum CommsSource {
   email
   slack
   jira
+  confluence
   manual
 }
 
@@ -1512,4 +1513,79 @@ model VendorReliabilityScore {
   computedAt        DateTime @default(now())
 
   provider ServiceProvider @relation(fields: [providerId], references: [id])
+}
+
+// ─── Jira Issue State Tracking ───
+
+model JiraIssueState {
+  id              String    @id @default(cuid())
+  issueKey        String    @unique
+  issueId         String    @default("")
+  projectKey      String
+  summary         String
+  status          String
+  jiraStatus      String
+  priority        String    @default("P2")
+  issueType       String    @default("")
+  assigneeEmail   String?
+  assigneeName    String?
+  reporterEmail   String?
+  reporterName    String?
+  labels          Json      @default("[]")
+  resolvedAt      DateTime?
+  firstSeenAt     DateTime  @default(now())
+  lastSyncedAt    DateTime  @default(now())
+  jiraCreatedAt   DateTime
+  jiraUpdatedAt   DateTime
+  threadId        String?
+  employeeId      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([projectKey])
+  @@index([status])
+  @@index([assigneeEmail])
+  @@index([employeeId])
+  @@index([resolvedAt])
+  @@index([jiraUpdatedAt])
+}
+
+// ─── Confluence Page State Tracking ───
+
+model ConfluencePageState {
+  id                  String    @id @default(cuid())
+  pageId              String    @unique
+  spaceKey            String
+  title               String
+  status              String    @default("current")
+  authorEmail         String?
+  authorName          String?
+  lastEditorEmail     String?
+  lastEditorName      String?
+  labels              Json      @default("[]")
+  version             Int       @default(1)
+  createdInConfluence DateTime
+  updatedInConfluence DateTime
+  lastSyncedAt        DateTime  @default(now())
+  employeeId          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([spaceKey])
+  @@index([authorEmail])
+  @@index([employeeId])
+  @@index([updatedInConfluence])
+}
+
+// ─── Integration Sync Cursor ───
+
+model IntegrationSyncCursor {
+  id        String   @id @default(cuid())
+  source    String
+  scope     String
+  cursor    String   @default("")
+  metadata  Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@unique([source, scope])
 }

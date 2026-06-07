@@ -138,6 +138,53 @@ export async function verifyJiraWebhook(
 }
 
 /**
+ * Verify a Confluence webhook signature.
+ *
+ * Uses the same HMAC-SHA256 pattern as Jira.
+ */
+export async function verifyConfluenceWebhook(
+  body: string,
+  signatureHeader: string | null,
+): Promise<boolean> {
+  const secret = env("CONFLUENCE_WEBHOOK_SECRET");
+  if (!secret) {
+    if (env("NODE_ENV") === "production") {
+      logger.security("CONFLUENCE_WEBHOOK_SECRET not configured — rejecting webhook in production");
+      return false;
+    }
+    logger.warn("CONFLUENCE_WEBHOOK_SECRET not configured, skipping webhook verification (non-production only)");
+    return true;
+  }
+
+  if (!signatureHeader) {
+    logger.security("Confluence webhook missing signature header");
+    return false;
+  }
+
+  const expectedSignature =
+    "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+
+  try {
+    const expected = Buffer.from(expectedSignature, "utf8");
+    const received = Buffer.from(signatureHeader, "utf8");
+
+    if (expected.length !== received.length) {
+      logger.security("Confluence webhook signature length mismatch");
+      return false;
+    }
+
+    const valid = timingSafeEqual(expected, received);
+    if (!valid) {
+      logger.security("Confluence webhook signature mismatch");
+    }
+    return valid;
+  } catch {
+    logger.security("Confluence webhook signature verification error");
+    return false;
+  }
+}
+
+/**
  * Generic HMAC webhook verification.
  *
  * Supports any provider that sends an HMAC signature in a header.
