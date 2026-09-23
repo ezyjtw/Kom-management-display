@@ -37,7 +37,9 @@ export type Resource =
   | "service_provider"
   | "client"
   | "sla_policy"
-  | "alert_rule";
+  | "alert_rule"
+  | "work_item"
+  | "app_setting";
 
 export type Action =
   | "view"
@@ -99,6 +101,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     client:           { actions: ["view", "create", "update"], scope: "all" },
     sla_policy:       { actions: ["view", "configure"], scope: "all" },
     alert_rule:       { actions: ["view", "configure"], scope: "all" },
+    work_item:        { actions: ["view", "create", "update", "assign", "resolve"], scope: "all" },
+    app_setting:      { actions: ["view", "configure"], scope: "all" },
   },
   lead: {
     employee:         { actions: ["view", "update"], scope: "team" },
@@ -131,6 +135,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     client:           { actions: ["view"], scope: "all" },
     sla_policy:       { actions: ["view"], scope: "all" },
     alert_rule:       { actions: ["view"], scope: "all" },
+    work_item:        { actions: ["view", "update", "assign", "resolve"], scope: "all" },
+    app_setting:      { actions: ["view"], scope: "all" },
   },
   employee: {
     employee:         { actions: ["view_own"], scope: "own" },
@@ -163,6 +169,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     client:           { actions: ["view"], scope: "all" },
     sla_policy:       { actions: ["view"], scope: "all" },
     alert_rule:       { actions: [], scope: "none" },
+    work_item:        { actions: ["view", "update", "resolve"], scope: "all" },
+    app_setting:      { actions: [], scope: "none" },
   },
   auditor: {
     employee:         { actions: ["view"], scope: "all" },
@@ -195,6 +203,8 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     client:           { actions: ["view"], scope: "all" },
     sla_policy:       { actions: ["view"], scope: "all" },
     alert_rule:       { actions: ["view"], scope: "all" },
+    work_item:        { actions: ["view"], scope: "all" },
+    app_setting:      { actions: ["view"], scope: "all" },
   },
 };
 
@@ -230,4 +240,6 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   client: ["komainuAccountNos"],
   sla_policy: [],
   alert_rule: [],
+  work_item: [],
+  app_setting: [],
 };

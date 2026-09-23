@@ -12,6 +12,7 @@ import { acquireSlackToken } from "@/lib/slack-rate-limiter";
 import { enqueueJob } from "@/lib/background-jobs";
 import { sanitiseSlackMessage } from "@/lib/sanitize";
 import { upsertSourceRecords } from "@/modules/integrations/source-records";
+import { handleSlackIntake } from "@/modules/intake/slack-intake-service";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import { computeTtoDeadline } from "@/lib/sla";
 import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-repository";
@@ -41,7 +42,7 @@ export type IngestOutcome = "skipped" | "risk_signal" | "thread" | "thread_with_
  *   by sync_slack_replies. channel_join and similar subtypes are always skipped.
  */
 export async function ingestChannelMessage(
-  slackChannel: { id: string; channelId: string; channelName: string; purpose: string },
+  slackChannel: { id: string; channelId: string; channelName: string; purpose: string; clientId: string | null },
   msg: SlackMessage,
   opts: { fromHistory?: boolean } = {},
 ): Promise<IngestOutcome> {
@@ -73,6 +74,7 @@ export async function ingestChannelMessage(
       { channelId: slackChannel.channelId, threadTs: msg.thread_ts },
       { deduplicationKey: `slack_replies_${slackChannel.channelId}_${msg.thread_ts}` },
     );
+    await handleSlackIntake(slackChannel, msg);
     return "reply";
   }
 
@@ -162,6 +164,9 @@ export async function ingestChannelMessage(
       editedAt: msg.edited ? new Date(parseFloat(msg.edited.ts) * 1000) : undefined,
     },
   });
+
+  // Client intake (spec §9.2); no-op unless intake.slack.route = "kommand"
+  await handleSlackIntake(slackChannel, msg);
 
   // If message has replies, enqueue reply sync
   if (msg.reply_count && msg.reply_count > 0) {
@@ -339,6 +344,7 @@ export async function syncThreadReplies(
       });
 
       messagesUpserted++;
+      await handleSlackIntake(slackChannel, reply);
 
       if (!latestReplyTs || reply.ts > latestReplyTs) {
         latestReplyTs = reply.ts;

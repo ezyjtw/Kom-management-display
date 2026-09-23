@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Building2, Plus, Save, X } from "lucide-react";
 
-type ChannelKind = "slack" | "email_domain" | "teams";
+type ChannelKind = "slack" | "email_domain" | "teams" | "slack_user";
 
 interface Channel { kind: ChannelKind; ref: string }
 interface Client {
@@ -19,7 +19,7 @@ interface Client {
 
 type Draft = Omit<Client, "id" | "komainuAccountNos"> & { id?: string; accountNosText: string };
 
-const KIND_LABEL: Record<ChannelKind, string> = { slack: "Slack channel ID", email_domain: "Email domain", teams: "Teams channel ID" };
+const KIND_LABEL: Record<ChannelKind, string> = { slack: "Slack channel ID", email_domain: "Email domain", teams: "Teams channel ID", slack_user: "Client Slack user ID" };
 const EMPTY: Draft = { displayName: "", komainuOrgId: "", jsmOrganizationId: "", jurisdiction: "", isActive: true, channels: [], accountNosText: "" };
 
 const input = "w-full h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
@@ -113,7 +113,7 @@ export default function ClientsTab() {
                   onChange={(e) => setDraft({ ...draft, channels: draft.channels.map((x, j) => (j === i ? { ...x, kind: e.target.value as ChannelKind } : x)) })}>
                   {(Object.keys(KIND_LABEL) as ChannelKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
                 </select>
-                <input className={input} placeholder={c.kind === "email_domain" ? "example.com" : c.kind === "slack" ? "C01234ABCDE" : "Teams channel ID"} value={c.ref}
+                <input className={input} placeholder={c.kind === "email_domain" ? "example.com" : c.kind === "slack" ? "C01234ABCDE" : c.kind === "slack_user" ? "U01234ABCDE" : "Teams channel ID"} value={c.ref}
                   onChange={(e) => setDraft({ ...draft, channels: draft.channels.map((x, j) => (j === i ? { ...x, ref: e.target.value } : x)) })} />
                 <button aria-label="Remove channel" onClick={() => setDraft({ ...draft, channels: draft.channels.filter((_, j) => j !== i) })} className="px-2 text-muted-foreground hover:text-foreground"><X size={14} /></button>
               </div>

@@ -67,7 +67,7 @@ describe("Events API endpoint", () => {
 });
 
 describe("purpose routing", () => {
-  const channel = (purpose: string) => ({ id: "sc1", channelId: "C0000000001", channelName: "chan", purpose });
+  const channel = (purpose: string) => ({ id: "sc1", channelId: "C0000000001", channelName: "chan", purpose, clientId: null });
 
   it("keeps bot messages in gx_notifications channels as raw risk signals", async () => {
     const out = await ingestChannelMessage(channel("gx_notifications"), { ts: "1700000000.1", subtype: "bot_message", bot_id: "B1", text: "Risk: High" });

@@ -1864,3 +1864,13 @@ model JiraIssueEvent {
   @@index([key])
   @@index([workItemId])
 }
+
+/// Admin-editable runtime settings that are not simple on/off flags
+/// (e.g. intake.slack.route). Validated per key in src/modules/settings; changes are audit-logged.
+model AppSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

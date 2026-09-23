@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette, Building2, Timer } from "lucide-react";
+import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette, Building2, Timer, Inbox } from "lucide-react";
 import type { ScoringConfigData, Category } from "@/types";
 
 import ScoringWeightsTab from "./ScoringWeightsTab";
@@ -13,6 +13,7 @@ import IntegrationsTab from "./IntegrationsTab";
 import BrandingTab from "./BrandingTab";
 import ClientsTab from "./ClientsTab";
 import SlaPoliciesTab from "./SlaPoliciesTab";
+import IntakeTab from "./IntakeTab";
 import { SlaTargetsBanner } from "./SlaTargetsBanner";
 import type { Employee } from "./EmployeesTab";
 import type { UserAccount } from "./UserAccountsTab";
@@ -28,6 +29,7 @@ const tabs = [
   { key: "branding" as const, label: "Branding", icon: Palette },
   { key: "clients" as const, label: "Clients & Channels", icon: Building2 },
   { key: "sla" as const, label: "SLA Policies", icon: Timer },
+  { key: "intake" as const, label: "Client Intake", icon: Inbox },
 ];
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -180,6 +182,7 @@ export default function AdminClient({ scoringEnabled }: { scoringEnabled: boolea
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "clients" && <ClientsTab />}
       {activeTab === "sla" && <SlaPoliciesTab />}
+      {activeTab === "intake" && <IntakeTab />}
     </div>
   );
 }

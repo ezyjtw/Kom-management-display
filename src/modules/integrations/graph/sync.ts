@@ -19,6 +19,7 @@ import {
 import { recordHeartbeat } from "@/modules/integrations/heartbeat";
 import { upsertSourceRecords } from "@/modules/integrations/source-records";
 import { parseVendorEmail, VENDOR_PARSERS, type VendorParser } from "@/modules/integrations/graph/vendor-parsers";
+import { handleEmailIntake, handleTeamsIntake } from "@/modules/intake/graph-intake-service";
 
 export const MAIL_EXPECTED_MINS = 3;
 export const TEAMS_EXPECTED_MINS = 5;
@@ -30,7 +31,7 @@ async function alreadyIngested(externalId: string): Promise<boolean> {
 }
 
 /** Custody inbox: one CommsThread per conversation, one CommsMessage per email (as the IMAP adapter did). */
-async function ingestToThread(msg: GraphMessage, queue = "Transaction Operations") {
+async function ingestToThread(msg: GraphMessage, queue = "Transaction Operations"): Promise<string> {
   const from = msg.from?.emailAddress?.address ?? "unknown";
   const at = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
   const body = msg.bodyPreview ?? "";
@@ -65,6 +66,7 @@ async function ingestToThread(msg: GraphMessage, queue = "Transaction Operations
   await prisma.commsMessage.create({
     data: { threadId, authorName: msg.from?.emailAddress?.name || from, authorEmail: from, authorType: "external", bodySnippet: body.slice(0, 2000), timestamp: at },
   });
+  return threadId;
 }
 
 /** Vendor notification: link to the VSR ticket whose title carries the vendor key. */
@@ -103,6 +105,38 @@ async function lastRecordAt(source: string): Promise<Date | null> {
   return (await prisma.sourceHeartbeat.findUnique({ where: { source } }))?.lastRecordAt ?? null;
 }
 
+type StoredMail = Pick<GraphMessage, "id" | "internetMessageId" | "conversationId" | "subject" | "receivedDateTime" | "bodyPreview"> & { fromAddress: string | null; threadId?: string | null };
+
+async function runEmailIntake(mailboxLabel: string, msg: GraphMessage, threadId: string | null, externalId: string) {
+  try {
+    await handleEmailIntake(mailboxLabel, msg, threadId);
+    return true;
+  } catch (error) {
+    logger.error("Email intake failed; will retry on the next sync", { mailbox: mailboxLabel, error: error instanceof Error ? error.message : String(error) });
+    await prisma.sourceRecord.update({
+      where: { source_kind_externalId: { source: "graph_mail", kind: "mail_message", externalId } },
+      data: { status: "intake_failed" },
+    });
+    return false;
+  }
+}
+
+/** Retry client intake for custody messages whose intake failed earlier (e.g. JSM unavailable). */
+async function retryFailedIntake(mailboxLabel: string) {
+  const failed = await prisma.sourceRecord.findMany({
+    where: { source: "graph_mail", kind: "mail_message", status: "intake_failed", fields: { path: ["mailbox"], equals: mailboxLabel } },
+    take: 50,
+  });
+  for (const rec of failed) {
+    const stored = (rec.fields as { message?: StoredMail }).message;
+    if (!stored) continue;
+    const msg: GraphMessage = { ...stored, from: { emailAddress: { address: stored.fromAddress ?? undefined } } };
+    if (await runEmailIntake(mailboxLabel, msg, stored.threadId ?? null, rec.externalId)) {
+      await prisma.sourceRecord.update({ where: { id: rec.id }, data: { status: "stored" } });
+    }
+  }
+}
+
 export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: readonly VendorParser[]; now?: Date } = {}) {
   const hb = `graph_mail.${mailbox.label}`;
   const now = opts.now ?? new Date();
@@ -111,6 +145,8 @@ export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: reado
   let ingested = 0;
   let newest: Date | null = null;
 
+  if (mailbox.purpose === "custody") await retryFailedIntake(mailbox.label);
+
   for (const msg of messages) {
     const externalId = msg.internetMessageId ?? msg.id;
     const at = msg.receivedDateTime ? new Date(msg.receivedDateTime) : null;
@@ -118,15 +154,33 @@ export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: reado
     if (await alreadyIngested(externalId)) continue;
     try {
       let outcome = "stored";
-      if (mailbox.purpose === "custody") await ingestToThread(msg);
+      let threadId: string | null = null;
+      if (mailbox.purpose === "custody") threadId = await ingestToThread(msg);
       else if (mailbox.purpose === "vendor_notifications") outcome = await ingestVendorEmail(msg, opts.parsers ?? VENDOR_PARSERS);
       // fab_ics: stored for the FAB rules (TODO(CONFIRM-FAB-TEMPLATES)).
+      const stored: StoredMail = {
+        id: msg.id,
+        internetMessageId: msg.internetMessageId,
+        conversationId: msg.conversationId,
+        subject: (msg.subject ?? "").slice(0, 300),
+        receivedDateTime: msg.receivedDateTime,
+        bodyPreview: msg.bodyPreview?.slice(0, 2000),
+        fromAddress: msg.from?.emailAddress?.address ?? null,
+        threadId,
+      };
       await upsertSourceRecords("graph_mail", "mail_message", [{
         externalId,
         status: outcome,
         occurredAt: at,
-        fields: { mailbox: mailbox.label, purpose: mailbox.purpose, subject: (msg.subject ?? "").slice(0, 300), from: msg.from?.emailAddress?.address ?? null },
+        fields: {
+          mailbox: mailbox.label,
+          purpose: mailbox.purpose,
+          subject: stored.subject,
+          from: stored.fromAddress,
+          ...(mailbox.purpose === "custody" ? { message: stored } : {}),
+        },
       }]);
+      if (mailbox.purpose === "custody") await runEmailIntake(mailbox.label, msg, threadId, externalId);
       ingested++;
     } catch (error) {
       logger.error("Graph mail ingest failed", { mailbox: mailbox.label, error: error instanceof Error ? error.message : String(error) });
@@ -161,6 +215,13 @@ export async function syncGraphTeams() {
         text: stripHtml(m.body?.content ?? "").slice(0, 2000),
       },
     })));
+    for (const m of messages) {
+      try {
+        await handleTeamsIntake(ch.channelId, m);
+      } catch (error) {
+        logger.error("Teams intake failed", { channel: ch.label, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
     const newest = messages.reduce<Date | null>((acc, m) => {
       const t = m.createdDateTime ? new Date(m.createdDateTime) : null;
       return t && (!acc || t > acc) ? t : acc;

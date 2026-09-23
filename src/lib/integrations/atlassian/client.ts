@@ -244,3 +244,37 @@ export async function discoverIssueTypes(projectKey: string): Promise<Record<str
   );
   return Object.fromEntries((res.issueTypes ?? res.values ?? []).map((t) => [t.name, t.id]));
 }
+
+/**
+ * Create a JSM request (spec §9.2 rule 5). Field ids for organisation and
+ * priority are configuration, never hard-coded.
+ */
+export function createServiceRequest(input: {
+  serviceDeskId: string;
+  requestTypeId: string;
+  summary: string;
+  description: string;
+  labels: string[];
+  organizationFieldId?: string;
+  organizationId?: string | null;
+}): Promise<{ issueKey: string; issueId: string; _links?: { web?: string } }> {
+  const requestFieldValues: Record<string, unknown> = {
+    summary: input.summary.slice(0, 255),
+    description: input.description,
+    labels: input.labels,
+  };
+  if (input.organizationFieldId && input.organizationId) {
+    requestFieldValues[input.organizationFieldId] = [Number(input.organizationId)];
+  }
+  return atlassianRequest("POST", "/rest/servicedeskapi/request", {
+    body: { serviceDeskId: input.serviceDeskId, requestTypeId: input.requestTypeId, requestFieldValues },
+  });
+}
+
+/**
+ * Replace an issue's description. Only used by client intake to reflect an
+ * edited client message (spec §9.2 rule 8); not exposed as a general field edit.
+ */
+export function updateIssueDescription(key: string, text: string): Promise<void> {
+  return atlassianRequest("PUT", `/rest/api/3/issue/${key}`, { body: { fields: { description: adf(text) } } });
+}

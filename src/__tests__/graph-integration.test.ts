@@ -15,7 +15,8 @@ vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
 vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["graph.microsoft.com", "login.microsoftonline.com"]) }));
 
 const prismaMock = vi.hoisted(() => ({
-  sourceRecord: { count: vi.fn(), upsert: vi.fn() },
+  sourceRecord: { count: vi.fn(), upsert: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+  appSetting: { findUnique: vi.fn().mockResolvedValue(null) },
   sourceHeartbeat: { findUnique: vi.fn(), upsert: vi.fn() },
   commsThread: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   commsMessage: { create: vi.fn() },
@@ -31,6 +32,8 @@ import { syncMailbox } from "@/modules/integrations/graph/sync";
 beforeEach(() => {
   vi.clearAllMocks();
   CircuitBreaker.resetAll();
+  prismaMock.sourceRecord.findMany.mockResolvedValue([]);
+  prismaMock.appSetting.findUnique.mockResolvedValue(null);
 });
 afterEach(() => vi.unstubAllGlobals());
 

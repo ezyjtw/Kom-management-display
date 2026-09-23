@@ -759,6 +759,8 @@ const teamsChannelRef = z.string().min(3).max(300);
 
 export const clientChannelSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("slack"), ref: slackChannelRef }),
+  // Individual Slack users who belong to the client (spec §9.2 rule 2)
+  z.object({ kind: z.literal("slack_user"), ref: z.string().regex(/^[UW][A-Z0-9]{6,15}$/, "Slack user ID, e.g. U01234ABCDE") }),
   z.object({ kind: z.literal("email_domain"), ref: emailDomainRef }),
   z.object({ kind: z.literal("teams"), ref: teamsChannelRef }),
 ]);
@@ -799,3 +801,19 @@ export const updateAlertRuleSchema = z.object({
     outOfHours: z.array(z.string().min(1).max(200)).max(20),
   }).optional(),
 }).refine((v) => Object.keys(v).length > 0, "No changes");
+
+// ─── Client intake (spec §9) ───
+
+export const NOT_A_QUESTION_REASONS = ["acknowledgement", "social", "duplicate", "other"] as const;
+
+export const notAQuestionSchema = z
+  .object({
+    reason: z.enum(NOT_A_QUESTION_REASONS),
+    text: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => v.reason !== "other" || (v.text && v.text.length >= 3), { message: "Reason 'other' needs a short explanation", path: ["text"] });
+
+export const changePrioritySchema = z.object({
+  priority: z.enum(["P0", "P1", "P2", "P3"]),
+  reason: z.string().trim().max(500).optional(),
+});
