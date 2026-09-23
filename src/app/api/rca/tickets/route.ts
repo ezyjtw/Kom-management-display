@@ -6,6 +6,7 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createRcaTicketSchema } from "@/lib/validation";
 import { env } from "@/lib/env";
+import { httpFetch } from "@/lib/http/client";
 
 // Statuses that providers use to "close" tickets — if the ticket moves to one
 // of these and our RCA isn't done, it's a premature closure.
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     for (const inc of incidents) {
       try {
-        const res = await fetch(
+        const res = await httpFetch(
           `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${inc.externalTicketRef}?fields=status,resolution`,
           { headers: { Authorization: `Basic ${jiraAuth}`, Accept: "application/json" } },
         );
@@ -331,7 +332,7 @@ async function postJiraComment(incidentId: string, comment: string) {
     if (!incident?.externalTicketRef) return;
 
     const jiraAuth = Buffer.from(`${email}:${apiToken}`).toString("base64");
-    await fetch(
+    await httpFetch(
       `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${incident.externalTicketRef}/comment`,
       {
         method: "POST",

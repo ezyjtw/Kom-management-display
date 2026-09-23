@@ -5,6 +5,7 @@ import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { getIdempotencyStats } from "@/lib/idempotency";
 import { env } from "@/lib/env";
 import { requireAuth } from "@/lib/auth-user";
+import { checkWorkerHealth } from "@/lib/worker-health";
 
 interface ComponentHealth {
   status: "healthy" | "degraded" | "unhealthy";
@@ -16,7 +17,7 @@ interface ComponentHealth {
  * GET /api/health
  *
  * Returns system health with optional deep checks.
- * - Basic (default): DB connectivity only
+ * - Basic (default): DB connectivity and worker heartbeat (`worker_alive`)
  * - Deep (?deep=true): DB, job queue, circuit breakers, memory, event loop
  */
 export async function GET(request: NextRequest) {
@@ -50,6 +51,20 @@ export async function GET(request: NextRequest) {
       details: error instanceof Error ? error.message : "Connection failed",
     };
     overallStatus = "unhealthy";
+  }
+
+  // ─── Worker heartbeat (fires ALR-HB-WORKER from outside the worker) ───
+  let workerAlive: boolean | null = null;
+  if (components.database.status !== "unhealthy") {
+    try {
+      workerAlive = (await checkWorkerHealth()).workerAlive;
+      components.worker = workerAlive
+        ? { status: "healthy" }
+        : { status: "unhealthy", details: "No worker heartbeat in the last 2 minutes" };
+      if (!workerAlive && overallStatus === "healthy") overallStatus = "degraded";
+    } catch {
+      components.worker = { status: "unhealthy", details: "Heartbeat check failed" };
+    }
   }
 
   // ─── Deep checks (gated to prevent abuse on public endpoint) ───
@@ -109,6 +124,7 @@ export async function GET(request: NextRequest) {
 
   const health: Record<string, unknown> = {
     status: overallStatus,
+    worker_alive: workerAlive,
     components,
     timestamp: new Date().toISOString(),
     responseTimeMs: Date.now() - start,
@@ -116,11 +132,12 @@ export async function GET(request: NextRequest) {
 
   // Only include detailed system info for deep (authenticated) checks
   if (deep) {
-    health.version = env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev";
+    health.version = env("GIT_COMMIT_SHA")?.slice(0, 7) || "dev";
     health.environment = env("NODE_ENV") || "development";
     health.uptime = Math.round(process.uptime());
   }
 
-  const statusCode = overallStatus === "unhealthy" ? 503 : overallStatus === "degraded" ? 200 : 200;
+  // A dead worker is "degraded" (200) so the web container is not restarted for it.
+  const statusCode = overallStatus === "unhealthy" ? 503 : 200;
   return apiSuccess(health, undefined, statusCode);
 }

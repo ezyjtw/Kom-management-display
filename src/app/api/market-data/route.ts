@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { httpFetch } from "@/lib/http/client";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/market-data
@@ -75,6 +77,9 @@ interface OpenInterestData {
 export const revalidate = 60; // ISR: cache for 60s
 
 export async function GET() {
+  const gated = await featureGate("module.market_ticker");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -131,7 +136,7 @@ export async function GET() {
 async function fetchPrices(): Promise<AssetPrice[]> {
   try {
     const ids = Object.keys(TRACKED_ASSETS).join(",");
-    const res = await fetch(
+    const res = await httpFetch(
       `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`,
       { next: { revalidate: 60 } },
     );
@@ -157,7 +162,7 @@ async function fetchPrices(): Promise<AssetPrice[]> {
 async function fetchGas(): Promise<GasData> {
   try {
     // Use etherscan-compatible public API (no key needed for basic gas)
-    const res = await fetch(
+    const res = await httpFetch(
       "https://api.etherscan.io/api?module=gastracker&action=gasoracle",
       { next: { revalidate: 30 } },
     );
@@ -181,14 +186,14 @@ async function fetchGas(): Promise<GasData> {
 async function fetchBtcNetwork(): Promise<BtcNetworkData> {
   try {
     const [blockRes, feesRes] = await Promise.all([
-      fetch("https://mempool.space/api/blocks/tip/height", { next: { revalidate: 30 } }),
-      fetch("https://mempool.space/api/v1/fees/recommended", { next: { revalidate: 30 } }),
+      httpFetch("https://mempool.space/api/blocks/tip/height", { next: { revalidate: 30 } }),
+      httpFetch("https://mempool.space/api/v1/fees/recommended", { next: { revalidate: 30 } }),
     ]);
 
     let lastBlockTimestamp = 0;
     if (blockRes.ok) {
       // Get the latest block's timestamp
-      const tipRes = await fetch("https://mempool.space/api/blocks", { next: { revalidate: 30 } });
+      const tipRes = await httpFetch("https://mempool.space/api/blocks", { next: { revalidate: 30 } });
       if (tipRes.ok) {
         const blocks = await tipRes.json();
         if (Array.isArray(blocks) && blocks.length > 0) {
@@ -226,7 +231,7 @@ async function fetchBtcNetwork(): Promise<BtcNetworkData> {
 async function fetchOpenInterest(): Promise<OpenInterestData> {
   try {
     // Use CoinGlass public API for aggregate OI data
-    const res = await fetch(
+    const res = await httpFetch(
       "https://open-api.coinglass.com/public/v2/open_interest?symbol=all",
       { next: { revalidate: 120 } },
     );

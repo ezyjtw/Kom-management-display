@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { useEffect, useState } from "react";
+import { getProviders, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Zap, Loader2 } from "lucide-react";
 import { useBranding } from "@/lib/use-branding";
@@ -13,6 +13,22 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { branding } = useBranding();
+  const [providerIds, setProviderIds] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    getProviders()
+      .then((p) => setProviderIds(p ? Object.keys(p) : []))
+      .catch(() => setProviderIds([]));
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code === "AccessDenied") {
+      setError("Access denied. Your account is not mapped to a KOMmand Centre role or employee record. Contact your administrator.");
+    } else if (code) {
+      setError("Sign-in failed. Please try again.");
+    }
+  }, []);
+
+  const ssoEnabled = providerIds?.includes("azure-ad") ?? false;
+  const localEnabled = providerIds?.includes("credentials") ?? false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,13 +68,31 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground mt-1">Sign in to your ops dashboard</p>
         </div>
 
-        {/* Login Form */}
+        {error && (
+          <div role="alert" className="bg-red-500/10 text-red-400 text-sm px-4 py-2 rounded-lg mb-4">
+            {error}
+          </div>
+        )}
+
+        {ssoEnabled && (
+          <button
+            type="button"
+            onClick={() => signIn("azure-ad", { callbackUrl: "/dashboard" })}
+            className="w-full h-10 mb-4 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+          >
+            Sign in with Microsoft
+          </button>
+        )}
+
+        {providerIds !== null && !ssoEnabled && !localEnabled && (
+          <div className="bg-card border border-border rounded-xl p-4 text-sm text-muted-foreground">
+            No sign-in method is configured. Set the AZURE_AD_* variables (or ALLOW_LOCAL_LOGIN=true outside production).
+          </div>
+        )}
+
+        {/* Local login (non-production only) */}
+        {localEnabled && (
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
-          {error && (
-            <div className="bg-red-500/10 text-red-400 text-sm px-4 py-2 rounded-lg">
-              {error}
-            </div>
-          )}
 
           <div>
             <label htmlFor="login-email" className="text-sm font-medium text-foreground block mb-1.5">
@@ -105,9 +139,10 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+        )}
 
         {/* Dev-mode hint — no credentials exposed */}
-        {process.env.NODE_ENV === "development" && (
+        {localEnabled && process.env.NODE_ENV === "development" && (
           <div className="mt-6 bg-card border border-border rounded-xl p-4">
             <p className="text-xs text-muted-foreground">
               Development mode — use credentials from your SEED_*_PASSWORD environment variables.

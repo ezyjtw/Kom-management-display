@@ -1,6 +1,7 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { lookupSensitiveAction } from "@/modules/auth/sensitive-actions-registry";
+import { SESSION_MAX_AGE_SECONDS } from "@/lib/session-config";
 
 /**
  * Role-based idle timeout in seconds. Privileged roles get shorter timeouts.
@@ -20,7 +21,7 @@ const IDLE_TIMEOUT_SECONDS: Record<string, number> = {
  * Absolute session lifetime in seconds — hard cap regardless of activity.
  * After this, user must re-authenticate. Separate from idle timeout.
  */
-const ABSOLUTE_SESSION_LIFETIME = 8 * 60 * 60; // 8 hours for all roles
+const ABSOLUTE_SESSION_LIFETIME = SESSION_MAX_AGE_SECONDS;
 
 /** HTTP methods that modify state. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);

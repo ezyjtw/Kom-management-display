@@ -7,6 +7,7 @@
 import { env } from "@/lib/env";
 import { AUTH_TOKEN_PATH, isAllowedEndpoint } from "./endpoints";
 import type { KomainuPagedResponse, KomainuRequest, KomainuTransaction } from "./types";
+import { httpFetch } from "@/lib/http/client";
 
 export type { KomainuPagedResponse, KomainuRequest, KomainuTransaction } from "./types";
 
@@ -47,7 +48,7 @@ export function isKomainuConfigured(): boolean {
 async function getAccessToken(config: KomainuConfig): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.accessToken;
 
-  const res = await fetch(`${config.baseUrl}${AUTH_TOKEN_PATH}`, {
+  const res = await httpFetch(`${config.baseUrl}${AUTH_TOKEN_PATH}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_user: config.apiUser, api_secret: config.apiSecret }),
@@ -87,7 +88,7 @@ export async function komainuRequest<T>(
   const url = new URL(`${config.baseUrl}${path}`);
   for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
 
-  const res = await fetch(url.toString(), {
+  const res = await httpFetch(url.toString(), {
     method: "GET",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });

@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger";
 import { createAuditEntry } from "@/lib/api/audit";
 import { slackBreaker, emailBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
+import { httpFetch } from "@/lib/http/client";
 
 interface Recipient {
   channel: "slack" | "email";
@@ -215,7 +216,7 @@ async function sendViaSlack(channelId: string, message: string): Promise<void> {
   }
 
   await slackBreaker().execute(async () => {
-    const res = await fetch("https://slack.com/api/chat.postMessage", {
+    const res = await httpFetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

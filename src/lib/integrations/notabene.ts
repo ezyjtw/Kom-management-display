@@ -9,6 +9,7 @@
 import type { NotabeneTransfer } from "@/types";
 import { env } from "@/lib/env";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { httpFetch } from "@/lib/http/client";
 
 interface NotabeneConfig {
   baseUrl: string;
@@ -42,7 +43,7 @@ async function notabeneFetch<T>(
     }
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await httpFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       Accept: "application/json",
@@ -142,7 +143,7 @@ export async function fetchSupportedAssets(): Promise<NotabeneAsset[]> {
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const url = new URL(`${baseUrl}/v1/assets/assets`);
 
-  const res = await fetch(url.toString(), {
+  const res = await httpFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       Accept: "application/json",
@@ -177,7 +178,7 @@ export async function fetchAssetByIdentifier(
   const url = new URL(`${baseUrl}/v1/assets/asset`);
   url.searchParams.set("notabeneAsset", notabeneAsset);
 
-  const res = await fetch(url.toString(), {
+  const res = await httpFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       Accept: "application/json",

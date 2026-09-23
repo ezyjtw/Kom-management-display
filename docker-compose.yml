@@ -37,5 +37,21 @@ services:
       retries: 3
       start_period: 30s
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["npm", "run", "worker:prod"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/kommand
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
 volumes:
   pg-data:

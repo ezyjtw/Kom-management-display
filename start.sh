@@ -54,24 +54,18 @@ else
   echo "Skipping migrations (SKIP_MIGRATIONS=true)"
 fi
 
-# Only seed in non-production or when explicitly requested (ALLOW_SEED=true)
-if [ "${NODE_ENV}" != "production" ] || [ "${ALLOW_SEED}" = "true" ]; then
+# Never seed production. Elsewhere, seed only with explicit opt-in (ALLOW_SEED=true).
+if [ "${NODE_ENV}" = "production" ]; then
+  echo "Skipping seed (never seeds in production)"
+elif [ "${ALLOW_SEED}" = "true" ]; then
   echo "Seeding database (idempotent — safe to re-run)..."
   if node prisma/seed.js 2>&1; then
     echo "Seed completed successfully."
   else
-    SEED_EXIT=$?
-    echo "WARNING: Seed script failed with exit code $SEED_EXIT. Check logs above for details."
-    echo "You can re-run seeding from the Admin Panel (Employees tab) or via POST /api/admin/seed."
+    echo "WARNING: Seed script failed. Check logs above for details."
   fi
 else
-  echo "Skipping seed in production (set ALLOW_SEED=true to override)"
-fi
-
-# Auto-set NEXTAUTH_URL from Railway domain if not explicitly configured
-if [ -z "$NEXTAUTH_URL" ] && [ -n "$RAILWAY_PUBLIC_DOMAIN" ]; then
-  export NEXTAUTH_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
-  echo "Auto-set NEXTAUTH_URL=${NEXTAUTH_URL}"
+  echo "Skipping seed (set ALLOW_SEED=true outside production to seed)"
 fi
 
 # Normalize NEXTAUTH_URL: prepend https:// if set but missing a protocol

@@ -15,6 +15,7 @@ import type {
   NormalizedEvent,
   NormalizedPayload,
 } from "@/modules/integrations/types";
+import { httpFetch } from "@/lib/http/client";
 
 // ---------------------------------------------------------------------------
 // Notabene types
@@ -98,7 +99,7 @@ async function notabeneFetch<T>(
     }
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await httpFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       Accept: "application/json",

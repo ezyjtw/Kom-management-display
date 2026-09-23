@@ -13,11 +13,14 @@
  * - poll_custody: Poll Custody API for new transactions/requests
  * - check_confirmations: Check for expired transaction confirmations
  * - cleanup_sessions: Clean up expired session metadata
+ *
+ * Processed by the always-on worker (src/worker/index.ts).
  */
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { CronExpressionParser } from "cron-parser";
 
 export type JobType =
   | "sync_slack"
@@ -133,9 +136,30 @@ export async function enqueueJob(
   return job.id;
 }
 
+/** A job still "running" after this long is assumed orphaned by a dead worker. */
+export const STALE_RUNNING_MS = 15 * 60_000;
+
 /**
- * Fetch and lock the next pending job for processing.
- * Uses an atomic update to prevent double-processing.
+ * Return orphaned "running" jobs to the queue so a crashed worker cannot
+ * block a recurring job forever. Returns the number recovered.
+ */
+export async function recoverStaleJobs(now = new Date()): Promise<number> {
+  const { count } = await prisma.backgroundJob.updateMany({
+    where: {
+      status: "running",
+      type: { not: "worker_heartbeat" },
+      startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
+    },
+    data: { status: "retrying", nextRunAt: now, error: "Recovered: worker stopped mid-run" },
+  });
+  if (count > 0) logger.warn("Recovered stale running jobs", { count });
+  return count;
+}
+
+/**
+ * Fetch and lock the next due job. Uses a conditional update to prevent
+ * double-processing. A recurring job is skipped (and rescheduled) while a
+ * previous run of the same type is still running, so runs never overlap.
  */
 export async function claimNextJob(): Promise<{
   id: string;
@@ -143,41 +167,43 @@ export async function claimNextJob(): Promise<{
   payload: unknown;
   attempts: number;
 } | null> {
-  // Find the highest-priority pending job that's due
-  // Priority ordering: 0=critical, 1=high, 2=normal, 3=low (ascending)
-  // Within same priority, oldest first (nextRunAt ascending)
-  const job = await prisma.backgroundJob.findFirst({
+  const now = new Date();
+  // Priority 0=critical … 3=low, then oldest first.
+  const candidates = await prisma.backgroundJob.findMany({
     where: {
       status: { in: ["pending", "retrying"] },
-      nextRunAt: { lte: new Date() },
-      deadLetteredAt: null, // Exclude dead-lettered jobs
+      nextRunAt: { lte: now },
+      deadLetteredAt: null,
     },
     orderBy: [{ priority: "asc" }, { nextRunAt: "asc" }],
+    take: 10,
   });
 
-  if (!job) return null;
+  for (const job of candidates) {
+    if (job.isRecurring) {
+      const overlapping = await prisma.backgroundJob.count({
+        where: { type: job.type, status: "running", id: { not: job.id } },
+      });
+      if (overlapping > 0) {
+        await prisma.backgroundJob.updateMany({
+          where: { id: job.id, status: job.status },
+          data: { nextRunAt: getNextCronRun(job.cronExpression ?? "", now) },
+        });
+        logger.job(job.type, "Skipped recurring run: previous run still in progress");
+        continue;
+      }
+    }
 
-  // Atomically claim the job
-  try {
-    await prisma.backgroundJob.update({
+    const claimed = await prisma.backgroundJob.updateMany({
       where: { id: job.id, status: job.status },
-      data: {
-        status: "running",
-        startedAt: new Date(),
-        attempts: job.attempts + 1,
-      },
+      data: { status: "running", startedAt: now, attempts: job.attempts + 1 },
     });
-  } catch {
-    // Another worker claimed it
-    return null;
+    if (claimed.count === 0) continue; // another worker got it
+
+    return { id: job.id, type: job.type, payload: job.payload, attempts: job.attempts + 1 };
   }
 
-  return {
-    id: job.id,
-    type: job.type,
-    payload: job.payload,
-    attempts: job.attempts + 1,
-  };
+  return null;
 }
 
 /**
@@ -401,57 +427,18 @@ export async function replayDeadLetterJob(jobId: string): Promise<void> {
 }
 
 /**
- * Simple cron expression parser — returns the next run time.
- * Supports: "* /N * * * *" (every N minutes), "N * * * *" (at minute N), "0 N * * *" (at hour N).
+ * Next run time for a 5-field cron expression, evaluated in UTC.
+ * An invalid expression falls back to five minutes from now so the job
+ * keeps running instead of stalling; the error is logged.
  */
-function getNextCronRun(cron: string): Date {
-  const parts = cron.split(" ");
-  const now = new Date();
-  const next = new Date(now);
-
-  if (parts.length < 5) {
-    // Default: 5 minutes from now
-    next.setMinutes(next.getMinutes() + 5);
-    return next;
+export function getNextCronRun(cron: string, from: Date = new Date()): Date {
+  try {
+    return CronExpressionParser.parse(cron, { currentDate: from, tz: "UTC" }).next().toDate();
+  } catch (error) {
+    logger.error("Invalid cron expression", {
+      cron,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Date(from.getTime() + 5 * 60_000);
   }
-
-  const [minute, hour] = parts;
-
-  // Every N minutes: */N * * * *
-  if (minute.startsWith("*/")) {
-    const interval = parseInt(minute.substring(2));
-    next.setMinutes(next.getMinutes() + interval);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    return next;
-  }
-
-  // Every N hours at minute 0: 0 */N * * *
-  if (minute === "0" && hour.startsWith("*/")) {
-    const interval = parseInt(hour.substring(2));
-    next.setHours(next.getHours() + interval);
-    next.setMinutes(0);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    return next;
-  }
-
-  // Specific hour: 0 N * * *
-  if (minute === "0" && !hour.includes("*")) {
-    const targetHour = parseInt(hour);
-    next.setHours(targetHour);
-    next.setMinutes(0);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
-    }
-    return next;
-  }
-
-  // Fallback: 5 minutes from now
-  next.setMinutes(next.getMinutes() + 5);
-  next.setSeconds(0);
-  next.setMilliseconds(0);
-  return next;
 }

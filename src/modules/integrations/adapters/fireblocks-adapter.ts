@@ -13,6 +13,7 @@ import type {
   NormalizedEvent,
   NormalizedPayload,
 } from "@/modules/integrations/types";
+import { httpFetch } from "@/lib/http/client";
 
 // ---------------------------------------------------------------------------
 // Fireblocks types
@@ -124,7 +125,7 @@ async function fireblocksFetch<T>(
   const bodyStr = body ? JSON.stringify(body) : undefined;
   const jwt = await signRequest(config, `/v1${path}`, method, bodyStr);
 
-  const res = await fetch(`${config.baseUrl}/v1${path}`, {
+  const res = await httpFetch(`${config.baseUrl}/v1${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${jwt}`,

@@ -89,7 +89,7 @@ export async function GET() {
       status: overallStatus,
       checks,
       timestamp: new Date().toISOString(),
-      version: env("RAILWAY_GIT_COMMIT_SHA")?.slice(0, 7) || "dev",
+      version: env("GIT_COMMIT_SHA")?.slice(0, 7) || "dev",
       environment: env("NODE_ENV") || "development",
     },
     undefined,

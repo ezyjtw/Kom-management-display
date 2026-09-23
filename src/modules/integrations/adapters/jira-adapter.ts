@@ -14,6 +14,7 @@ import type {
   NormalizedEvent,
   NormalizedPayload,
 } from "@/modules/integrations/types";
+import { httpFetch } from "@/lib/http/client";
 
 // ---------------------------------------------------------------------------
 // Jira API types (mirrors src/lib/integrations/jira.ts)
@@ -75,7 +76,7 @@ async function jiraFetchWithRetry<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetch(`${config.baseUrl}/rest/api/3${path}`, {
+      const res = await httpFetch(`${config.baseUrl}/rest/api/3${path}`, {
         headers: {
           Authorization: `Basic ${auth}`,
           Accept: "application/json",

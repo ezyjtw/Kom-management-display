@@ -10,7 +10,6 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { enqueueJob } from "@/lib/background-jobs";
-import type { JobType } from "@/lib/background-jobs";
 
 export interface PropagationResult {
   incidentId: string;
@@ -131,11 +130,7 @@ export async function propagateIncidentToClients(
 
       // Enqueue draft comms job for new impact records
       try {
-        await enqueueJob("sync_slack" as JobType, {
-          _jobAction: "draft_client_comms",
-          impactRecordId: record.id,
-          incidentId,
-        });
+        await enqueueJob("draft_client_comms", { impactRecordId: record.id, incidentId });
       } catch (err) {
         logger.warn("propagateIncidentToClients: failed to enqueue comms job", {
           impactRecordId: record.id,

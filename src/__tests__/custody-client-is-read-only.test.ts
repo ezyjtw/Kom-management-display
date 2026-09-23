@@ -43,11 +43,17 @@ describe("custody-client-is-read-only", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("static scan: only the komainu-api client reads the Komainu base URL", () => {
+  it("static scan: only the komainu-api client (and the egress allowlist, for the hostname) reads the Komainu base URL", () => {
     const readers = sourceFiles(SRC)
       .filter((f) => READS_BASE_URL.test(fs.readFileSync(f, "utf8")))
-      .map((f) => path.relative(SRC, f));
-    expect(readers).toEqual([path.join("lib", "integrations", "komainu-api", "client.ts")]);
+      .map((f) => path.relative(SRC, f))
+      .sort();
+    expect(readers).toEqual([
+      path.join("lib", "http", "allowed-hosts.ts"),
+      path.join("lib", "integrations", "komainu-api", "client.ts"),
+    ]);
+    const allowlist = fs.readFileSync(path.join(SRC, "lib", "http", "allowed-hosts.ts"), "utf8");
+    expect(allowlist).not.toMatch(/fetch\(/);
   });
 
   it("the legacy custody client with approveRequest() is gone", () => {

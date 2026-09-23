@@ -339,14 +339,29 @@ export const revokeSessionSchema = z.object({
 
 // ─── Background Job Schemas ───
 
+const jobTypeSchema = z.enum([
+  "sync_slack", "sync_email", "sync_jira", "check_sla",
+  "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
+  "sync_slack_channel", "sync_slack_replies",
+  "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
+]);
+
 export const enqueueJobSchema = z.object({
-  type: z.enum([
-    "sync_slack", "sync_email", "sync_jira", "check_sla",
-    "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
-    "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
-  ]),
+  type: jobTypeSchema,
   payload: z.record(z.string(), z.unknown()).default({}),
 });
+
+export const jobsPostSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("register_defaults") }),
+  z.object({
+    action: z.literal("enqueue"),
+    type: jobTypeSchema,
+    payload: z.record(z.string(), z.unknown()).default({}),
+    runAt: z.string().datetime().optional(),
+  }),
+  z.object({ action: z.literal("trigger"), type: jobTypeSchema }),
+  z.object({ action: z.literal("process_next") }),
+]);
 
 // ─── Search Schema ───
 

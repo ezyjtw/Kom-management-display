@@ -99,8 +99,19 @@ const envSchema = z.object({
   SLACK_COMPLIANCE_CHANNEL: z.string().optional(),
   COMPLIANCE_EMAIL_RECIPIENTS: z.string().optional(),
 
-  // Railway deployment
-  RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
+  // Build metadata
+  GIT_COMMIT_SHA: z.string().optional(),
+
+  // Single sign-on (Entra ID)
+  AZURE_AD_TENANT_ID: z.string().optional(),
+  AZURE_AD_CLIENT_ID: z.string().optional(),
+  AZURE_AD_CLIENT_SECRET: z.string().optional(),
+  ROLE_GROUP_MAP: z.string().optional(),
+  ALLOW_LOCAL_LOGIN: z.enum(["true", "false", ""]).optional(),
+
+  // Egress allowlist
+  ATLASSIAN_BASE_URL: z.string().optional(),
+  EGRESS_EXTRA_HOSTS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

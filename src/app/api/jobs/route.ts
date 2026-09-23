@@ -9,17 +9,11 @@ import {
   claimNextJob,
   completeJob,
   failJob,
-  type JobType,
 } from "@/lib/background-jobs";
+import { dispatchJob } from "@/worker/dispatch";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, enqueueJobSchema } from "@/lib/validation";
-import { env } from "@/lib/env";
-
-const VALID_JOB_TYPES: JobType[] = [
-  "sync_slack", "sync_email", "sync_jira", "check_sla",
-  "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
-];
+import { validateBody, jobsPostSchema } from "@/lib/validation";
 
 /**
  * GET /api/jobs
@@ -53,42 +47,31 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(enqueueJobSchema, body);
+    const parsed = validateBody(jobsPostSchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
-    const { action } = body;
+    const body = parsed.data;
 
-    if (!action) {
-      return apiValidationError("action is required");
-    }
-
-    switch (action) {
+    switch (body.action) {
       case "register_defaults": {
         await registerDefaultJobs();
         return apiSuccess({ registered: true });
       }
 
       case "enqueue": {
-        const { type, payload, runAt } = body;
-        if (!type || !VALID_JOB_TYPES.includes(type)) {
-          return apiValidationError(`type must be one of: ${VALID_JOB_TYPES.join(", ")}`);
-        }
-        const jobId = await enqueueJob(type, payload || {}, {
-          runAt: runAt ? new Date(runAt) : undefined,
+        const jobId = await enqueueJob(body.type, body.payload, {
+          runAt: body.runAt ? new Date(body.runAt) : undefined,
         });
         return apiSuccess({ jobId }, undefined, 201);
       }
 
       case "trigger": {
-        // Manually trigger a recurring job to run now
         const { type } = body;
-        if (!type) return apiValidationError("type is required");
-
         const job = await prisma.backgroundJob.findFirst({
           where: { type, isRecurring: true },
         });
 
         if (!job) return apiValidationError(`No recurring job found for type: ${type}`);
+        if (job.status === "running") return apiValidationError(`${type} is already running`);
 
         await prisma.backgroundJob.update({
           where: { id: job.id },
@@ -99,13 +82,12 @@ export async function POST(request: NextRequest) {
       }
 
       case "process_next": {
-        // Process the next available job (for worker mode)
+        // Manual one-off run; the always-on worker normally does this.
         const job = await claimNextJob();
         if (!job) return apiSuccess({ processed: false, message: "No jobs available" });
 
         try {
-          // Execute the job handler
-          const result = await executeJobHandler(job.type, job.payload as Record<string, unknown>);
+          const result = await dispatchJob(job.type, job.payload);
           await completeJob(job.id, result);
           return apiSuccess({ processed: true, jobId: job.id, result });
         } catch (error) {
@@ -113,91 +95,8 @@ export async function POST(request: NextRequest) {
           return apiSuccess({ processed: true, jobId: job.id, failed: true });
         }
       }
-
-      default:
-        return apiValidationError(`Unknown action: ${action}`);
     }
   } catch (error) {
     return handleApiError(error, "jobs POST");
-  }
-}
-
-/**
- * Execute the appropriate handler for a job type.
- */
-async function executeJobHandler(type: string, payload: Record<string, unknown>): Promise<unknown> {
-  switch (type) {
-    case "sync_slack": {
-      const { syncSlackChannel } = await import("@/lib/integrations/slack");
-      const channelId = (payload.channelId as string) || env("SLACK_OPS_CHANNEL_ID") || "";
-      if (!channelId) return { skipped: true, reason: "No channel ID configured" };
-      return syncSlackChannel(channelId);
-    }
-
-    case "sync_email": {
-      const { syncEmailInbox } = await import("@/lib/integrations/email");
-      return syncEmailInbox();
-    }
-
-    case "sync_jira": {
-      const { syncJiraProject } = await import("@/lib/integrations/jira");
-      const projectKey = (payload.projectKey as string) || env("JIRA_PROJECT_KEY") || "";
-      if (!projectKey) return { skipped: true, reason: "No Jira project key configured" };
-      return syncJiraProject(projectKey);
-    }
-
-    case "check_sla": {
-      // Check for SLA breaches and generate alerts
-      const breached = await prisma.commsThread.findMany({
-        where: {
-          status: { notIn: ["Done", "Closed"] },
-          OR: [
-            { ttoDeadline: { lt: new Date() } },
-            { ttfaDeadline: { lt: new Date() } },
-            { tslaDeadline: { lt: new Date() } },
-          ],
-        },
-        select: { id: true, subject: true, ttoDeadline: true, ttfaDeadline: true, tslaDeadline: true },
-      });
-      return { breachedThreads: breached.length };
-    }
-
-    case "check_staking": {
-      const overdue = await prisma.stakingWallet.findMany({
-        where: {
-          status: "active",
-          expectedNextRewardAt: { lt: new Date() },
-        },
-        select: { id: true, asset: true, clientName: true },
-      });
-      return { overdueRewards: overdue.length };
-    }
-
-    case "poll_custody": {
-      try {
-        const { isKomainuConfigured, fetchPendingTransactions } = await import("@/lib/integrations/komainu-api/client");
-        if (!isKomainuConfigured()) return { skipped: true, reason: "Custody API not configured" };
-        const result = await fetchPendingTransactions();
-        return { transactionsPolled: result.data.length };
-      } catch {
-        return { skipped: true, reason: "Custody API unavailable" };
-      }
-    }
-
-    case "check_confirmations": {
-      const { checkExpiredConfirmations, syncConfirmationsWithSource } = await import("@/lib/transaction-confirmation");
-      const closedInSource = await syncConfirmationsWithSource();
-      const expired = await checkExpiredConfirmations();
-      return { expiredConfirmations: expired, closedInSource };
-    }
-
-    case "cleanup_sessions": {
-      const { cleanupExpiredSessions } = await import("@/lib/session-revocation");
-      const cleaned = await cleanupExpiredSessions();
-      return { cleanedSessions: cleaned };
-    }
-
-    default:
-      return { skipped: true, reason: `Unknown job type: ${type}` };
   }
 }

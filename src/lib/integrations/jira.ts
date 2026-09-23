@@ -3,6 +3,7 @@ import { computeTtoDeadline } from "@/lib/sla";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import type { ThreadPriority } from "@/types";
 import { env } from "@/lib/env";
+import { httpFetch } from "@/lib/http/client";
 
 // ---------------------------------------------------------------------------
 // Jira configuration
@@ -47,7 +48,7 @@ interface JiraIssue {
 
 async function jiraFetch<T>(config: JiraConfig, path: string): Promise<T> {
   const auth = Buffer.from(`${config.email}:${config.apiToken}`).toString("base64");
-  const res = await fetch(`${config.baseUrl}/rest/api/3${path}`, {
+  const res = await httpFetch(`${config.baseUrl}/rest/api/3${path}`, {
     headers: {
       Authorization: `Basic ${auth}`,
       Accept: "application/json",

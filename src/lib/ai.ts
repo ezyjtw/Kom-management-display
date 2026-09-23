@@ -17,6 +17,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { httpFetch } from "@/lib/http/client";
 
 // ─── Provider types ─────────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ let anthropicClient: Anthropic | null = null;
 async function callAnthropic(req: CompletionRequest): Promise<string | null> {
   if (!env("ANTHROPIC_API_KEY")) return null;
   if (!anthropicClient) {
-    anthropicClient = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY")! });
+    anthropicClient = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY")!, fetch: httpFetch });
   }
 
   const response = await anthropicClient.messages.create({
@@ -80,7 +81,7 @@ async function callGroq(req: CompletionRequest): Promise<string | null> {
 
   const model = env("GROQ_MODEL") || "llama-3.3-70b-versatile";
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const response = await httpFetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -112,7 +113,7 @@ async function callOllama(req: CompletionRequest): Promise<string | null> {
   const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
   const model = env("OLLAMA_MODEL") || "llama3.1";
 
-  const response = await fetch(`${baseUrl}/api/chat`, {
+  const response = await httpFetch(`${baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

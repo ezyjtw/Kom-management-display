@@ -14,6 +14,7 @@ import { isAiActive } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
 import { incidentService } from "@/modules/incidents/services/incident-service";
+import { httpFetch } from "@/lib/http/client";
 
 // ─── Types ───
 
@@ -60,7 +61,7 @@ async function classifyViaAi(
 
       if (provider === "anthropic") {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY") });
+        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), fetch: httpFetch });
         const response = await client.messages.create({
           model: env("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514",
           max_tokens: 512,
@@ -72,7 +73,7 @@ async function classifyViaAi(
       }
 
       if (provider === "groq") {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const res = await httpFetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -95,7 +96,7 @@ async function classifyViaAi(
 
       if (provider === "ollama") {
         const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
-        const res = await fetch(`${baseUrl}/api/chat`, {
+        const res = await httpFetch(`${baseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

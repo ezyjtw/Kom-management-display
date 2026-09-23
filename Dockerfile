@@ -23,6 +23,9 @@ RUN npx prisma generate
 # Compile seed script to JS so it can run without tsx in production
 RUN npx esbuild prisma/seed.ts --bundle --platform=node --outfile=prisma/seed.js --external:@prisma/client --external:bcryptjs
 
+# Bundle the always-on worker (same image, run as a second container)
+RUN npx esbuild src/worker/index.ts --bundle --platform=node --target=node20 --outfile=dist/worker.js --external:@prisma/client --external:.prisma
+
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
@@ -54,6 +57,9 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 # Copy seed script dependencies
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/package.json ./package.json
+
+# Worker bundle (docker-compose `worker` service runs `npm run worker:prod`)
+COPY --from=builder /app/dist/worker.js ./worker.js
 
 # Copy the startup script
 COPY --from=builder /app/start.sh ./start.sh

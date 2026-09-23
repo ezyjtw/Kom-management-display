@@ -18,6 +18,7 @@ const SPEC_FLAGS = [
   "people.activity_tracking",
   "module.usdc_ramp",
   "integration.notabene.enabled",
+  "module.market_ticker", // spec §6.4
 ];
 
 function seededRows() {
@@ -36,7 +37,7 @@ describe("flags-default-off", () => {
     findMany.mockReset();
   });
 
-  it("seed and defaults cover exactly the §5.3 flags, all false", () => {
+  it("seed and defaults cover every spec flag, all false", () => {
     expect(SAFETY_FLAG_SEED.map((f) => f.key).sort()).toEqual([...SPEC_FLAGS].sort());
     expect(Object.keys(FLAG_DEFAULTS).sort()).toEqual([...SPEC_FLAGS].sort());
     expect(Object.values(FLAG_DEFAULTS).every((v) => v === false)).toBe(true);
