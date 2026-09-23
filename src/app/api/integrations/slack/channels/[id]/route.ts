@@ -13,6 +13,8 @@ import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-re
 const updateChannelSchema = z.object({
   channelType: z.enum(["client", "service_provider", "internal"]).optional(),
   linkedEntityId: z.string().max(200).nullable().optional(),
+  purpose: z.enum(["client", "gx_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
+  clientId: z.string().max(100).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -54,6 +56,8 @@ export async function PATCH(
       channelType: existing.channelType,
       linkedEntityId: existing.linkedEntityId,
       isActive: existing.isActive,
+      purpose: existing.purpose,
+      clientId: existing.clientId,
     };
 
     const updated = await slackChannelRepo.updateChannel(id, validation.data);
@@ -62,14 +66,17 @@ export async function PATCH(
       action: "slack_channel_update",
       entityType: "slack_channel",
       entityId: id,
-      userId: auth.id,
+      userId: auth.employeeId ?? "system",
       summary: `Updated Slack channel #${existing.channelName}`,
       before,
       after: {
         channelType: updated.channelType,
         linkedEntityId: updated.linkedEntityId,
         isActive: updated.isActive,
+        purpose: updated.purpose,
+        clientId: updated.clientId,
       },
+      metadata: { actorUserId: auth.id },
     });
 
     return apiSuccess(updated);

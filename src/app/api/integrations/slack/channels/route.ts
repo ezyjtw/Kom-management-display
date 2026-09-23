@@ -19,6 +19,8 @@ const registerChannelSchema = z.object({
   channelName: z.string().min(1).max(200),
   channelType: z.enum(["client", "service_provider", "internal"]),
   linkedEntityId: z.string().max(200).optional(),
+  purpose: z.enum(["client", "gx_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
+  clientId: z.string().max(100).optional(),
 });
 
 /**
@@ -73,22 +75,25 @@ export async function POST(request: NextRequest) {
       return apiValidationError(validation.error);
     }
 
-    const { channelId, channelName, channelType, linkedEntityId } = validation.data;
+    const { channelId, channelName, channelType, linkedEntityId, purpose, clientId } = validation.data;
 
     const channel = await slackChannelRepo.upsertChannel({
       channelId,
       channelName,
       channelType,
       linkedEntityId: linkedEntityId ?? null,
+      purpose,
+      clientId: clientId ?? null,
     });
 
     await createAuditEntry({
       action: "slack_channel_register",
       entityType: "slack_channel",
       entityId: channel.id,
-      userId: auth.id,
-      summary: `Registered Slack channel #${channelName} (${channelId}) as ${channelType}`,
-      after: { channelId, channelName, channelType, linkedEntityId },
+      userId: auth.employeeId ?? "system",
+      summary: `Registered Slack channel #${channelName} (${channelId}) as ${channel.purpose}`,
+      after: { channelId, channelName, channelType, linkedEntityId, purpose: channel.purpose, clientId: channel.clientId },
+      metadata: { actorUserId: auth.id },
     });
 
     return apiSuccess(channel, undefined, 201);

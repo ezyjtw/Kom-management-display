@@ -5,8 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createRcaTicketSchema } from "@/lib/validation";
-import { env } from "@/lib/env";
-import { httpFetch } from "@/lib/http/client";
+import { addComment, browseUrl, getIssue, isAtlassianConfigured } from "@/lib/integrations/atlassian/client";
 
 // Statuses that providers use to "close" tickets — if the ticket moves to one
 // of these and our RCA isn't done, it's a premature closure.
@@ -32,12 +31,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const incidentId = searchParams.get("incidentId");
 
-    // Get Jira config
-    const baseUrl = env("JIRA_BASE_URL");
-    const email = env("JIRA_EMAIL");
-    const apiToken = env("JIRA_API_TOKEN");
-
-    if (!baseUrl || !email || !apiToken) {
+    if (!isAtlassianConfigured()) {
       return apiSuccess({ configured: false, message: "Jira not configured" });
     }
 
@@ -65,7 +59,6 @@ export async function GET(request: NextRequest) {
       return apiSuccess({ configured: true, synced: 0, incidents: [] });
     }
 
-    const jiraAuth = Buffer.from(`${email}:${apiToken}`).toString("base64");
     const results: Array<{
       incidentId: string;
       ticketRef: string;
@@ -76,17 +69,10 @@ export async function GET(request: NextRequest) {
 
     for (const inc of incidents) {
       try {
-        const res = await httpFetch(
-          `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${inc.externalTicketRef}?fields=status,resolution`,
-          { headers: { Authorization: `Basic ${jiraAuth}`, Accept: "application/json" } },
-        );
+        const issue = await getIssue(inc.externalTicketRef, ["status", "resolution"]).catch(() => null);
+        // Ticket might not exist or access denied — skip
+        if (!issue) continue;
 
-        if (!res.ok) {
-          // Ticket might not exist or access denied — skip
-          continue;
-        }
-
-        const issue = await res.json();
         const currentStatus = issue.fields?.status?.name || "Unknown";
         const previousStatus = inc.externalTicketStatus;
 
@@ -205,11 +191,8 @@ export async function POST(request: NextRequest) {
           return apiValidationError("ticketRef is required");
         }
 
-        // If no URL provided, try to construct from JIRA_BASE_URL
-        let url = ticketUrl || "";
-        if (!url && env("JIRA_BASE_URL")) {
-          url = `${env("JIRA_BASE_URL")!.replace(/\/$/, "")}/browse/${ticketRef}`;
-        }
+        // If no URL provided, build it from the Atlassian site
+        const url = ticketUrl || browseUrl(ticketRef) || "";
 
         await prisma.$transaction([
           prisma.incident.update({
@@ -319,41 +302,14 @@ export async function POST(request: NextRequest) {
  * Silently fails if Jira is not configured or the request fails.
  */
 async function postJiraComment(incidentId: string, comment: string) {
-  const baseUrl = env("JIRA_BASE_URL");
-  const email = env("JIRA_EMAIL");
-  const apiToken = env("JIRA_API_TOKEN");
-  if (!baseUrl || !email || !apiToken) return;
-
+  if (!isAtlassianConfigured()) return;
   try {
     const incident = await prisma.incident.findUnique({
       where: { id: incidentId },
       select: { externalTicketRef: true },
     });
     if (!incident?.externalTicketRef) return;
-
-    const jiraAuth = Buffer.from(`${email}:${apiToken}`).toString("base64");
-    await httpFetch(
-      `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${incident.externalTicketRef}/comment`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${jiraAuth}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          body: {
-            type: "doc",
-            version: 1,
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "text", text: comment }],
-              },
-            ],
-          },
-        }),
-      },
-    );
+    await addComment(incident.externalTicketRef, comment);
   } catch {
     // Silent fail — we log the event locally regardless
   }

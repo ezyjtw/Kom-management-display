@@ -1,5 +1,5 @@
 /**
- * Egress allowlist (spec §6.4).
+ * allowed-hosts-enforced (spec §6.4, §16).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as fs from "fs";

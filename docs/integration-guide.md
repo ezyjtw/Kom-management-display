@@ -1,239 +1,119 @@
 # Integration Guide
 
-## Overview
+KOMmand Centre reads from external systems and, for Jira/JSM only, writes back
+a small allowlisted set of changes. Every connector:
 
-The platform ingests data from multiple external systems through a normalized adapter pattern. Each integration implements the `IntegrationAdapter` interface, converting source-specific data into `NormalizedEvent` objects before any business logic is applied.
+- is an `IntegrationAdapter` registered in `src/modules/integrations/registry.ts`;
+- reports health from the `SourceHeartbeat` table (shared by the web and worker
+  processes), via `getHealth()`;
+- runs its HTTP calls through `CircuitBreaker.for(<name>)`;
+- makes every outbound request through `src/lib/http/client.ts`, which enforces
+  the egress allowlist (`src/lib/http/allowed-hosts.ts`) and retries 429 / 5xx
+  with backoff for reads.
 
-**Source code**: `src/modules/integrations/`
+Polling runs in the always-on worker (`src/worker`); job cadences are in
+`registerDefaultJobs()` (`src/lib/background-jobs.ts`).
 
-## Normalized Event Model
+## Health
 
-Every inbound data point is mapped to this format (defined in `src/modules/integrations/types/index.ts`):
-
-```typescript
-interface NormalizedEvent {
-  id: string;              // Unique event ID
-  sourceSystem: SourceSystem;  // "jira" | "slack" | "email" | "fireblocks" | "custody" | "notabene" | "manual" | "system"
-  sourceId: string;        // Source-system-specific ID (for deduplication)
-  entityType: EntityType;  // "thread" | "message" | "ticket" | "transaction" | "transfer" | "alert" | "document" | "comment" | "approval"
-  eventType: EventType;    // "created" | "updated" | "status_changed" | "assigned" | "commented" | "resolved" | "closed" | "reopened" | "escalated" | etc.
-  occurredAt: Date;        // When the event actually happened (source system time)
-  receivedAt: Date;        // When we received/processed it
-  payload: NormalizedPayload;  // Normalized fields (subject, body, status, priority, actor, participants, metadata)
-  rawPayload?: Record<string, unknown>;  // Original payload for audit/debug
-  normalizedRefs?: NormalizedRef[];      // References to internal entities
-}
-```
-
-The `NormalizedPayload` includes optional fields: `subject`, `body`, `status`, `priority`, `actor` (name, email), `participants`, and `metadata` (key-value).
-
-## Available Adapters
-
-### Slack (`slack-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `slack` |
-| Auth | Bot token (`SLACK_BOT_TOKEN`) |
-| Sync mode | Push (webhooks) + Pull (API polling) |
-| Webhook verification | HMAC-SHA256 signature using `SLACK_SIGNING_SECRET` |
-| Entity types | `thread`, `message`, `comment` |
-| Env vars | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` |
-
-Maps Slack channel messages and threads into comms threads. Thread replies are linked via `thread_ts`. Supports channel discovery and participant extraction.
-
-### Email / IMAP (`email-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `email` |
-| Auth | IMAP credentials |
-| Sync mode | Pull (IMAP polling) |
-| Entity types | `thread`, `message` |
-| Deduplication | By `Message-ID` header |
-| Env vars | `IMAP_HOST`, `IMAP_PORT`, `IMAP_USER`, `IMAP_PASSWORD` |
-
-Connects to an IMAP mailbox, fetches new messages, and groups them into threads using `In-Reply-To` and `References` headers. Extracts participants from From/To/CC fields. Attachment metadata (filename, content type, size) is captured but attachments are not stored.
-
-### Jira (`jira-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `jira` |
-| Auth | API token (basic auth) |
-| Sync mode | Pull (REST API polling) |
-| Entity types | `ticket`, `comment` |
-| Env vars | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` |
-
-Polls Jira for issue updates using JQL queries. Maps Jira issues to tickets and comments to comment events. Status transitions are captured as `status_changed` events.
-
-### Fireblocks (`fireblocks-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `fireblocks` |
-| Auth | API key + secret |
-| Sync mode | Pull (API polling) |
-| Entity types | `transaction`, `transfer` |
-| Env vars | `FIREBLOCKS_API_KEY`, `FIREBLOCKS_API_SECRET` |
-
-Pulls transaction data from Fireblocks for wallet operations monitoring. Maps transactions and vault operations into normalized events.
-
-### Custody (`custody-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `custody` |
-| Auth | API key |
-| Sync mode | Pull (API polling) |
-| Entity types | `transaction`, `approval` |
-| Env vars | `CUSTODY_API_KEY`, `CUSTODY_API_URL` |
-
-Integrates with Custody custody platform. Pulls custody operations and approval workflows.
-
-### Notabene (`notabene-adapter.ts`)
-
-| Property | Value |
-|----------|-------|
-| Source system | `notabene` |
-| Auth | API key + VASP DID |
-| Sync mode | Pull (API polling) |
-| Entity types | `transfer`, `approval` |
-| Env vars | `NOTABENE_API_KEY`, `NOTABENE_VASP_DID` |
-
-Integrates with Notabene for travel rule compliance. Pulls transfer requests and approval statuses for regulatory case management.
-
-## How to Add a New Integration
-
-### 1. Create the adapter file
-
-Create `src/modules/integrations/adapters/<name>-adapter.ts` implementing the `IntegrationAdapter` interface:
-
-```typescript
-import type { IntegrationAdapter, IntegrationHealth, NormalizedEvent } from "@/modules/integrations/types";
-
-class MyAdapter implements IntegrationAdapter {
-  source = "my_source" as const;
-
-  isConfigured(): boolean {
-    return !!process.env.MY_SOURCE_API_KEY;
-  }
-
-  async sync(opts?: Record<string, unknown>): Promise<NormalizedEvent[]> {
-    if (!this.isConfigured()) return [];
-    // 1. Fetch data from external API
-    // 2. Map to NormalizedEvent[]
-    // 3. Set sourceId for deduplication
-    return events;
-  }
-
-  getLastSyncTime(): Date | null {
-    return this.lastSync;
-  }
-
-  getHealth(): IntegrationHealth {
-    return {
-      source: this.source,
-      configured: this.isConfigured(),
-      lastSuccessfulSync: this.lastSync,
-      lastFailure: this.lastFailure,
-      lastFailureMessage: this.lastError,
-      queueBacklog: 0,
-      failureCount: this.failures,
-      status: this.isConfigured() ? "healthy" : "unconfigured",
-    };
-  }
-}
-```
-
-### 2. Register the adapter
-
-Add the adapter to the integration registry in `src/modules/integrations/registry.ts`.
-
-### 3. Add the API route
-
-Create an API route for manual sync triggering at `src/app/api/integrations/<name>/route.ts`.
-
-### 4. Add environment variables
-
-Document required env vars in `docs/deployment.md` and `.env.example`.
-
-### 5. Add source system type
-
-Add the new source to the `SourceSystem` union type in `src/modules/integrations/types/index.ts`.
-
-## Webhook Verification
-
-For push-based integrations (currently Slack), incoming webhooks must be verified before processing.
-
-### Slack Webhook Verification
-
-```typescript
-// Verifies HMAC-SHA256 signature
-// See: https://api.slack.com/authentication/verifying-requests-from-slack
-verifySlackSignature(signingSecret, signature, timestamp, body): Promise<boolean>
-```
-
-Checks:
-1. Timestamp is within 5 minutes (replay attack prevention)
-2. HMAC-SHA256 of `v0:{timestamp}:{body}` matches the provided signature
-3. Uses timing-safe comparison to prevent timing attacks
-
-### Adding Webhook Verification for New Adapters
-
-1. Implement a `verify(request)` method on the adapter
-2. Call verification before processing in the API route handler
-3. Return 401 for failed verification (do not process the payload)
-4. Log verification failures for security monitoring
-
-## Retry and Idempotency
-
-### Retry Strategy
-
-The job queue handles retries for failed sync operations:
-
-| Parameter | Value |
-|-----------|-------|
-| Max retries | 3 |
-| Backoff | Exponential (1s, 4s, 16s) |
-| Dead-letter | Failed after max retries are moved to dead-letter for manual review |
-
-### Idempotency
-
-Deduplication is handled via `sourceSystem + sourceId` composite key:
-
-1. Each `NormalizedEvent` includes a `sourceId` (the external system's unique identifier)
-2. Before persisting, the worker checks if `(sourceSystem, sourceId)` already exists
-3. Duplicate events are silently dropped (logged at debug level)
-4. This allows safe retry of sync operations without creating duplicate records
-
-## Connector Health Monitoring
-
-Each adapter reports its health via the `getHealth()` method, returning an `IntegrationHealth` object:
-
-```typescript
-interface IntegrationHealth {
-  source: SourceSystem;
-  configured: boolean;           // Are env vars present?
-  lastSuccessfulSync: Date | null;
-  lastFailure: Date | null;
-  lastFailureMessage?: string;
-  queueBacklog: number;          // Pending events in queue
-  rateLimitRemaining?: number;   // API rate limit headroom
-  failureCount: number;          // Consecutive failures
-  status: "healthy" | "degraded" | "down" | "unconfigured";
-}
-```
-
-### Status Definitions
+`GET /api/integrations/health` (admin) returns one entry per connector:
 
 | Status | Meaning |
-|--------|---------|
-| `healthy` | Configured, last sync successful, no queue backlog |
-| `degraded` | Configured but experiencing intermittent failures or growing backlog |
-| `down` | Configured but unable to connect or authenticate |
-| `unconfigured` | Required environment variables are missing |
+|---|---|
+| `disabled` | Switched off by feature flag (Notabene, H11) |
+| `unconfigured` | Credentials not set |
+| `healthy` | Every heartbeat succeeded within 2 × its expected interval |
+| `degraded` | Some heartbeats are stale |
+| `down` | No heartbeat is fresh |
 
-### Monitoring Endpoint
+## Komainu API (read-only, H2)
 
-`GET /api/integrations/health` (admin only) returns health for all registered adapters. Use this endpoint for dashboards and alerting.
+| | |
+|---|---|
+| Code | `src/lib/integrations/komainu-api/`, pollers in `src/modules/integrations/komainu/` |
+| Auth | `POST /v1/auth/token` per API user; token cached until 60 s before expiry |
+| Credentials | `KOMAINU_API_USER`/`KOMAINU_API_SECRET`, or several users via `KOMAINU_API_CREDENTIALS` (JSON `[{label, user, secretRef}]`; `secretRef` names a `KOMAINU_API_SECRET_*` env var) |
+| Allowlist | `endpoints.ts`; any other path, or any non-GET method, throws before a request is made |
+| Storage | Latest state per record in `SourceRecord` (source `komainu_api`); only needed fields |
+
+Polling: requests every minute, transactions every 2 minutes, collateral
+(settlements, operations, portfolios) every 10 minutes, audit logs every 5
+minutes (sliding 10-minute window), EOD balances 07:00 UTC, staking rewards
+07:30 UTC. A record that drops out of its polled status set (for example is no
+longer PENDING) gets `mappedStatus = "no_longer_listed"`.
+
+Settlement, operation and portfolio statuses are mapped through
+`SettlementStatusMap` (CONFIRM-SETTLEMENT-STATUS). Unmapped values are stored as
+`unknown` and raise `ALR-CFG-02` once that rule is enabled.
+
+Pending: the v1.6.0 OpenAPI file (`docs/phase1/komainu-openapi-1.6.0.json`) is
+not yet in the repo. Until it is, endpoints without a known schema keep only
+non-sensitive scalar fields (`TODO(CONFIRM-KOMAINU-OPENAPI)`).
+
+## Jira and JSM
+
+| | |
+|---|---|
+| Code | `src/lib/integrations/atlassian/client.ts`, sync in `src/modules/integrations/atlassian/sync.ts`, write-back in `src/modules/work-items/ticket-writeback.ts` |
+| Auth | `ATLASSIAN_BASE_URL`, `ATLASSIAN_EMAIL`, `ATLASSIAN_API_TOKEN` (service account) |
+| Projects | `JiraProjectConfig` (seeded from spec §8.3, all disabled; admin enables). Issue type, transition and custom field ids are discovered at runtime |
+
+**Writes are allowlisted** (`ATLASSIAN_ALLOWLIST`): create issue/request,
+comment (internal by default), assign, transition, set labels and allowlisted
+custom fields, link issues. No deletes; no project, workflow, field, scheme or
+automation changes.
+
+**Inbound sync** every 2 minutes: `project in (<enabled>) AND updated >= -5m`.
+Each issue becomes (or updates) a `WorkItem`; history is kept in
+`JiraIssueEvent`, idempotent on `(system, key, updated)`. Status category maps
+to state: new → open, in progress → owned (if assigned) or open, done →
+resolved. A WorkItem closed with a write-up in KOMmand Centre stays closed.
+
+**Write-first:** owner and status changes call Jira first and only then update
+the WorkItem; on failure a `TicketWriteError` is raised and nothing changes
+locally.
+
+## Slack
+
+| | |
+|---|---|
+| Push | `POST /api/webhooks/slack` (Events API), verified with `SLACK_SIGNING_SECRET`; events are queued for the worker |
+| Fallback | Channel history polled every 5 minutes |
+| Registry | `SlackChannel` with `purpose` (`client`, `gx_notifications`, `vendor`, `internal_ops`, `alerts_out`) and `clientId` |
+
+`gx_notifications` channels keep bot messages and store them raw
+(`SourceRecord` kind `risk_signal_raw`) for the Risk Signal parser
+(CONFIRM-RISK-SOURCE). `channel_join` and similar subtypes are always skipped.
+Outbound alerts go to the `alerts_out` channel with two link buttons only:
+"Open in KOMmand Centre" and "Open ticket". No interactive approve or reject.
+
+## Microsoft 365 (Graph)
+
+| | |
+|---|---|
+| Code | `src/lib/integrations/graph/client.ts`, `src/modules/integrations/graph/` |
+| Auth | Client credentials: `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` |
+| Permissions | Application `Mail.Read`, `ChannelMessage.Read.All`, limited to named mailboxes by an Exchange application access policy (IT) |
+| Mailboxes | `GRAPH_MAILBOXES` JSON (CONFIRM-MAILBOXES) |
+| Teams | `GRAPH_TEAMS_CHANNELS` JSON; internal context only |
+
+Mail by purpose: `custody` messages become CommsThreads (as the retired IMAP
+adapter did); `fab_ics` messages are stored for the FAB rules
+(CONFIRM-FAB-TEMPLATES); `vendor_notifications` messages are parsed by vendor
+parsers into `vendor_ticket` WorkItems linked to the matching VSR ticket. No
+vendor parser is registered until redacted samples exist
+(CONFIRM-VENDOR-FORMATS).
+
+## Imports and other sources
+
+`/admin/imports` lists the file-import sources (Chainalysis, MTD variance,
+Tatum, inbound). Each template is built from a real export; until then uploads
+are refused with its CONFIRM id. Notabene stays off (H11). Fireblocks and Ledger
+are not connected in Phase 1. The vendor status-page poller runs only when
+`module.status_pages` is on (and its hosts are in `EGRESS_EXTRA_HOSTS`).
+
+## Tests
+
+A global test setup (`src/__tests__/setup/no-network.ts`) fails any test that
+makes an unmocked network call. Connector tests stub `fetch` and assert the
+exact requests made.

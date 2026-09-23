@@ -37,10 +37,9 @@ const envSchema = z.object({
   SEED_USER_PASSWORD: z.string().optional(),
   SEED_LEAD_PASSWORD: z.string().optional(),
 
-  // Jira
-  JIRA_BASE_URL: z.string().optional(),
-  JIRA_API_TOKEN: z.string().optional(),
-  JIRA_EMAIL: z.string().optional(),
+  // Jira / JSM (spec §8.2): ATLASSIAN_BASE_URL is declared with the egress settings below
+  ATLASSIAN_EMAIL: z.string().optional(),
+  ATLASSIAN_API_TOKEN: z.string().optional(),
 
   // Confluence
   CONFLUENCE_BASE_URL: z.string().optional(),
@@ -52,12 +51,7 @@ const envSchema = z.object({
   SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_CHANNELS: z.string().optional(),
 
-  // Email (IMAP/SMTP)
-  IMAP_HOST: z.string().optional(),
-  IMAP_PORT: z.string().optional(),
-  IMAP_USER: z.string().optional(),
-  IMAP_PASSWORD: z.string().optional(),
-  IMAP_TLS: z.string().optional(),
+  // Email (SMTP, outbound only; inbound mail uses Microsoft Graph)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
@@ -69,6 +63,8 @@ const envSchema = z.object({
   KOMAINU_API_BASE_URL: z.string().optional(),
   KOMAINU_API_USER: z.string().optional(),
   KOMAINU_API_SECRET: z.string().optional(),
+  // JSON [{label, user, secretRef}] — secretRef names a KOMAINU_API_SECRET_<SUFFIX> env var (CONFIRM-API-SCOPE)
+  KOMAINU_API_CREDENTIALS: z.string().optional(),
   FIREBLOCKS_API_KEY: z.string().optional(),
   FIREBLOCKS_API_SECRET: z.string().optional(),
   NOTABENE_API_BASE_URL: z.string().optional(),
@@ -92,7 +88,6 @@ const envSchema = z.object({
 
   // Job runner
   SLACK_OPS_CHANNEL_ID: z.string().optional(),
-  JIRA_PROJECT_KEY: z.string().optional(),
 
   // Notification channels
   SLACK_OPS_CHANNEL: z.string().optional(),
@@ -108,6 +103,13 @@ const envSchema = z.object({
   AZURE_AD_CLIENT_SECRET: z.string().optional(),
   ROLE_GROUP_MAP: z.string().optional(),
   ALLOW_LOCAL_LOGIN: z.enum(["true", "false", ""]).optional(),
+
+  // Microsoft Graph (spec §8.5)
+  GRAPH_TENANT_ID: z.string().optional(),
+  GRAPH_CLIENT_ID: z.string().optional(),
+  GRAPH_CLIENT_SECRET: z.string().optional(),
+  GRAPH_MAILBOXES: z.string().optional(), // JSON [{label, address, purpose}]
+  GRAPH_TEAMS_CHANNELS: z.string().optional(), // JSON [{label, teamId, channelId}]
 
   // Egress allowlist
   ATLASSIAN_BASE_URL: z.string().optional(),

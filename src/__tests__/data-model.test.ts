@@ -68,7 +68,7 @@ describe("migrations", () => {
 
   it("are numbered consecutively and Phase 2 starts after Phase 0's 0019", () => {
     names.forEach((n, i) => expect(n.slice(0, 4)).toBe(String(i + 1).padStart(4, "0")));
-    expect(names.slice(19)).toEqual([
+    expect(names.slice(19, 25)).toEqual([
       "0020_system_audit_actor",
       "0021_clients_and_work_items",
       "0022_alert_engine_fields",

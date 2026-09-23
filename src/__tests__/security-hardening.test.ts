@@ -429,7 +429,7 @@ describe("Extended Validation Schemas", () => {
   });
 
   it("validates job enqueueing", () => {
-    const valid = validateBody(enqueueJobSchema, { type: "sync_slack" });
+    const valid = validateBody(enqueueJobSchema, { type: "sync_jira" });
     expect(valid.success).toBe(true);
 
     const invalid = validateBody(enqueueJobSchema, { type: "invalid_job" });

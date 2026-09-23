@@ -4,7 +4,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { env } from "@/lib/env";
 import type { JobType } from "@/lib/background-jobs";
 
 type Payload = Record<string, unknown>;
@@ -15,24 +14,32 @@ function str(payload: Payload, key: string): string {
   return typeof v === "string" ? v : "";
 }
 
+type KomainuJob =
+  | "komainu_poll_requests" | "komainu_poll_transactions" | "komainu_poll_collateral"
+  | "komainu_poll_audit_logs" | "komainu_poll_eod_balances" | "komainu_poll_staking";
+
+function komainuHandlers(): Record<KomainuJob, Handler> {
+  const run = (fn: (p: typeof import("@/modules/integrations/komainu/pollers")) => Promise<unknown>): Handler => async () => {
+    const { isKomainuConfigured } = await import("@/lib/integrations/komainu-api/client");
+    if (!isKomainuConfigured()) return { skipped: true, reason: "Komainu API not configured" };
+    return fn(await import("@/modules/integrations/komainu/pollers"));
+  };
+  return {
+    komainu_poll_requests: run((p) => p.pollRequests()),
+    komainu_poll_transactions: run((p) => p.pollTransactions()),
+    komainu_poll_collateral: run((p) => p.pollCollateral()),
+    komainu_poll_audit_logs: run((p) => p.pollAuditLogs()),
+    komainu_poll_eod_balances: run((p) => p.pollEodBalances()),
+    komainu_poll_staking: run((p) => p.pollStakingRewards()),
+  };
+}
+
 export const JOB_HANDLERS: Record<JobType, Handler> = {
-  async sync_slack(payload) {
-    const { syncSlackChannel } = await import("@/lib/integrations/slack");
-    const channelId = str(payload, "channelId") || env("SLACK_OPS_CHANNEL_ID") || "";
-    if (!channelId) return { skipped: true, reason: "No channel ID configured" };
-    return syncSlackChannel(channelId);
-  },
-
-  async sync_email() {
-    const { syncEmailInbox } = await import("@/lib/integrations/email");
-    return syncEmailInbox();
-  },
-
-  async sync_jira(payload) {
-    const { syncJiraProject } = await import("@/lib/integrations/jira");
-    const projectKey = str(payload, "projectKey") || env("JIRA_PROJECT_KEY") || "";
-    if (!projectKey) return { skipped: true, reason: "No Jira project key configured" };
-    return syncJiraProject(projectKey);
+  async sync_jira() {
+    const { isAtlassianConfigured } = await import("@/lib/integrations/atlassian/client");
+    if (!isAtlassianConfigured()) return { skipped: true, reason: "Atlassian not configured" };
+    const { syncJiraIssues } = await import("@/modules/integrations/atlassian/sync");
+    return syncJiraIssues();
   },
 
   async check_sla() {
@@ -55,15 +62,6 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
       where: { status: "active", expectedNextRewardAt: { lt: new Date() } },
     });
     return { overdueRewards: overdue };
-  },
-
-  async poll_custody() {
-    const { isKomainuConfigured, fetchPendingTransactions } = await import(
-      "@/lib/integrations/komainu-api/client"
-    );
-    if (!isKomainuConfigured()) return { skipped: true, reason: "Komainu API not configured" };
-    const result = await fetchPendingTransactions();
-    return { transactionsPolled: result.data.length };
   },
 
   async check_confirmations() {
@@ -141,9 +139,32 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
   },
 
   async poll_status_pages() {
+    const { isFeatureEnabled } = await import("@/lib/feature-flags");
+    if (!(await isFeatureEnabled("module.status_pages"))) return { skipped: true, reason: "module.status_pages is off" };
     const { pollAllStatusPages } = await import("@/lib/status-page-poller");
     await pollAllStatusPages();
     return { polled: true };
+  },
+
+  async slack_event(payload) {
+    const { processSlackEvent } = await import("@/modules/integrations/slack/events");
+    return processSlackEvent(payload);
+  },
+
+  ...komainuHandlers(),
+
+  async graph_mail_sync() {
+    const { isGraphConfigured } = await import("@/lib/integrations/graph/client");
+    if (!isGraphConfigured()) return { skipped: true, reason: "Graph not configured" };
+    const { syncGraphMail } = await import("@/modules/integrations/graph/sync");
+    return syncGraphMail();
+  },
+
+  async graph_teams_sync() {
+    const { isGraphConfigured } = await import("@/lib/integrations/graph/client");
+    if (!isGraphConfigured()) return { skipped: true, reason: "Graph not configured" };
+    const { syncGraphTeams } = await import("@/modules/integrations/graph/sync");
+    return syncGraphTeams();
   },
 
   async score_vendor_reliability() {

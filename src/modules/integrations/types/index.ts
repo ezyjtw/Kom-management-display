@@ -1,133 +1,44 @@
 /**
- * Normalized event model for all inbound integrations.
- *
- * Every integration (Jira, Slack, email, Fireblocks, Custody, Notabene)
- * maps its data into this format before it touches any business logic.
+ * Integration adapter contract (spec §8). Each connector reports health from
+ * SourceHeartbeat (shared by the web and worker processes), goes through
+ * CircuitBreaker.for(<breakerName>) and makes all HTTP calls through
+ * src/lib/http/client.ts.
  */
 
-export type SourceSystem =
-  | "jira"
-  | "confluence"
-  | "slack"
-  | "email"
-  | "fireblocks"
-  | "custody"
-  | "notabene"
-  | "manual"
-  | "system";
+export type ConnectorId = "komainu_api" | "atlassian" | "slack" | "graph_mail" | "graph_teams" | "notabene";
 
-export type EntityType =
-  | "thread"
-  | "message"
-  | "ticket"
-  | "transaction"
-  | "transfer"
-  | "alert"
-  | "document"
-  | "comment"
-  | "approval";
-
-export type EventType =
-  | "created"
-  | "updated"
-  | "status_changed"
-  | "assigned"
-  | "commented"
-  | "resolved"
-  | "closed"
-  | "reopened"
-  | "escalated"
-  | "attachment_added"
-  | "approval_requested"
-  | "approval_granted"
-  | "approval_rejected";
-
-export interface NormalizedEvent {
-  /** Unique event ID */
-  id: string;
-  /** Source system that generated this event */
-  sourceSystem: SourceSystem;
-  /** Source-system-specific ID for deduplication */
-  sourceId: string;
-  /** Type of entity this event relates to */
-  entityType: EntityType;
-  /** What happened */
-  eventType: EventType;
-  /** When the event actually occurred (source system time) */
-  occurredAt: Date;
-  /** When we received/processed it */
-  receivedAt: Date;
-  /** Normalized payload */
-  payload: NormalizedPayload;
-  /** Raw payload from the source for audit/debug */
-  rawPayload?: Record<string, unknown>;
-  /** References to internal entities */
-  normalizedRefs?: NormalizedRef[];
+export interface HeartbeatSpec {
+  source: string;
+  expectedEveryMins: number;
 }
 
-export interface NormalizedPayload {
-  /** Subject/title */
-  subject?: string;
-  /** Body/description */
-  body?: string;
-  /** Status in normalized form */
-  status?: string;
-  /** Priority */
-  priority?: string;
-  /** Actor who performed the action */
-  actor?: {
-    name: string;
-    email?: string;
-    sourceId?: string;
-  };
-  /** Participants */
-  participants?: Array<{
-    name: string;
-    email?: string;
-    role?: string;
-  }>;
-  /** Key-value metadata */
-  metadata?: Record<string, unknown>;
-}
-
-export interface NormalizedRef {
-  /** Internal entity type */
-  entityType: string;
-  /** Internal entity ID */
-  entityId: string;
-  /** Relationship type */
-  relationship: "primary" | "related" | "parent" | "child";
-}
-
-/**
- * Integration adapter interface.
- * Each connector must implement this to normalize its data.
- */
 export interface IntegrationAdapter {
-  /** Source system identifier */
-  source: SourceSystem;
-
-  /** Whether this adapter is configured and ready */
+  source: ConnectorId;
+  label: string;
+  breakerName: string;
   isConfigured(): boolean;
+  /** Feature-flag gate; false means the connector is deliberately off. */
+  isEnabled(): Promise<boolean>;
+  heartbeats(): HeartbeatSpec[];
+  getHealth(): Promise<IntegrationHealth>;
+}
 
-  /** Sync data and return normalized events */
-  sync(opts?: Record<string, unknown>): Promise<NormalizedEvent[]>;
-
-  /** Get last successful sync time */
-  getLastSyncTime(): Date | null;
-
-  /** Get connector health status */
-  getHealth(): IntegrationHealth;
+export interface HeartbeatHealth {
+  source: string;
+  expectedEveryMins: number;
+  lastSuccessAt: string | null;
+  lastRecordAt: string | null;
+  stale: boolean;
 }
 
 export interface IntegrationHealth {
-  source: SourceSystem;
+  source: ConnectorId;
+  label: string;
   configured: boolean;
-  lastSuccessfulSync: Date | null;
-  lastFailure: Date | null;
-  lastFailureMessage?: string;
-  queueBacklog: number;
+  enabled: boolean;
+  status: "healthy" | "degraded" | "down" | "unconfigured" | "disabled";
+  lastSuccessfulSync: string | null;
   rateLimitRemaining?: number;
-  failureCount: number;
-  status: "healthy" | "degraded" | "down" | "unconfigured";
+  heartbeats: HeartbeatHealth[];
+  detail?: string;
 }

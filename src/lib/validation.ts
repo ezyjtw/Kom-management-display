@@ -340,10 +340,12 @@ export const revokeSessionSchema = z.object({
 // ─── Background Job Schemas ───
 
 const jobTypeSchema = z.enum([
-  "sync_slack", "sync_email", "sync_jira", "check_sla",
-  "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
-  "sync_slack_channel", "sync_slack_replies",
+  "sync_jira", "check_sla", "check_staking", "check_confirmations", "cleanup_sessions",
+  "sync_slack_channel", "sync_slack_replies", "slack_event",
   "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
+  "komainu_poll_requests", "komainu_poll_transactions", "komainu_poll_collateral",
+  "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking",
+  "graph_mail_sync", "graph_teams_sync",
 ]);
 
 export const enqueueJobSchema = z.object({

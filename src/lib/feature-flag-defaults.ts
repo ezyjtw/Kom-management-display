@@ -8,6 +8,7 @@ export const FLAG_DEFAULTS = Object.freeze({
   "module.usdc_ramp": false,
   "integration.notabene.enabled": false,
   "module.market_ticker": false,
+  "module.status_pages": false,
 } as const);
 
 export type SafetyFlagKey = keyof typeof FLAG_DEFAULTS;
@@ -23,5 +24,6 @@ export const SAFETY_FLAG_SEED: ReadonlyArray<{
   { key: "people.activity_tracking", name: "Activity tracking", description: "Activity tracker and break/lunch status (H4)" },
   { key: "module.usdc_ramp", name: "USDC ramp", description: "Not a current team process" },
   { key: "integration.notabene.enabled", name: "Notabene integration", description: "Notabene adapter and routes (H11)" },
+  { key: "module.status_pages", name: "Vendor status pages", description: "Status-page poller (spec §8.6); its hosts must also be added to EGRESS_EXTRA_HOSTS" },
   { key: "module.market_ticker", name: "Market ticker", description: "Non-essential CoinGecko/Etherscan ticker; its hosts must also be added to EGRESS_EXTRA_HOSTS" },
 ]);

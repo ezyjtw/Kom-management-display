@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { apiForbiddenError, apiSuccess, handleApiError } from "@/lib/api/response";
-import { getAllHealth, getStaleIntegrations, getHealthSummary } from "@/modules/integrations/registry";
+import { getAllHealth, getHealthSummary } from "@/modules/integrations/registry";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 
 export async function GET() {
@@ -20,29 +20,17 @@ export async function GET() {
   if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
-    const integrations = getAllHealth();
-    const stale = getStaleIntegrations();
-    const summary = getHealthSummary();
+    const integrations = await getAllHealth();
+    const summary = await getHealthSummary();
     const breakers = CircuitBreaker.getAllStatus();
+    const byConnector: Record<string, string> = { komainu_api: "komainu_api", atlassian: "atlassian", slack: "slack_channel_sync", graph_mail: "graph", graph_teams: "graph", notabene: "notabene" };
 
     const dependencies = integrations.map((h) => {
-      const breaker = breakers[h.source];
-      const staleSinceMs = h.lastSuccessfulSync
-        ? Date.now() - h.lastSuccessfulSync.getTime()
-        : null;
-
+      const breaker = breakers[byConnector[h.source]];
       return {
-        source: h.source,
-        configured: h.configured,
-        status: h.status,
-        lastSuccessfulSync: h.lastSuccessfulSync?.toISOString() ?? null,
-        lastFailure: h.lastFailure?.toISOString() ?? null,
-        lastFailureMessage: h.lastFailureMessage ?? null,
-        staleSinceMs,
-        stale: stale.some((s) => s.source === h.source),
-        queueBacklog: h.queueBacklog,
-        rateLimitRemaining: h.rateLimitRemaining ?? null,
-        failureCount: h.failureCount,
+        ...h,
+        stale: h.heartbeats.some((b) => b.stale),
+        // Breaker state is per process; the worker's breakers are not visible here.
         circuitBreaker: breaker
           ? { state: breaker.state, totalCalls: breaker.totalCalls, totalFailures: breaker.totalFailures }
           : null,
@@ -51,7 +39,7 @@ export async function GET() {
 
     return apiSuccess({
       summary,
-      staleCount: stale.length,
+      staleCount: dependencies.filter((d) => d.stale).length,
       dependencies,
       timestamp: new Date().toISOString(),
     });

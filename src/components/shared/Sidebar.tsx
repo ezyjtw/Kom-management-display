@@ -36,6 +36,7 @@ import {
   Flag,
   Monitor,
   Send,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
@@ -89,6 +90,7 @@ const navSections = [
       { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/admin/jobs", label: "Background Jobs", icon: Cog, adminOnly: true },
       { href: "/admin/feature-flags", label: "Feature Flags", icon: Flag, adminOnly: true },
+      { href: "/admin/imports", label: "Imports", icon: Upload, adminOnly: true },
       { href: "/admin/sessions", label: "Sessions", icon: Monitor, adminOnly: true },
     ],
   },

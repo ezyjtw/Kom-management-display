@@ -27,13 +27,21 @@ export async function updateCursor(channelId: string, cursor: string): Promise<v
   });
 }
 
+/** Default purpose for a legacy channelType (spec §8.4 purposes). */
+export function purposeForType(channelType: string): string {
+  return channelType === "client" ? "client" : channelType === "service_provider" ? "vendor" : "internal_ops";
+}
+
 export async function upsertChannel(data: {
   channelId: string;
   channelName: string;
   channelType: string;
   linkedEntityId?: string | null;
   isActive?: boolean;
+  purpose?: string;
+  clientId?: string | null;
 }): Promise<SlackChannel> {
+  const purpose = data.purpose ?? purposeForType(data.channelType);
   return prisma.slackChannel.upsert({
     where: { channelId: data.channelId },
     create: {
@@ -42,12 +50,16 @@ export async function upsertChannel(data: {
       channelType: data.channelType,
       linkedEntityId: data.linkedEntityId ?? null,
       isActive: data.isActive ?? true,
+      purpose,
+      clientId: data.clientId ?? null,
     },
     update: {
       channelName: data.channelName,
       channelType: data.channelType,
       linkedEntityId: data.linkedEntityId ?? null,
       isActive: data.isActive ?? true,
+      purpose,
+      clientId: data.clientId ?? null,
     },
   });
 }
@@ -70,6 +82,8 @@ export async function updateChannel(
     channelType?: string;
     linkedEntityId?: string | null;
     isActive?: boolean;
+    purpose?: string;
+    clientId?: string | null;
   },
 ): Promise<SlackChannel> {
   return prisma.slackChannel.update({

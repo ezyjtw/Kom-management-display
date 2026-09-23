@@ -60,12 +60,11 @@ export async function GET() {
 
   // Optional integrations status
   const integrations: Record<string, (keyof Env)[]> = {
-    jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+    atlassian: ["ATLASSIAN_BASE_URL", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
-    email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
-    custody: ["KOMAINU_API_SECRET"],
+    graph: ["GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET"],
+    komainu_api: ["KOMAINU_API_BASE_URL"],
     notabene: ["NOTABENE_API_TOKEN"],
-    fireblocks: ["FIREBLOCKS_API_KEY"],
   };
 
   const configuredIntegrations: string[] = [];

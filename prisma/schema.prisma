@@ -1447,8 +1447,14 @@ model SlackChannel {
   syncCursor     String? // oldest ts already synced (incremental)
   lastSyncedAt   DateTime?
   createdAt      DateTime  @default(now())
+  clientId       String? // spec §8.4
+  purpose        String    @default("internal_ops") // client | gx_notifications | vendor | internal_ops | alerts_out
 
   threads CommsThread[]
+  client  Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([purpose, isActive])
 }
 
 // ─── Stream 3: Intelligent Comms & Impact Chain ───
@@ -1569,9 +1575,10 @@ model Client {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  channels  ClientChannel[]
-  workItems WorkItem[]
-  timeLogs  TimeLog[]
+  channels      ClientChannel[]
+  workItems     WorkItem[]
+  timeLogs      TimeLog[]
+  slackChannels SlackChannel[]
 
   @@index([isActive])
 }
@@ -1781,4 +1788,79 @@ model IaiDraft {
 
   @@index([workItemId])
   @@index([dueAt, completedAt])
+}
+
+// ─── Integrations (spec §8) ───
+
+/// Latest known state of a record polled from an external source. Only the
+/// fields a rule needs are kept (spec §8.1 data handling).
+model SourceRecord {
+  id              String    @id @default(cuid())
+  source          String // komainu_api | graph_teams | graph_mail | slack
+  kind            String // request | transaction | settlement | collateral_operation | portfolio | eod_balance | staking_reward | audit_log | risk_signal_raw | teams_message | vendor_email
+  externalId      String
+  credentialLabel String    @default("") // which Komainu API credential saw it (CONFIRM-API-SCOPE)
+  status          String? // raw status from the source
+  mappedStatus    String? // pending | in_progress | completed | failed | partial | unknown
+  occurredAt      DateTime? // event time in the source
+  sourceUpdatedAt DateTime?
+  fields          Json      @default("{}")
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([source, kind, externalId])
+  @@index([source, kind, status])
+  @@index([kind, mappedStatus])
+  @@index([lastSeenAt])
+}
+
+/// Raw external status -> mapped status (CONFIRM-SETTLEMENT-STATUS). Admin-maintained; unmapped values raise ALR-CFG-02.
+model SettlementStatusMap {
+  entity    String // settlement | collateral_operation | portfolio
+  raw       String
+  mapped    String // pending | in_progress | completed | failed | partial
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([entity, raw])
+}
+
+/// Jira/JSM project mapping (spec §8.3). Ids are discovered at runtime; nothing is hard-coded.
+model JiraProjectConfig {
+  key                String   @id // OTC, TOPS, VSR, ...
+  name               String
+  purpose            String   @default("")
+  kind               String   @default("jira") // jira | jsm
+  enabled            Boolean  @default(false)
+  syncInbound        Boolean  @default(true)
+  defaultWorkItemKind String  @default("internal_task")
+  defaultTeam        String   @default("All")
+  defaultTaskCode    String   @default("")
+  serviceDeskId      String? // JSM only
+  issueTypeIds       Json     @default("{}") // name -> id, discovered at runtime
+  allowedCustomFields Json    @default("[]") // custom field ids KOMmand Centre may set
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+/// History of inbound Jira/JSM issue updates, idempotent on (system, key, updated).
+/// (The existing ExternalTicketEvent model is incident-specific and unchanged.)
+model JiraIssueEvent {
+  id         String   @id @default(cuid())
+  system     String // jira | jsm
+  key        String
+  updated    DateTime // issue `updated` timestamp from the source
+  status     String
+  assignee   String?
+  workItemId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([system, key, updated])
+  @@index([key])
+  @@index([workItemId])
 }

@@ -54,17 +54,17 @@ The Slack SDK makes its own HTTP calls, but only to `slack.com`.
 
 ### Optional: Integrations
 ```
-JIRA_BASE_URL=https://your-org.atlassian.net
-JIRA_EMAIL=bot@your-org.com
-JIRA_API_TOKEN=<token>
+ATLASSIAN_EMAIL=<service-account@your-org.com>
+ATLASSIAN_API_TOKEN=<token>
 
 SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=<secret>
+SLACK_SIGNING_SECRET=<secret>       # required for the Events API (/api/webhooks/slack)
 
-IMAP_HOST=imap.gmail.com
-IMAP_PORT=993
-IMAP_USER=ops@your-org.com
-IMAP_PASSWORD=<app-password>
+GRAPH_TENANT_ID=<tenant-id>
+GRAPH_CLIENT_ID=<app-id>
+GRAPH_CLIENT_SECRET=<secret>
+GRAPH_MAILBOXES=[{"label":"custody","address":"...","purpose":"custody"}]
+GRAPH_TEAMS_CHANNELS=[{"label":"ops","teamId":"...","channelId":"..."}]
 
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -74,6 +74,7 @@ SMTP_PASSWORD=<app-password>
 KOMAINU_API_BASE_URL=https://api-demo.komainu.io
 KOMAINU_API_USER=<api-user>
 KOMAINU_API_SECRET=<api-secret>
+# or several users: KOMAINU_API_CREDENTIALS=[{"label":"uk","user":"...","secretRef":"KOMAINU_API_SECRET_UK"}]
 
 # Notabene is disabled (H11)
 NOTABENE_API_BASE_URL=
@@ -102,9 +103,11 @@ GIT_COMMIT_SHA=<build-sha>
 | `NEXTAUTH_URL` | Yes | Canonical URL of the application |
 | `CRON_SECRET` | No | Shared secret for cron-triggered endpoints (e.g., alert generation) |
 | `LOG_LEVEL` | No | Logging verbosity: `debug`, `info`, `warn`, `error` (default: `info`) |
-| `JIRA_*` | No | Jira Cloud integration credentials |
-| `SLACK_*` | No | Slack bot token and signing secret for webhook verification |
-| `IMAP_*` / `SMTP_*` | No | Email integration (IMAP for inbound, SMTP for outbound) |
+| `ATLASSIAN_EMAIL` / `ATLASSIAN_API_TOKEN` | No | Jira and JSM service account (with `ATLASSIAN_BASE_URL`) |
+| `SLACK_*` | No | Slack bot token; signing secret verifies Events API deliveries |
+| `GRAPH_*` | No | Microsoft Graph mail and Teams (read-only); replaces IMAP |
+| `SMTP_*` | No | Outbound email notifications |
+| `KOMAINU_API_CREDENTIALS` | No | Several read-only Komainu API users (JSON; secrets referenced by env var name) |
 | `AZURE_AD_TENANT_ID` / `AZURE_AD_CLIENT_ID` / `AZURE_AD_CLIENT_SECRET` | Prod: yes | Entra ID single sign-on |
 | `ROLE_GROUP_MAP` | Prod: yes | JSON map of Entra group object ID to role |
 | `ALLOW_LOCAL_LOGIN` | No | `true` enables username/password login outside production only |

@@ -19,6 +19,7 @@ const SPEC_FLAGS = [
   "module.usdc_ramp",
   "integration.notabene.enabled",
   "module.market_ticker", // spec §6.4
+  "module.status_pages", // spec §8.6
 ];
 
 function seededRows() {

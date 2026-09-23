@@ -23,20 +23,29 @@ import { logger } from "@/lib/logger";
 import { CronExpressionParser } from "cron-parser";
 
 export type JobType =
-  | "sync_slack"
-  | "sync_email"
   | "sync_jira"
   | "check_sla"
   | "check_staking"
-  | "poll_custody"
   | "check_confirmations"
   | "cleanup_sessions"
   | "sync_slack_channel"
   | "sync_slack_replies"
+  | "slack_event"
   | "classify_thread"
   | "draft_client_comms"
   | "poll_status_pages"
-  | "score_vendor_reliability";
+  | "score_vendor_reliability"
+  | "komainu_poll_requests"
+  | "komainu_poll_transactions"
+  | "komainu_poll_collateral"
+  | "komainu_poll_audit_logs"
+  | "komainu_poll_eod_balances"
+  | "komainu_poll_staking"
+  | "graph_mail_sync"
+  | "graph_teams_sync";
+
+/** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
+export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
 
 /**
  * Job priority levels — lower number = higher priority.
@@ -65,16 +74,27 @@ export async function registerDefaultJobs(): Promise<void> {
     cronExpression: string;
     payload?: Record<string, unknown>;
   }> = [
-    { type: "sync_slack", cronExpression: "*/5 * * * *" },       // Every 5 mins
-    { type: "sync_email", cronExpression: "*/3 * * * *" },       // Every 3 mins
-    { type: "sync_jira", cronExpression: "*/10 * * * *" },       // Every 10 mins
-    { type: "check_sla", cronExpression: "*/1 * * * *" },        // Every minute
-    { type: "check_staking", cronExpression: "0 */6 * * *" },    // Every 6 hours
-    { type: "poll_custody", cronExpression: "*/2 * * * *" },     // Every 2 mins
-    { type: "check_confirmations", cronExpression: "*/5 * * * *" }, // Every 5 mins
-    { type: "cleanup_sessions", cronExpression: "0 2 * * *" },   // Daily at 2am
-    { type: "sync_slack_channel", cronExpression: "*/2 * * * *" }, // Every 2 mins
+    { type: "sync_jira", cronExpression: "*/2 * * * *" },          // spec §8.2: every 2 min, updated >= -5m
+    { type: "check_sla", cronExpression: "*/1 * * * *" },
+    { type: "check_staking", cronExpression: "0 */6 * * *" },
+    { type: "check_confirmations", cronExpression: "*/5 * * * *" },
+    { type: "cleanup_sessions", cronExpression: "0 2 * * *" },
+    { type: "sync_slack_channel", cronExpression: "*/5 * * * *" }, // spec §8.4: polling fallback to Events API
+    { type: "komainu_poll_requests", cronExpression: "*/1 * * * *" },
+    { type: "komainu_poll_transactions", cronExpression: "*/2 * * * *" },
+    // Every 10 min; the per-window 60-second cadence comes with OesWindow in Phase 6.
+    { type: "komainu_poll_collateral", cronExpression: "*/10 * * * *" },
+    { type: "komainu_poll_audit_logs", cronExpression: "*/5 * * * *" },
+    { type: "komainu_poll_eod_balances", cronExpression: "0 7 * * *" },
+    { type: "komainu_poll_staking", cronExpression: "30 7 * * *" },
+    { type: "graph_mail_sync", cronExpression: "*/3 * * * *" },
+    { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
+    { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
   ];
+
+  await prisma.backgroundJob.deleteMany({
+    where: { type: { in: [...RETIRED_JOB_TYPES] }, isRecurring: true },
+  });
 
   for (const job of defaultJobs) {
     const existing = await prisma.backgroundJob.findFirst({

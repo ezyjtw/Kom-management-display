@@ -1,0 +1,9 @@
+{
+  "_note": "SYNTHETIC fixture. Not a real vendor format. Replace with redacted real samples (CONFIRM-VENDOR-FORMATS).",
+  "parser": { "vendor": "ExampleVendor", "senderDomains": ["servicedesk.example-vendor.test"], "keyPattern": "\\bVSD-\\d+\\b", "statusPattern": "Status:\\s*([A-Za-z ]+)" },
+  "email": {
+    "fromAddress": "support@servicedesk.example-vendor.test",
+    "subject": "[VSD-1234] Update on your request",
+    "preview": "Status: Waiting for customer\nWe need more information."
+  }
+}

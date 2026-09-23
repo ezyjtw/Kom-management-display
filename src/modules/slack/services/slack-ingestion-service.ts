@@ -11,6 +11,7 @@ import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { acquireSlackToken } from "@/lib/slack-rate-limiter";
 import { enqueueJob } from "@/lib/background-jobs";
 import { sanitiseSlackMessage } from "@/lib/sanitize";
+import { upsertSourceRecords } from "@/modules/integrations/source-records";
 import { normaliseSubject, deriveAutoPriority } from "@/lib/thread-utils";
 import { computeTtoDeadline } from "@/lib/sla";
 import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-repository";
@@ -26,6 +27,153 @@ const SKIP_SUBTYPES = new Set([
   "channel_purpose",
   "channel_name",
 ]);
+
+type SlackMessage = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any -- Slack Web API message shape
+
+export type IngestOutcome = "skipped" | "risk_signal" | "thread" | "thread_with_replies" | "reply";
+
+/**
+ * Route one Slack message by channel purpose (spec §8.4):
+ * - gx_notifications: bot messages are NOT skipped; stored raw for the Risk
+ *   Signal parser (TODO(CONFIRM-RISK-SOURCE));
+ * - alerts_out: our own outbound channel, never ingested;
+ * - everything else: root messages become CommsThreads, replies are synced
+ *   by sync_slack_replies. channel_join and similar subtypes are always skipped.
+ */
+export async function ingestChannelMessage(
+  slackChannel: { id: string; channelId: string; channelName: string; purpose: string },
+  msg: SlackMessage,
+  opts: { fromHistory?: boolean } = {},
+): Promise<IngestOutcome> {
+  if (!msg.ts || slackChannel.purpose === "alerts_out") return "skipped";
+
+  if (slackChannel.purpose === "gx_notifications") {
+    if (msg.subtype && msg.subtype !== "bot_message" && SKIP_SUBTYPES.has(msg.subtype)) return "skipped";
+    await upsertSourceRecords("slack", "risk_signal_raw", [{
+      externalId: `${slackChannel.channelId}:${msg.ts}`,
+      occurredAt: new Date(parseFloat(msg.ts) * 1000),
+      fields: {
+        channel: slackChannel.channelName,
+        botId: msg.bot_id ?? null,
+        username: msg.username ?? null,
+        text: sanitiseSlackMessage(String(msg.text ?? "")).slice(0, 4000),
+      },
+    }]);
+    return "risk_signal";
+  }
+
+  if (msg.subtype && SKIP_SUBTYPES.has(msg.subtype)) return "skipped";
+
+  const isRoot = !msg.thread_ts || msg.thread_ts === msg.ts;
+  if (!isRoot) {
+    // History polling handles replies via sync_slack_replies; pushed events enqueue it.
+    if (opts.fromHistory) return "skipped";
+    await enqueueJob(
+      "sync_slack_replies",
+      { channelId: slackChannel.channelId, threadTs: msg.thread_ts },
+      { deduplicationKey: `slack_replies_${slackChannel.channelId}_${msg.thread_ts}` },
+    );
+    return "reply";
+  }
+
+  const channelId = slackChannel.channelId;
+  const msgTimestamp = new Date(parseFloat(msg.ts) * 1000);
+  const rawText = msg.text || "New Slack message";
+  const sanitisedText = sanitiseSlackMessage(rawText);
+  const firstLine = sanitisedText.split("\n")[0];
+  const subject = normaliseSubject(firstLine);
+  const autoPriority =
+    deriveAutoPriority({ subject: rawText, body: rawText }) ?? ("P2" as ThreadPriority);
+
+  // Upsert CommsThread using @@unique[slackChannelId, slackRootTs]
+  await prisma.commsThread.upsert({
+    where: {
+      slackChannelId_slackRootTs: {
+        slackChannelId: slackChannel.id,
+        slackRootTs: msg.ts,
+      },
+    },
+    create: {
+      source: "slack",
+      sourceThreadRef: `${channelId}-${msg.ts}`,
+      slackChannelId: slackChannel.id,
+      slackRootTs: msg.ts,
+      slackThreadTs: msg.thread_ts || msg.ts,
+      isSlackThread: (msg.reply_count || 0) > 0,
+      slackReplyCount: msg.reply_count || 0,
+      slackLastReplyTs: msg.latest_reply || null,
+      subject,
+      priority: autoPriority,
+      status: "Unassigned",
+      queue: "Transaction Operations",
+      participants: JSON.stringify([msg.user]),
+      clientOrPartnerTag: `#${slackChannel.channelName}`,
+      lastMessageAt: msgTimestamp,
+      ttoDeadline: computeTtoDeadline(msgTimestamp, autoPriority as ThreadPriority),
+    },
+    update: {
+      isSlackThread: (msg.reply_count || 0) > 0,
+      slackReplyCount: msg.reply_count || 0,
+      slackLastReplyTs: msg.latest_reply || null,
+      lastMessageAt: msgTimestamp,
+    },
+  });
+
+  // Also upsert the root message in CommsMessage
+  await prisma.commsMessage.upsert({
+    where: {
+      threadId_slackTs: {
+        threadId: (
+          await prisma.commsThread.findUnique({
+            where: {
+              slackChannelId_slackRootTs: {
+                slackChannelId: slackChannel.id,
+                slackRootTs: msg.ts,
+              },
+            },
+            select: { id: true },
+          })
+        )!.id,
+        slackTs: msg.ts,
+      },
+    },
+    create: {
+      threadId: (
+        await prisma.commsThread.findUnique({
+          where: {
+            slackChannelId_slackRootTs: {
+              slackChannelId: slackChannel.id,
+              slackRootTs: msg.ts,
+            },
+          },
+          select: { id: true },
+        })
+      )!.id,
+      slackTs: msg.ts,
+      slackUserId: msg.user || null,
+      isRootMessage: true,
+      authorName: msg.user || "Unknown",
+      authorType: "external",
+      bodySnippet: sanitisedText.substring(0, 2000),
+      timestamp: msgTimestamp,
+    },
+    update: {
+      bodySnippet: sanitisedText.substring(0, 2000),
+      editedAt: msg.edited ? new Date(parseFloat(msg.edited.ts) * 1000) : undefined,
+    },
+  });
+
+  // If message has replies, enqueue reply sync
+  if (msg.reply_count && msg.reply_count > 0) {
+    await enqueueJob(
+      "sync_slack_replies",
+      { channelId, threadTs: msg.ts },
+      { deduplicationKey: `slack_replies_${channelId}_${msg.ts}` },
+    );
+    return "thread_with_replies";
+  }
+  return "thread";
+}
 
 /**
  * Sync channel messages (root messages only).
@@ -71,7 +219,7 @@ export async function syncChannelMessages(channelId: string): Promise<{
     }
 
     const result = await client.conversations.history(historyOpts);
-    const messages = (result.messages || []) as Array<Record<string, any>>;
+    const messages = (result.messages || []) as SlackMessage[];
 
     let threadsUpserted = 0;
     let repliesEnqueued = 0;
@@ -79,116 +227,15 @@ export async function syncChannelMessages(channelId: string): Promise<{
 
     for (const msg of messages) {
       if (!msg.ts) continue;
-
-      // Skip non-message subtypes
-      if (msg.subtype && SKIP_SUBTYPES.has(msg.subtype)) continue;
-
-      // Identify root vs reply
-      const isRoot = !msg.thread_ts || msg.thread_ts === msg.ts;
-      if (!isRoot) continue; // replies are handled by syncThreadReplies
-
-      const msgTimestamp = new Date(parseFloat(msg.ts) * 1000);
-      const rawText = msg.text || "New Slack message";
-      const sanitisedText = sanitiseSlackMessage(rawText);
-      const firstLine = sanitisedText.split("\n")[0];
-      const subject = normaliseSubject(firstLine);
-      const autoPriority =
-        deriveAutoPriority({ subject: rawText, body: rawText }) ?? ("P2" as ThreadPriority);
-
-      // Upsert CommsThread using @@unique[slackChannelId, slackRootTs]
-      await prisma.commsThread.upsert({
-        where: {
-          slackChannelId_slackRootTs: {
-            slackChannelId: slackChannel.id,
-            slackRootTs: msg.ts,
-          },
-        },
-        create: {
-          source: "slack",
-          sourceThreadRef: `${channelId}-${msg.ts}`,
-          slackChannelId: slackChannel.id,
-          slackRootTs: msg.ts,
-          slackThreadTs: msg.thread_ts || msg.ts,
-          isSlackThread: (msg.reply_count || 0) > 0,
-          slackReplyCount: msg.reply_count || 0,
-          slackLastReplyTs: msg.latest_reply || null,
-          subject,
-          priority: autoPriority,
-          status: "Unassigned",
-          queue: "Transaction Operations",
-          participants: JSON.stringify([msg.user]),
-          clientOrPartnerTag: `#${slackChannel.channelName}`,
-          lastMessageAt: msgTimestamp,
-          ttoDeadline: computeTtoDeadline(msgTimestamp, autoPriority as ThreadPriority),
-        },
-        update: {
-          isSlackThread: (msg.reply_count || 0) > 0,
-          slackReplyCount: msg.reply_count || 0,
-          slackLastReplyTs: msg.latest_reply || null,
-          lastMessageAt: msgTimestamp,
-        },
-      });
-
-      // Also upsert the root message in CommsMessage
-      await prisma.commsMessage.upsert({
-        where: {
-          threadId_slackTs: {
-            threadId: (
-              await prisma.commsThread.findUnique({
-                where: {
-                  slackChannelId_slackRootTs: {
-                    slackChannelId: slackChannel.id,
-                    slackRootTs: msg.ts,
-                  },
-                },
-                select: { id: true },
-              })
-            )!.id,
-            slackTs: msg.ts,
-          },
-        },
-        create: {
-          threadId: (
-            await prisma.commsThread.findUnique({
-              where: {
-                slackChannelId_slackRootTs: {
-                  slackChannelId: slackChannel.id,
-                  slackRootTs: msg.ts,
-                },
-              },
-              select: { id: true },
-            })
-          )!.id,
-          slackTs: msg.ts,
-          slackUserId: msg.user || null,
-          isRootMessage: true,
-          authorName: msg.user || "Unknown",
-          authorType: "external",
-          bodySnippet: sanitisedText.substring(0, 2000),
-          timestamp: msgTimestamp,
-        },
-        update: {
-          bodySnippet: sanitisedText.substring(0, 2000),
-          editedAt: msg.edited ? new Date(parseFloat(msg.edited.ts) * 1000) : undefined,
-        },
-      });
-
-      threadsUpserted++;
+      const outcome = await ingestChannelMessage(slackChannel, msg, { fromHistory: true });
+      if (outcome === "skipped") continue;
+      if (outcome !== "risk_signal") threadsUpserted++;
 
       // Track latest ts for cursor update
       if (!latestTs || msg.ts > latestTs) {
         latestTs = msg.ts;
       }
-
-      // If message has replies, enqueue reply sync
-      if (msg.reply_count && msg.reply_count > 0) {
-        await enqueueJob(
-          "sync_slack_replies",
-          { channelId, threadTs: msg.ts },
-          { deduplicationKey: `slack_replies_${channelId}_${msg.ts}` },
-        );
-        repliesEnqueued++;
-      }
+      if (outcome === "thread_with_replies") repliesEnqueued++;
     }
 
     // Update sync cursor to the latest message ts
@@ -254,7 +301,7 @@ export async function syncThreadReplies(
       limit: 200,
     });
 
-    const replies = (repliesResult.messages || []) as Array<Record<string, any>>;
+    const replies = (repliesResult.messages || []) as SlackMessage[];
     let messagesUpserted = 0;
     let latestReplyTs: string | null = null;
 
