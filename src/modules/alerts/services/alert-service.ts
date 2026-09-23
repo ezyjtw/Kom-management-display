@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { AlertType, AlertData } from "@/types";
+import { legacyAlertKeys } from "@/lib/alert-keys";
 
 // ─── Constants ───
 
@@ -161,6 +162,7 @@ export const alertService = {
     const alert = await prisma.alert.create({
       data: {
         type: input.type,
+        ...legacyAlertKeys(input.type),
         priority,
         message: input.message,
         status: "active",

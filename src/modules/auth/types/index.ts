@@ -34,7 +34,10 @@ export type Resource =
   | "report"
   | "metrics"
   | "client_comms"
-  | "service_provider";
+  | "service_provider"
+  | "client"
+  | "sla_policy"
+  | "alert_rule";
 
 export type Action =
   | "view"
@@ -93,6 +96,9 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view", "create", "update", "delete", "approve"], scope: "all" },
     service_provider: { actions: ["view", "create", "update", "delete"], scope: "all" },
+    client:           { actions: ["view", "create", "update"], scope: "all" },
+    sla_policy:       { actions: ["view", "configure"], scope: "all" },
+    alert_rule:       { actions: ["view", "configure"], scope: "all" },
   },
   lead: {
     employee:         { actions: ["view", "update"], scope: "team" },
@@ -122,6 +128,9 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view", "approve"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: ["view"], scope: "all" },
   },
   employee: {
     employee:         { actions: ["view_own"], scope: "own" },
@@ -151,6 +160,9 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: [], scope: "none" },
     client_comms:     { actions: ["view"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: [], scope: "none" },
   },
   auditor: {
     employee:         { actions: ["view"], scope: "all" },
@@ -180,6 +192,9 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: ["view"], scope: "all" },
   },
 };
 
@@ -212,4 +227,7 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   metrics: [],
   client_comms: [],
   service_provider: ["contactEmail"],
+  client: ["komainuAccountNos"],
+  sla_policy: [],
+  alert_rule: [],
 };

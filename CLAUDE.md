@@ -1,5 +1,17 @@
 # CLAUDE.md — KOMmand Centre Standing Rules
 
+## Standing rules (from docs/phase1/PHASE1_BUILD_SPEC.md §0)
+
+- Read docs/phase1/PHASE1_BUILD_SPEC.md before any change.
+- NEVER add code that approves, rejects, confirms, cancels, initiates or signs a transaction or request on any custody platform. The Komainu API client is GET-only (plus POST /v1/auth/token). A test enforces this.
+- AI features, staff performance scoring and live activity tracking stay disabled. Do not re-enable.
+- No secrets in code, fixtures, logs or commits. Use env vars validated in src/lib/env.ts.
+- Redact wallet addresses, tx hashes, client names and account numbers in logs.
+- Use api-demo.komainu.io or mocks only. Never point code or tests at production endpoints.
+- Run `npm run ci:check` before proposing a commit. One phase per PR. Stop at each STOP point.
+- Where the spec says CONFIRM, build behind config or a flag and leave a `TODO(CONFIRM-<id>)`; never invent external formats.
+- Every system-initiated audit entry uses `userId: "system"` (an inactive Employee row created by migration 0020).
+
 ## Hard Constraints (H1–H11)
 
 These constraints apply to **every** phase and must never be violated:

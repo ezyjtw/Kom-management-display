@@ -21,6 +21,7 @@ import type {
 } from "@/types";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { legacyAlertKeys } from "@/lib/alert-keys";
 
 // ---------------------------------------------------------------------------
 // Matching logic
@@ -228,6 +229,7 @@ export async function GET(request: NextRequest) {
         const alert = await prisma.alert.create({
           data: {
             type: alertType,
+            ...legacyAlertKeys(alertType),
             priority: row.matchStatus === "unmatched" ? "P0" : "P1",
             message,
             destination: "in_app",

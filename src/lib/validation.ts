@@ -747,3 +747,53 @@ export function validateQuery<T>(
   });
   return validateBody(schema, params);
 }
+
+// ─── Core data model admin (spec §7) ───
+
+const slackChannelRef = z.string().regex(/^[CG][A-Z0-9]{8,12}$/, "Slack channel ID, e.g. C01234ABCDE");
+const emailDomainRef = z.string().toLowerCase()
+  .regex(/^(?=.{3,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, "Email domain, e.g. example.com (no @)");
+const teamsChannelRef = z.string().min(3).max(300);
+
+export const clientChannelSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("slack"), ref: slackChannelRef }),
+  z.object({ kind: z.literal("email_domain"), ref: emailDomainRef }),
+  z.object({ kind: z.literal("teams"), ref: teamsChannelRef }),
+]);
+
+const clientFields = {
+  displayName: z.string().trim().min(1).max(200),
+  komainuOrgId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  komainuAccountNos: z.array(z.string().trim().min(1).max(100)).max(200).default([]),
+  jsmOrganizationId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  jurisdiction: z.enum(["", "UK", "JE", "AE", "EU"]).default(""),
+  isActive: z.boolean().default(true),
+  channels: z.array(clientChannelSchema).max(100).default([]),
+};
+
+export const createClientSchema = z.object(clientFields);
+export const updateClientSchema = z.object(clientFields).partial();
+
+const optionalMins = z.number().int().min(1).max(60 * 24 * 90).nullable();
+
+export const updateSlaPolicySchema = z.object({
+  description: z.string().trim().min(1).max(500).optional(),
+  ownershipMins: optionalMins.optional(),
+  firstRespMins: optionalMins.optional(),
+  resolveMins: optionalMins.optional(),
+  resolveRule: z.enum(["next_business_day_eod"]).nullable().optional(),
+  calendar: z.string().regex(/^(24x7|business_[a-z]+)$/).optional(),
+  warnAtPct: z.number().int().min(1).max(99).optional(),
+  breachEscalationRole: z.enum(["lead", "admin"]).optional(),
+  isActive: z.boolean().optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");
+
+export const updateAlertRuleSchema = z.object({
+  enabled: z.boolean().optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  route: z.object({
+    businessHours: z.array(z.string().min(1).max(200)).max(20),
+    outOfHours: z.array(z.string().min(1).max(200)).max(20),
+  }).optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");

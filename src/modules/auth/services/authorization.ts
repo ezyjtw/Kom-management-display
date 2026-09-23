@@ -187,11 +187,17 @@ export function maskSensitiveFields<T extends Record<string, unknown>>(
     if (field in masked && masked[field]) {
       const val = masked[field];
       if (typeof val === "string") {
-        masked[field] = val.length > 4
-          ? `${val.substring(0, 2)}${"*".repeat(Math.min(val.length - 4, 20))}${val.substring(val.length - 2)}`
-          : "****";
+        masked[field] = maskString(val);
+      } else if (Array.isArray(val)) {
+        masked[field] = val.map((v) => (typeof v === "string" ? maskString(v) : v));
       }
     }
   }
   return masked as T;
+}
+
+function maskString(val: string): string {
+  return val.length > 4
+    ? `${val.substring(0, 2)}${"*".repeat(Math.min(val.length - 4, 20))}${val.substring(val.length - 2)}`
+    : "****";
 }

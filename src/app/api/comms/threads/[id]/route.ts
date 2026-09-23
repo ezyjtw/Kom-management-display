@@ -7,6 +7,7 @@ import { apiSuccess, apiValidationError, apiForbiddenError, apiConflictError, ap
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
+import { legacyAlertKeys } from "@/lib/alert-keys";
 
 const THREAD_TRANSITIONS: Record<string, string[]> = {
   Unassigned: ["Assigned"],
@@ -234,6 +235,7 @@ export async function PATCH(
         data: {
           threadId: params.id,
           type: "ownership_change",
+          ...legacyAlertKeys("ownership_change"),
           priority: thread.priority,
           message: `Ownership changed on: ${thread.subject}`,
           destination: "in_app",

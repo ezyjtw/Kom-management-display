@@ -415,9 +415,9 @@ async function main() {
 
     console.log("Created employee notes");
 
-    // Seed alerts
+    // Seed alerts (legacy rule codes: ruleCode = type, one dedupe key per alert)
     await prisma.alert.createMany({
-      data: [
+      data: ([
         {
           threadId: threads[2].id, type: "tto_breach", priority: "P2",
           message: "Thread 'New custody onboarding' has been unassigned for over 2 hours",
@@ -433,7 +433,7 @@ async function main() {
           message: "David Park — quality score dropped from 5.5 to 4.8 this month",
           status: "active", destination: "in_app",
         },
-      ],
+      ] as const).map((a) => ({ ...a, ruleCode: a.type, dedupeKey: `seed-${a.type}` })),
     });
 
     console.log("Created alerts");

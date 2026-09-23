@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 
 export const WORKER_HEARTBEAT_THRESHOLD_MS = 120_000;
 export const WORKER_ALERT_TYPE = "ALR-HB-WORKER";
+const WORKER_ALERT_DEDUPE_KEY = "worker";
 
 /**
  * Checked from the web app (not the worker), so it still fires when the worker
@@ -16,12 +17,14 @@ export async function checkWorkerHealth(): Promise<{ workerAlive: boolean }> {
   try {
     if (!workerAlive) {
       const open = await prisma.alert.count({
-        where: { type: WORKER_ALERT_TYPE, status: { not: "resolved" } },
+        where: { ruleCode: WORKER_ALERT_TYPE, dedupeKey: WORKER_ALERT_DEDUPE_KEY, status: { not: "resolved" } },
       });
       if (open === 0) {
         await prisma.alert.create({
           data: {
             type: WORKER_ALERT_TYPE,
+            ruleCode: WORKER_ALERT_TYPE,
+            dedupeKey: WORKER_ALERT_DEDUPE_KEY,
             severity: "critical",
             priority: "P0",
             message: "Background worker has not sent a heartbeat for over 2 minutes. Alerts and SLA checks are not running.",
@@ -31,8 +34,8 @@ export async function checkWorkerHealth(): Promise<{ workerAlive: boolean }> {
       }
     } else {
       await prisma.alert.updateMany({
-        where: { type: WORKER_ALERT_TYPE, status: { not: "resolved" } },
-        data: { status: "resolved", resolvedAt: new Date() },
+        where: { ruleCode: WORKER_ALERT_TYPE, status: { not: "resolved" } },
+        data: { status: "resolved", resolvedAt: new Date(), autoResolvedAt: new Date() },
       });
     }
   } catch (error) {

@@ -161,28 +161,30 @@ model Employee {
   scores                  CategoryScore[]
   knowledgeScores         KnowledgeScore[]
   employeeNotes           EmployeeNote[]
-  ownedThreads            CommsThread[]     @relation("ThreadOwner")
-  ownershipChangesFrom    OwnershipChange[] @relation("OldOwner")
-  ownershipChangesTo      OwnershipChange[] @relation("NewOwner")
-  ownershipChangesBy      OwnershipChange[] @relation("ChangedBy")
+  ownedThreads            CommsThread[]             @relation("ThreadOwner")
+  ownershipChangesFrom    OwnershipChange[]         @relation("OldOwner")
+  ownershipChangesTo      OwnershipChange[]         @relation("NewOwner")
+  ownershipChangesBy      OwnershipChange[]         @relation("ChangedBy")
   alerts                  Alert[]
   auditLogs               AuditLog[]
   threadNotes             ThreadNote[]
   caseNotes               CaseNote[]
   onCallSchedules         OnCallSchedule[]
   ptoRecords              PtoRecord[]
-  assignedTasks           DailyTask[]       @relation("TaskAssignee")
-  completedTasks          DailyTask[]       @relation("TaskCompleter")
-  createdTasks            DailyTask[]       @relation("TaskCreator")
-  ledProjects             Project[]         @relation("ProjectLead")
+  assignedTasks           DailyTask[]               @relation("TaskAssignee")
+  completedTasks          DailyTask[]               @relation("TaskCompleter")
+  createdTasks            DailyTask[]               @relation("TaskCreator")
+  ledProjects             Project[]                 @relation("ProjectLead")
   projectMemberships      ProjectMember[]
   projectUpdates          ProjectUpdate[]
   rotaAssignments         RotaAssignment[]
   activityStatuses        ActivityStatus[]
-  reportedIncidents       Incident[]        @relation("IncidentReporter")
-  resolvedIncidents       Incident[]        @relation("IncidentResolver")
-  rcaResponsibleIncidents Incident[]        @relation("RcaResponsible")
+  reportedIncidents       Incident[]                @relation("IncidentReporter")
+  resolvedIncidents       Incident[]                @relation("IncidentResolver")
+  rcaResponsibleIncidents Incident[]                @relation("RcaResponsible")
   clientContactsCreated   ClientContactPreference[] @relation("ClientContactCreatedBy")
+  ownedWorkItems          WorkItem[]                @relation("WorkItemOwner")
+  timeLogs                TimeLog[]
   user                    User?
 
   @@index([team, active])
@@ -779,13 +781,28 @@ model Alert {
   travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
   incident       Incident?       @relation(fields: [incidentId], references: [id])
 
+  // Alerting engine (spec §7.4)
+  ruleCode       String // e.g. "ALR-OES-01"; legacy alerts use their `type`
+  dedupeKey      String // one open alert per (ruleCode, dedupeKey) — partial unique index in migration 0022
+  workItemId     String? // required before acknowledge (spec §10.2)
+  firstFiredAt   DateTime  @default(now())
+  lastFiredAt    DateTime  @default(now())
+  fireCount      Int       @default(1)
+  escalatedAt    DateTime?
+  autoResolvedAt DateTime?
+
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+
   @@index([threadId])
   @@index([employeeId])
   @@index([travelRuleCaseId])
+  @@index([incidentId])
+  @@index([workItemId])
   @@index([status])
   @@index([type])
   @@index([type, status])
   @@index([severity, status])
+  @@index([ruleCode, dedupeKey, status])
 }
 
 // ─── 3rd Party Incidents ───
@@ -1043,7 +1060,7 @@ model StakingWallet {
 
 model DailyCheckRun {
   id          String    @id @default(cuid())
-  date        DateTime  @unique // one run per day
+  date        DateTime // legacy daily run; per-definition items are unique by (definitionCode, periodKey)
   operatorId  String // employee running the checks
   completedAt DateTime?
   jiraSummary String    @default("") // generated summary text
@@ -1069,10 +1086,44 @@ model DailyCheckItem {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  run DailyCheckRun @relation(fields: [runId], references: [id])
+  // Definition-driven checks (spec §7.6)
+  definitionCode       String? // DailyCheckDefinition.code, e.g. "CHK-01"
+  periodKey            String? // e.g. "2026-09-23" (daily), "2026-W39" (weekly), cycle id
+  evidence             Json      @default("{}")
+  recordCount          Int?
+  dataAsOf             DateTime?
+  skippedReason        String?
+  skipApprovedBy       String?
+  exceptionWorkItemIds Json      @default("[]")
 
+  run        DailyCheckRun         @relation(fields: [runId], references: [id])
+  definition DailyCheckDefinition? @relation(fields: [definitionCode], references: [code])
+
+  @@unique([definitionCode, periodKey])
   @@index([runId])
   @@index([category])
+  @@index([status])
+  @@index([definitionCode])
+}
+
+model DailyCheckDefinition {
+  code          String   @id // "CHK-01" .. (spec §12)
+  name          String
+  team          String
+  frequency     String // daily | weekly | per_cycle
+  dueByLocal    String // "09:05" Europe/London unless stated
+  evidenceSpec  Json // what counts as positive evidence
+  ticketProject String // default Jira project for exceptions
+  confluenceUrl String
+  version       Int      @default(1)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items DailyCheckItem[]
+
+  @@index([team, isActive])
+  @@index([isActive])
 }
 
 // ─── Screening & Scam/Dust ───
@@ -1503,4 +1554,231 @@ model VendorReliabilityScore {
   computedAt        DateTime @default(now())
 
   provider ServiceProvider @relation(fields: [providerId], references: [id])
+}
+
+// ─── Core data model (spec §7) ───
+
+model Client {
+  id                String   @id @default(cuid())
+  displayName       String
+  komainuOrgId      String?  @unique // Komainu API `organization`
+  komainuAccountNos Json     @default("[]") // Komainu API account numbers
+  jsmOrganizationId String?  @unique // JSM organisation
+  jurisdiction      String   @default("") // UK | JE | AE | EU (entity servicing)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  channels  ClientChannel[]
+  workItems WorkItem[]
+  timeLogs  TimeLog[]
+
+  @@index([isActive])
+}
+
+model ClientChannel {
+  id        String   @id @default(cuid())
+  clientId  String
+  kind      String // slack | email_domain | teams
+  ref       String // Slack channel ID, email domain, Teams channel ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, ref])
+  @@index([clientId])
+}
+
+enum WorkItemKind {
+  client_request
+  alert
+  daily_check_exception
+  mtd_break
+  oes_settlement
+  fab_instruction
+  kps_case
+  vendor_ticket
+  travel_rule_case
+  screening_case
+  scam_dust_case
+  coin_review
+  staking_exception
+  nft_review
+  report_task
+  incident
+  rca
+  internal_task
+}
+
+enum WorkItemState {
+  open
+  owned
+  waiting_client
+  waiting_vendor
+  waiting_internal
+  resolved
+  closed
+}
+
+/// The single queue. Every actionable thing is one WorkItem linked to one ticket.
+model WorkItem {
+  id              String        @id @default(cuid())
+  kind            WorkItemKind
+  title           String
+  team            String // "Team 1" | "Team 2" | "Team 3" | "All" (spec §12)
+  taskCode        String // e.g. "CHK-01" (spec §12) or "CLIENT-Q"
+  clientId        String?
+  priority        String        @default("P2") // P0..P3
+  riskScore       String? // required before closure (spec §10.2)
+  state           WorkItemState @default(open)
+  ownerEmployeeId String?
+  sourceSystem    String // komainu_api | slack | email | teams | jira | jsm | manual | system
+  sourceId        String // dedupe key in source
+  ticketSystem    String? // jsm | jira
+  ticketKey       String? // e.g. OTC-1234
+  ticketUrl       String?
+  slaPolicyId     String?
+  clockStartedAt  DateTime // event time in source, not ingest time
+  firstResponseAt DateTime?
+  ownedAt         DateTime?
+  resolvedAt      DateTime?
+  resolutionNote  String?
+  rootCause       String? // controlled list (spec §10.2)
+  exposureUsd     Float? // where relevant (OES, FAB)
+  metadata        Json          @default("{}") // client_request: { threadId }
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  owner       Employee?    @relation("WorkItemOwner", fields: [ownerEmployeeId], references: [id], onDelete: SetNull)
+  slaPolicy   SlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  slaEvents   SlaEvent[]
+  alerts      Alert[]
+  timeLogs    TimeLog[]
+  ticketLinks TicketLink[]
+  iaiDrafts   IaiDraft[]
+
+  @@unique([sourceSystem, sourceId])
+  @@index([state, team])
+  @@index([clientId])
+  @@index([ticketKey])
+  @@index([taskCode, state])
+  @@index([ownerEmployeeId])
+  @@index([slaPolicyId])
+  @@index([kind, state])
+}
+
+model SlaPolicy {
+  id                   String   @id @default(cuid())
+  code                 String   @unique // e.g. "CLIENT-Q-P1", "OES-EXCHANGE-CONTACT", "MTD-BREAK"
+  description          String
+  ownershipMins        Int? // time to ownership; null = target not set (CONFIRM-SLA-TARGETS)
+  firstRespMins        Int? // time to first response
+  resolveMins          Int? // time to resolution
+  /// Resolution deadline that is not a fixed number of minutes, e.g. "next_business_day_eod" (T+1).
+  resolveRule          String?
+  calendar             String   @default("24x7") // "24x7" | "business_uk" | "business_<region>"
+  warnAtPct            Int      @default(50)
+  breachEscalationRole String   @default("lead")
+  version              Int      @default(1)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workItems WorkItem[]
+
+  @@index([isActive])
+}
+
+model SlaEvent {
+  id         String   @id @default(cuid())
+  workItemId String
+  kind       String // ownership_warn | ownership_breach | first_response_warn | ...
+  at         DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workItemId])
+  @@index([kind])
+}
+
+/// Admin-tunable alert rule (spec §7.4). Changes require admin and are audit-logged.
+model AlertRule {
+  code      String   @id
+  enabled   Boolean  @default(false)
+  severity  String // low | medium | high | critical
+  params    Json // thresholds, windows, channels
+  route     Json // { businessHours: [...targets], outOfHours: [...targets] }
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+model SourceHeartbeat {
+  source            String    @id // "komainu_api.requests", "slack.client", "outlook.fab_ics", ...
+  lastSuccessAt     DateTime?
+  lastRecordAt      DateTime? // newest record timestamp seen
+  lastCount         Int       @default(0)
+  expectedEveryMins Int
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+/// Client effort logging. loggedById is kept for data integrity only and is
+/// NEVER exposed in reports (H4).
+model TimeLog {
+  id         String   @id @default(cuid())
+  workItemId String
+  clientId   String?
+  bucketMins Int // 15 | 30 | 60 | 120 | 240
+  loggedAt   DateTime @default(now())
+  loggedById String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  client   Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  loggedBy Employee @relation(fields: [loggedById], references: [id])
+
+  @@index([workItemId])
+  @@index([clientId])
+  @@index([loggedById])
+}
+
+model TicketLink {
+  id         String   @id @default(cuid())
+  workItemId String
+  system     String // jsm | jira
+  key        String
+  url        String
+  role       String   @default("primary") // primary | related
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@unique([system, key, workItemId])
+  @@index([workItemId])
+  @@index([system, key])
+}
+
+model IaiDraft {
+  id          String    @id @default(cuid())
+  workItemId  String
+  triggerCode String // alert rule that triggered it
+  jiraKey     String? // once created in IAI
+  dueAt       DateTime // createdAt + 24h
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workItemId])
+  @@index([dueAt, completedAt])
 }

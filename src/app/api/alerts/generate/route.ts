@@ -7,6 +7,7 @@ import { apiSuccess, apiError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { withLegacyAlertKeys } from "@/lib/alert-keys";
 
 /**
  * GET /api/alerts/generate
@@ -147,7 +148,7 @@ async function generateAlerts() {
     }
 
     if (threadAlertBatch.length > 0) {
-      await prisma.alert.createMany({ data: threadAlertBatch });
+      await prisma.alert.createMany({ data: threadAlertBatch.map(withLegacyAlertKeys) });
       alertsCreated += threadAlertBatch.length;
     }
 
@@ -176,7 +177,7 @@ async function generateAlerts() {
       }));
 
     if (caseAlertBatch.length > 0) {
-      await prisma.alert.createMany({ data: caseAlertBatch });
+      await prisma.alert.createMany({ data: caseAlertBatch.map(withLegacyAlertKeys) });
       alertsCreated += caseAlertBatch.length;
     }
 
@@ -266,7 +267,7 @@ async function generateAlerts() {
         }
 
         if (perfAlertBatch.length > 0) {
-          await prisma.alert.createMany({ data: perfAlertBatch });
+          await prisma.alert.createMany({ data: perfAlertBatch.map(withLegacyAlertKeys) });
           alertsCreated += perfAlertBatch.length;
         }
       }

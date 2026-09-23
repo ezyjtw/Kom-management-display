@@ -7,6 +7,7 @@ import { apiSuccess, apiValidationError, apiForbiddenError, apiNotFoundError, ha
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, transferThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
+import { legacyAlertKeys } from "@/lib/alert-keys";
 
 /**
  * POST /api/comms/threads/:id/transfer
@@ -95,6 +96,7 @@ export async function POST(
       data: {
         threadId: params.id,
         type: "ownership_change",
+        ...legacyAlertKeys("ownership_change"),
         priority: thread.priority,
         message: `Ownership transferred on "${thread.subject}"${
           handoverNote ? `: ${handoverNote.substring(0, 100)}` : ""
@@ -114,6 +116,7 @@ export async function POST(
         data: {
           threadId: params.id,
           type: "ownership_bounce",
+          ...legacyAlertKeys("ownership_bounce"),
           priority: "P1",
           message: `Thread "${thread.subject}" has been reassigned ${recentChanges} times in 24h`,
           destination: "in_app",
