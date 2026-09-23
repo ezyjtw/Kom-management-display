@@ -60,6 +60,7 @@ const navSections = [
     items: [
       { href: "/staking", label: "Staking Ops", icon: Layers },
       { href: "/boards", label: "Team Boards", icon: ClipboardList },
+      { href: "/metrics", label: "Metrics", icon: BarChart3 },
       { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
 { href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
       { href: "/screening", label: "Screening", icon: ScanSearch },

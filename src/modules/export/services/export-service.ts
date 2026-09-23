@@ -30,6 +30,9 @@ const DUAL_CONTROL_RESOURCES: string[] = [
   "travel_rule_cases",
 ];
 
+/** Resources that break results down by individual (H4): exportable only while people.scoring is on. */
+const PER_PERSON_RESOURCES: string[] = ["employees", "scores"];
+
 /** Resources that each role can export. */
 const EXPORTABLE_RESOURCES: Record<Role, string[]> = {
   admin: [
@@ -145,6 +148,14 @@ export const exportService = {
   ): Promise<ExportResult> {
     // 1. Validate permissions
     validateExportPermissions(request.resource, context);
+
+    // 1a. Per-person resources only with staff scoring on (H4, spec §13.1).
+    if (PER_PERSON_RESOURCES.includes(request.resource)) {
+      const { isFeatureEnabled } = await import("@/lib/feature-flags");
+      if (!(await isFeatureEnabled("people.scoring"))) {
+        throw new Error(`Export of '${request.resource}' is disabled: it breaks results down by individual (H4).`);
+      }
+    }
 
     // 1b. Enforce dual-control for sensitive resources
     if (DUAL_CONTROL_RESOURCES.includes(request.resource)) {

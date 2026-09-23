@@ -4,6 +4,7 @@ import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { exportService } from "@/modules/export/services/export-service";
 import { apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { Role } from "@/modules/auth/types";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/export
@@ -13,6 +14,9 @@ import type { Role } from "@/modules/auth/types";
  * sensitivity controls, and audit logging.
  */
 export async function GET(request: NextRequest) {
+  // Per-person score exports exist only with staff scoring, which stays off (H4, spec §13.1).
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
   const auth = await requireRole("admin", "lead", "auditor");
   if (auth instanceof NextResponse) return auth;
 

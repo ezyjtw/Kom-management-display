@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 const VALID_REPORT_TYPES: ReportType[] = [
   "daily_digest", "weekly_report", "incident_report", "compliance_summary",
 ];
+// metrics_monthly is produced by /api/metrics/export (lead/admin, audit-logged).
 
 /**
  * GET /api/reports?type=daily_digest&format=html
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       : undefined;
 
     const report = await generateReport(type, {
-      userId: auth.employeeId || auth.id,
+      generatedByRole: auth.role,
       incidentId: incidentId || undefined,
       dateRange,
     });

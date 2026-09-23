@@ -52,6 +52,8 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     ticketLinks: { model: "ticketLink", kind: "many", localKey: "id", remoteKey: "workItemId" },
   },
   onCallSchedule: { employee: { model: "employee", kind: "one", localKey: "employeeId", remoteKey: "id" } },
+  commsThread: { slackChannel: { model: "slackChannel", kind: "one", localKey: "slackChannelId", remoteKey: "id" } },
+  incident: { updates: { model: "incidentUpdate", kind: "many", localKey: "id", remoteKey: "incidentId" } },
   tokenReview: { demandSignals: { model: "tokenDemandSignal", kind: "many", localKey: "id", remoteKey: "tokenReviewId" } },
   dailyCheckItem: { definition: { model: "dailyCheckDefinition", kind: "one", localKey: "definitionCode", remoteKey: "code" } },
 };

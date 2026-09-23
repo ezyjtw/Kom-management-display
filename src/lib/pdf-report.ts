@@ -9,12 +9,16 @@
  * - weekly_report: Weekly performance + metrics
  * - incident_report: Single incident detailed report
  * - compliance_summary: Travel rule + screening status
+ * - metrics_monthly: Monthly metrics pack (spec §13.3), team and client level only
+ *
+ * Reports never name or identify individuals (H4): the header records the
+ * generating role, not the person.
  */
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
-export type ReportType = "daily_digest" | "weekly_report" | "incident_report" | "compliance_summary";
+export type ReportType = "daily_digest" | "weekly_report" | "incident_report" | "compliance_summary" | "metrics_monthly";
 
 export interface ReportData {
   type: ReportType;
@@ -29,10 +33,10 @@ export interface ReportData {
  */
 export async function generateReport(
   type: ReportType,
-  opts: { userId?: string; incidentId?: string; dateRange?: { start: Date; end: Date } } = {},
+  opts: { generatedByRole?: string; incidentId?: string; dateRange?: { start: Date; end: Date }; metricsHtml?: { title: string; html: string } } = {},
 ): Promise<ReportData> {
   const generatedAt = new Date().toISOString();
-  const generatedBy = opts.userId || "system";
+  const generatedBy = opts.generatedByRole || "system";
 
   let html: string;
   let title: string;
@@ -49,6 +53,10 @@ export async function generateReport(
       break;
     case "compliance_summary":
       ({ html, title } = await generateComplianceSummary());
+      break;
+    case "metrics_monthly":
+      if (!opts.metricsHtml) throw new Error("metrics_monthly needs precomputed metrics");
+      ({ html, title } = opts.metricsHtml);
       break;
     default:
       throw new Error(`Unknown report type: ${type}`);
@@ -160,8 +168,6 @@ async function generateIncidentReport(incidentId: string): Promise<{ html: strin
     where: { id: incidentId },
     include: {
       updates: { orderBy: { createdAt: "asc" } },
-      reportedBy: { select: { name: true } },
-      resolvedBy: { select: { name: true } },
     },
   });
 
@@ -179,8 +185,6 @@ async function generateIncidentReport(incidentId: string): Promise<{ html: strin
       <tr><td class="label">Status</td><td>${incident.status}</td></tr>
       <tr><td class="label">Started</td><td>${incident.startedAt.toISOString()}</td></tr>
       <tr><td class="label">Resolved</td><td>${incident.resolvedAt?.toISOString() || "Ongoing"}</td></tr>
-      <tr><td class="label">Reported By</td><td>${incident.reportedBy.name}</td></tr>
-      <tr><td class="label">Resolved By</td><td>${incident.resolvedBy?.name || "—"}</td></tr>
       <tr><td class="label">RCA Status</td><td>${incident.rcaStatus}</td></tr>
     </table>
 
@@ -332,7 +336,7 @@ function wrapInTemplate(title: string, generatedAt: string, generatedBy: string,
 </head>
 <body>
   <h1>${title}</h1>
-  <div class="meta">Generated: ${generatedAt} · By: ${generatedBy}</div>
+  <div class="meta">Generated: ${generatedAt} · By role: ${generatedBy}</div>
   ${body}
   <hr style="margin-top:40px;border:none;border-top:1px solid #e2e8f0;" />
   <p class="meta">KOMmand Centre — Confidential</p>
