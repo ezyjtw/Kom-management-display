@@ -55,6 +55,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         displayName: client.displayName,
         isActive: client.isActive,
         jurisdiction: client.jurisdiction,
+        inboundThresholdUsd: client.inboundThresholdUsd,
+        thresholdReviewedAt: client.thresholdReviewedAt,
         channels: client.channels.map((c) => `${c.kind}:${c.ref}`),
       },
       metadata: actor.metadata,

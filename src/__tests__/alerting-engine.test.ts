@@ -161,6 +161,12 @@ const fabLog = (data: Row) => add("fabSettlementLog", { id: "log-7", reference: 
 
 const SCENARIOS: Scenario[] = [
   {
+    code: "ALR-CLI-01",
+    trigger: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2025-01-10T00:00:00Z") }); return "cl-1"; },
+    below: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2026-06-01T00:00:00Z") }); },
+    clear: async (now) => update("client", { id: "cl-1" }, { thresholdReviewedAt: now }),
+  },
+  {
     code: "ALR-FAB-01",
     trigger: async () => { await fabInstruction({ sourceMessageId: "<m1@fab>" }); return "<m1@fab>"; },
     below: async () => { await fabInstruction({ ackStatus: "ACK" }); },

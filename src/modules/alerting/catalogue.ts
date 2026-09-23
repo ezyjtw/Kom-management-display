@@ -112,6 +112,8 @@ const defs: Def[] = [
   })),
   { code: "ALR-CHK-01", name: "Daily check not done", ownerTeam: TEAMS.txOps, severity: "high", clock: "due time (dueByLocal)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 5,
     params: {}, evaluate: ops.evaluateCheckNotDone },
+  { code: "ALR-CLI-01", name: "Client inbound threshold review overdue", ownerTeam: TEAMS.txOps, severity: "medium", clock: "12 months (CONFIRM)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 60, digest: true,
+    params: { reviewMonths: 12 }, evaluate: ops.evaluateThresholdReview },
   { code: "ALR-TKT-01", name: "Unticketed work found", ownerTeam: TEAMS.txOps, severity: "high", clock: "08:30", autoResolve: false },
   { code: "ALR-TKT-02", name: "Ticket divergence", ownerTeam: TEAMS.txOps, severity: "medium", clock: "hourly", autoResolve: false },
   { code: "ALR-IAI-01", name: "IAI draft overdue", ownerTeam: TEAMS.txOps, severity: "high", clock: "24h", ticketProject: "IAI", autoResolve: false,

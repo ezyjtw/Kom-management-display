@@ -170,7 +170,7 @@ export const DEFINITIONS: readonly CheckDefinitionSpec[] = [
   {
     code: "CHK-04", name: "Transaction Screening (Chainalysis)", team: "Team 3", kind: "check", frequency: "daily", dueByLocal: MORNING,
     evidenceSpec: { requiredFields: ["alertsCount", "unscreenableCount", "stakingExcludedCount"], notes: "recordCount = transactions screened" },
-    ticketProject: "TOPS", confluenceTitle: "Transaction Screening",
+    ticketProject: "TOPS", confluenceTitle: "Transaction Screening", collector: true,
     knownIssues: [
       { id: "CF-04", text: "Zero-value or no-hash transactions cannot be screened: counted separately." },
       { id: "CF-01", text: "Staking is excluded from screening: exclusion count shown." },

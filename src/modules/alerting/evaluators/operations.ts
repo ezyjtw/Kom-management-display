@@ -190,3 +190,23 @@ export async function evaluateHeartbeats(ctx: EvaluatorContext): Promise<AlertCa
     }];
   });
 }
+
+/** ALR-CLI-01: client-attested inbound threshold not reviewed within N months (spec §12 CHK-05, CF-31; 12 months CONFIRM). */
+export async function evaluateThresholdReview(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
+  const months = numParam(ctx.params, "reviewMonths", 12);
+  const cutoff = new Date(ctx.now);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+  const clients = await prisma.client.findMany({
+    where: { isActive: true, inboundThresholdUsd: { not: null }, OR: [{ thresholdReviewedAt: null }, { thresholdReviewedAt: { lt: cutoff } }] },
+    select: { id: true, displayName: true, thresholdReviewedAt: true },
+  });
+  return clients.map((c) => ({
+    dedupeKey: c.id,
+    severity: "medium" as const,
+    title: `Inbound threshold review overdue: ${c.displayName}`,
+    detail: c.thresholdReviewedAt
+      ? `The client-attested inbound threshold was last reviewed ${c.thresholdReviewedAt.toISOString().slice(0, 10)} (more than ${months} months ago).`
+      : "The client-attested inbound threshold has no recorded review date.",
+    workItemSeed: { kind: "internal_task" as const, team: "Team 3", taskCode: "CHK-05", clientId: c.id },
+  }));
+}

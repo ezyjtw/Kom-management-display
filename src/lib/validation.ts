@@ -777,6 +777,9 @@ const clientFields = {
   jurisdiction: z.enum(["", "UK", "JE", "AE", "EU"]).default(""),
   isActive: z.boolean().default(true),
   channels: z.array(clientChannelSchema).max(100).default([]),
+  /** Spec §12 CHK-05: client-attested inbound threshold and its last review (CF-31). */
+  inboundThresholdUsd: z.number().positive().nullable().optional(),
+  thresholdReviewedAt: z.string().datetime({ offset: true }).nullable().optional().transform((v) => (v ? new Date(v) : v)),
 };
 
 export const createClientSchema = z.object(clientFields);

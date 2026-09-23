@@ -155,6 +155,19 @@ describe("automated data pulls", () => {
     expect(r!.exceptions.map((e) => e.summary)).toEqual(["ADA: staked balance exceeds total (position check)"]);
   });
 
+  it("CHK-04 counts unscreenable (CF-04) and staking-excluded (CF-01) transactions separately", async () => {
+    const entry = (id: string, data: Record<string, unknown>) => add("screeningEntry", { transactionId: id, asset: "ETH", amount: 1, txHash: "0xabc", screeningStatus: "completed", analyticsAlertId: "", isKnownException: false, exceptionReason: "", createdAt: mins(WED, -60), ...data });
+    await entry("t1", {});
+    await entry("t2", { analyticsAlertId: "ca-1" });
+    await entry("t3", { amount: 0 });
+    await entry("t4", { txHash: "" });
+    await entry("t5", { isKnownException: true, exceptionReason: "Staking reward, excluded" });
+    await entry("t6", { screeningStatus: "processing" });
+    const it = await item("CHK-04");
+    const r = await collectForItem(it.id as string, WED);
+    expect(r).toMatchObject({ recordCount: 2, fields: { alertsCount: 1, unscreenableCount: 2, stakingExcludedCount: 1 }, notes: ["1 transaction(s) not yet screened."] });
+  });
+
   it("reports the pull as unavailable (not a pass) when the source has never been polled", async () => {
     const it = await item("CHK-01");
     const r = await collectForItem(it.id as string, WED);

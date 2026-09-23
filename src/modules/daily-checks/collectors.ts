@@ -210,6 +210,29 @@ export const COLLECTORS: Record<string, Collector> = {
     };
   },
 
+  /**
+   * CHK-04: screening in the last day from the Screening module (the Chainalysis
+   * import replaces this when its template exists). Zero-value or no-hash
+   * transactions cannot be screened (CF-04) and staking is excluded (CF-01):
+   * both are counted separately, never as screened.
+   */
+  async "CHK-04"({ now }) {
+    const rows = await prisma.screeningEntry.findMany({
+      where: { createdAt: { gte: new Date(now.getTime() - 86_400_000) } },
+      select: { amount: true, txHash: true, screeningStatus: true, analyticsAlertId: true, isKnownException: true, exceptionReason: true },
+    });
+    // TODO(CONFIRM-STAKING-EXCLUSION): how staking exclusions are marked; known exceptions with a staking reason for now.
+    const staking = rows.filter((r) => r.isKnownException && /stak/i.test(r.exceptionReason));
+    const unscreenable = rows.filter((r) => !staking.includes(r) && (r.amount === 0 || !r.txHash));
+    const screened = rows.filter((r) => !staking.includes(r) && !unscreenable.includes(r) && r.screeningStatus === "completed");
+    return {
+      available: true, recordCount: screened.length, dataAsOf: now.toISOString(), source: "Screening module",
+      fields: { alertsCount: rows.filter((r) => r.analyticsAlertId).length, unscreenableCount: unscreenable.length, stakingExcludedCount: staking.length },
+      exceptions: [], suppressed: [],
+      notes: [`${rows.length - screened.length - unscreenable.length - staking.length} transaction(s) not yet screened.`],
+    };
+  },
+
   /** CHK-09: travel rule cases in scope today (the reconciliation import replaces this when its template exists). */
   async "CHK-09"({ now }) {
     const cases = await prisma.travelRuleCase.findMany({ where: { createdAt: { gte: new Date(now.getTime() - 86_400_000) } }, select: { matchStatus: true } });

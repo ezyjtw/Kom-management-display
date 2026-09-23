@@ -1585,6 +1585,10 @@ model Client {
   jsmOrganizationId String?  @unique // JSM organisation
   jurisdiction      String   @default("") // UK | JE | AE | EU (entity servicing)
   isActive          Boolean  @default(true)
+  /// Client-attested inbound reporting threshold (spec §12 CHK-05).
+  inboundThresholdUsd Float?
+  /// When the threshold was last reviewed (CF-31); ALR-CLI-01 when older than 12 months (CONFIRM).
+  thresholdReviewedAt DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

@@ -71,6 +71,12 @@ export const SETTINGS = {
   "mtd.autoCloseRiskScore": { schema: z.string().trim().max(40), default: "", label: "Risk score for the automatic daily MTD close" },
   /** CHK-06: Jira project for "possible false positive" tickets to Tech (TODO(CONFIRM-TECH-PROJECT)). Empty = unticketed and reported. */
   "scamDust.techProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "Tech project for scam/dust false positives" },
+  /** Spec §12 CF-22: expected import filename per template (regex with a named group `date`). Missing = uploads refused (CONFIRM-IMPORT-FILENAMES). */
+  "imports.filenamePatterns": {
+    schema: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.string().min(3).max(300).refine((v) => { try { return new RegExp(v).source.includes("?<date>"); } catch { return false; } }, "Must be a valid regex with a (?<date>...) group")),
+    default: {} as Record<string, string>,
+    label: "Import filename patterns",
+  },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;
