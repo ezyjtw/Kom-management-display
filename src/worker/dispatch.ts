@@ -182,6 +182,21 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return checkOverdueIaiDrafts();
   },
 
+  async evaluate_alerts() {
+    const { runAlertEngine } = await import("@/modules/alerting/engine");
+    return runAlertEngine();
+  },
+
+  async alert_digest() {
+    const { runAlertDigest } = await import("@/modules/alerting/routing");
+    return runAlertDigest();
+  },
+
+  async poll_risk_signals() {
+    const { pollRiskSignals } = await import("@/modules/risk/signal-source");
+    return pollRiskSignals();
+  },
+
   async score_vendor_reliability() {
     const { computeAllVendorScores } = await import("@/lib/vendor-reliability");
     const now = new Date();

@@ -8,10 +8,13 @@ import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateAlertRuleSchema } from "@/lib/validation";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { missingConfirmParams } from "@/modules/alerting/catalogue";
 
 /**
  * PATCH /api/admin/alert-rules/:code — tune a rule without a deploy (admin only).
- * Bumps the version; every change is audit-logged with before and after.
+ * `params` is merged into the stored params. Enabling a rule whose CONFIRM
+ * placeholders are unset returns 422 listing them. Bumps the version; every
+ * change is audit-logged with before and after.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const auth = await requireAuth();
@@ -30,11 +33,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const before = await prisma.alertRule.findUnique({ where: { code } });
     if (!before) return apiNotFoundError("Alert rule");
 
+    // Spec §11.2/§11.5: CONFIRM placeholders block enabling.
+    const nextParams = ruleParams ? { ...(before.params as Record<string, unknown>), ...ruleParams } : before.params;
+    const willBeEnabled = rest.enabled ?? before.enabled;
+    const missing = missingConfirmParams(code, nextParams);
+    if (willBeEnabled && missing.length) {
+      return NextResponse.json(
+        { success: false, error: `${code} cannot be enabled until its CONFIRM parameters are set: ${missing.join(", ")}.`, missing },
+        { status: 422 },
+      );
+    }
+
     const rule = await prisma.alertRule.update({
       where: { code },
       data: {
         ...rest,
-        ...(ruleParams ? { params: ruleParams as Prisma.InputJsonValue } : {}),
+        ...(ruleParams ? { params: nextParams as Prisma.InputJsonValue } : {}),
         ...(route ? { route: route as Prisma.InputJsonValue } : {}),
         version: { increment: 1 },
       },

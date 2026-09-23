@@ -791,6 +791,14 @@ model Alert {
   escalatedAt    DateTime?
   autoResolvedAt DateTime?
 
+  // Alerting engine state (spec §11.1, §11.3)
+  detail         String    @default("")
+  exposureUsd    Float?
+  cleanRuns      Int       @default(0) // consecutive evaluations without this candidate; 2 = auto-resolve
+  lastNotifiedAt DateTime? // quiet rule: no re-notify within 15 minutes
+  escalationStep Int       @default(0) // next index in the rule's escalation ladder
+  digestedAt     DateTime? // included in a daily digest
+
   workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
 
   @@index([threadId])
@@ -1721,6 +1729,7 @@ model AlertRule {
   params    Json // thresholds, windows, channels
   route     Json // { businessHours: [...targets], outOfHours: [...targets] }
   version   Int      @default(1)
+  lastEvaluatedAt DateTime? // engine cadence (spec §11.1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1874,4 +1883,37 @@ model AppSetting {
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// OES settlement windows (spec §11.2). `cron` is read in `referenceTz`.
+/// TODO(CONFIRM-OES-WINDOWS) / TODO(CONFIRM-DERIBIT): seed values await confirmation.
+model OesWindow {
+  id           String   @id @default(cuid())
+  exchange     String
+  cron         String // e.g. "15 9 * * *"
+  durationMins Int
+  referenceTz  String   @default("UTC")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([exchange, cron])
+}
+
+/// Per-asset "stuck" threshold for ALR-TX-02 (seed 120 minutes; CONFIRM).
+model AssetThreshold {
+  asset     String   @id // "*" is the default for assets without a row
+  stuckMins Int      @default(120)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// GX risk rule number -> tier (spec §11.2). Seeded with every rule at "high",
+/// the current approved flow (TODO(CONFIRM-RISKCO)).
+model RiskRuleTier {
+  rule      Int      @id
+  tier      String   @default("high") // low | medium | high | requires_escalation
+  note      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

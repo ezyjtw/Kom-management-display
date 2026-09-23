@@ -146,7 +146,10 @@ async function alertTicketProject(route: unknown): Promise<string | null> {
  * firing creates them; repeat firings add a comment to the same ticket.
  * Never throws: alerting must not fail because Jira is unavailable.
  */
-export async function ensureAlertTicket(alertId: string, opts: { repeat: boolean }): Promise<void> {
+export async function ensureAlertTicket(
+  alertId: string,
+  opts: { repeat: boolean; seed?: { kind?: WorkItemKind; team?: string; taskCode?: string; clientId?: string | null; priority?: string } },
+): Promise<void> {
   try {
     const alert = await prisma.alert.findUnique({ where: { id: alertId }, include: { workItem: true } });
     if (!alert) return;
@@ -164,7 +167,7 @@ export async function ensureAlertTicket(alertId: string, opts: { repeat: boolean
       ? {
           projectKey,
           summary: `[${alert.ruleCode}] ${alert.message}`,
-          description: `Raised automatically by KOMmand Centre.\nRule: ${alert.ruleCode}\nSeverity: ${alert.severity}\nFirst fired: ${alert.firstFiredAt.toISOString()}\n\n${alert.message}`,
+          description: `Raised automatically by KOMmand Centre.\nRule: ${alert.ruleCode}\nSeverity: ${alert.severity}\nFirst fired: ${alert.firstFiredAt.toISOString()}\n\n${alert.message}${alert.detail ? `\n\n${alert.detail}` : ""}`,
           labels: [`alert-${alert.ruleCode.toLowerCase()}`],
         }
       : null;
@@ -175,13 +178,15 @@ export async function ensureAlertTicket(alertId: string, opts: { repeat: boolean
     }
 
     const item = await ensureTicketedWorkItem({
-      kind: "alert",
+      kind: opts.seed?.kind ?? "alert",
       title: `[${alert.ruleCode}] ${alert.message}`,
-      taskCode: alert.ruleCode,
+      team: opts.seed?.team,
+      taskCode: opts.seed?.taskCode ?? alert.ruleCode,
       sourceSystem: "alert",
       sourceId: `${alert.ruleCode}:${alert.dedupeKey}:${alert.id}`,
       clockStartedAt: alert.firstFiredAt,
-      priority: alert.priority,
+      priority: opts.seed?.priority ?? alert.priority,
+      clientId: opts.seed?.clientId ?? null,
       metadata: { alertId: alert.id, ruleCode: alert.ruleCode, dedupeKey: alert.dedupeKey },
       ticket,
     });

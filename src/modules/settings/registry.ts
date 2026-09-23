@@ -49,6 +49,16 @@ export const SETTINGS = {
   "dailyChecks.defaultFreshnessMinutes": { schema: z.number().int().min(1).max(7 * 24 * 60), default: 24 * 60, label: "Default evidence freshness (minutes)" },
   /** Ticket project for alerts whose rule route names none (spec §10.1). Empty = such alerts stay unticketed and appear in the daily report. */
   "alerts.defaultTicketProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "Default ticket project for alerts" },
+  /** Business hours for "business_uk" routing and SLA clocks (TODO(CONFIRM-BUSINESS-HOURS)). */
+  "alerting.businessHours": {
+    schema: z.object({ start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).refine((v) => v.start < v.end, "start must be before end"),
+    default: { start: "08:00", end: "18:00" },
+    label: "Business hours (Europe/London)",
+  },
+  /** Spec §11.3: out of hours, a critical alert not acknowledged within this many minutes goes to the on-call secondary and the lead. */
+  "alerting.oohAckMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Out-of-hours acknowledgement window (minutes, critical)" },
+  /** Spec §11.3 quiet rule: the same alert never re-notifies within this window. */
+  "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

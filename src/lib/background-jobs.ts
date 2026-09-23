@@ -45,7 +45,10 @@ export type JobType =
   | "graph_teams_sync"
   | "report_unticketed"
   | "reconcile_tickets"
-  | "iai_overdue";
+  | "iai_overdue"
+  | "evaluate_alerts"
+  | "alert_digest"
+  | "poll_risk_signals";
 
 /** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
 export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
@@ -96,6 +99,9 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
     { type: "reconcile_tickets", cronExpression: "15 * * * *" },   // spec §10.3: hourly
     { type: "iai_overdue", cronExpression: "5 * * * *" },          // spec §10.4
+    { type: "evaluate_alerts", cronExpression: "*/1 * * * *" },    // spec §11.1: every 60 s; rules may declare their own cadence
+    { type: "alert_digest", cronExpression: "TZ=Europe/London 0 8 * * *" }, // spec §11.3: daily digest of medium config rules
+    { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
   ];
 
   await prisma.backgroundJob.deleteMany({

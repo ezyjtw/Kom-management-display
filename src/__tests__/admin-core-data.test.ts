@@ -167,6 +167,29 @@ describe("alert rules", () => {
     expect(details.after.enabled).toBe(true);
   });
 
+  it("refuses (422) to enable a rule with CONFIRM placeholders and lists the missing params (spec §11.5)", async () => {
+    state.user = user("admin");
+    prismaMock.alertRule.findUnique.mockResolvedValue({ code: "ALR-RSK-08", enabled: false, severity: "high", params: {}, route: {} });
+    prismaMock.alertRule.update.mockClear();
+
+    let res = await ruleRoute.PATCH(req("PATCH", { enabled: true }), ctx({ code: "ALR-RSK-08" }));
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.missing).toEqual(["pendingMins (CONFIRM-RSK-UNSCORED-MINS)", "excludedWorkspaces (CONFIRM-RSK-UNSCORED-WORKSPACES)"]);
+    expect(body.error).toMatch(/cannot be enabled until its CONFIRM parameters are set/);
+    expect(prismaMock.alertRule.update).not.toHaveBeenCalled();
+
+    // Setting only one placeholder is still refused.
+    res = await ruleRoute.PATCH(req("PATCH", { enabled: true, params: { pendingMins: 30 } }), ctx({ code: "ALR-RSK-08" }));
+    expect((await res.json()).missing).toEqual(["excludedWorkspaces (CONFIRM-RSK-UNSCORED-WORKSPACES)"]);
+
+    // Params may be set while the rule stays disabled; enabling works once all are set.
+    prismaMock.alertRule.update.mockResolvedValue({ code: "ALR-RSK-08", enabled: true, severity: "high", params: {}, route: {}, version: 2 });
+    res = await ruleRoute.PATCH(req("PATCH", { enabled: true, params: { pendingMins: 30, excludedWorkspaces: ["cold-1"] } }), ctx({ code: "ALR-RSK-08" }));
+    expect(res.status).toBe(200);
+    expect(prismaMock.alertRule.update.mock.calls[0][0].data.params).toEqual({ pendingMins: 30, excludedWorkspaces: ["cold-1"] });
+  });
+
   it("legacy alerts get their type as rule code and a unique dedupe key", () => {
     const a = legacyAlertKeys("ttfa_breach");
     const b = legacyAlertKeys("ttfa_breach");
