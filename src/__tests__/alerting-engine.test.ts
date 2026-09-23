@@ -22,11 +22,12 @@ const envVars = vi.hoisted(() => ({
 } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
 vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
-vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => false) }));
+const flagState = vi.hoisted(() => ({ fab: true }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => k === "module.fab" && flagState.fab) }));
 
 const slack = vi.hoisted(() => ({
   posts: [] as Array<{ channel: string; text: string }>,
-  users: { "lead@k.com": "U-LEAD", "primary@k.com": "U-PRIMARY", "backup@k.com": "U-BACKUP", "admin@k.com": "U-ADMIN" } as Record<string, string>,
+  users: { "lead@k.com": "U-LEAD", "settlements-lead@k.com": "U-LEAD", "primary@k.com": "U-PRIMARY", "backup@k.com": "U-BACKUP", "admin@k.com": "U-ADMIN" } as Record<string, string>,
 }));
 vi.mock("@/lib/integrations/slack", () => ({
   getSlackClient: () => ({
@@ -100,6 +101,7 @@ async function baseSeed() {
   await add("appSetting", { key: "alerts.defaultTicketProject", value: "TOPS" });
   await add("slackChannel", { channelId: "C-ALERTS", channelName: "alerts", channelType: "internal", purpose: "alerts_out", isActive: true });
   const lead = await add("employee", { name: "Lead", email: "lead@k.com", role: "Lead", team: "TransactionOperations", active: true });
+  await add("employee", { name: "Settlements lead", email: "settlements-lead@k.com", role: "Lead", team: "Settlements", active: true });
   const primary = await add("employee", { name: "Primary", email: "primary@k.com", role: "Analyst", team: "TransactionOperations", active: true });
   const backup = await add("employee", { name: "Backup", email: "backup@k.com", role: "Analyst", team: "TransactionOperations", active: true });
   void lead;
@@ -151,7 +153,64 @@ const oes01Alert = async (firedAt: Date, state = "owned") => {
   await add("alert", { id: "al-oes", type: "ALR-OES-01", ruleCode: "ALR-OES-01", dedupeKey: "set-1", message: "Settlement failed", severity: "critical", workItemId: "wi-oes", firstFiredAt: firedAt, lastFiredAt: firedAt });
 };
 
+const fabInstruction = (data: Row) => add("fabInstruction", {
+  messageType: "STL_INS", reference: "F-1", instructionType: "OPEN", direction: "RECEIVE", asset: "USDC", amount: 1000,
+  valueDate: "2026-09-23", receivedAt: mins(BUSINESS, -45), ackStatus: "none", correctedByRef: null, notes: "", ...data,
+});
+const fabLog = (data: Row) => add("fabSettlementLog", { id: "log-7", reference: "F-1", status: "RECEIVED", kytStatus: "none", occurredAt: mins(BUSINESS, -10), notes: "", ...data });
+
 const SCENARIOS: Scenario[] = [
+  {
+    code: "ALR-FAB-01",
+    trigger: async () => { await fabInstruction({ sourceMessageId: "<m1@fab>" }); return "<m1@fab>"; },
+    below: async () => { await fabInstruction({ ackStatus: "ACK" }); },
+    clear: async () => update("fabInstruction", { reference: "F-1" }, { ackStatus: "ACK" }),
+  },
+  {
+    code: "ALR-FAB-02",
+    params: { ackMins: 30 },
+    trigger: async (now) => { await fabInstruction({ receivedAt: mins(now, -45) }); return "F-1"; },
+    below: async (now) => { await fabInstruction({ receivedAt: mins(now, -10) }); },
+    clear: async () => update("fabInstruction", { reference: "F-1" }, { ackStatus: "NACK" }),
+  },
+  {
+    code: "ALR-FAB-03",
+    trigger: async () => { await fabInstruction({ receivedAt: new Date("2026-09-22T15:30:00Z") }); return "F-1"; }, // 16:30 London
+    below: async () => { await fabInstruction({ receivedAt: new Date("2026-09-22T13:00:00Z") }); }, // 14:00 London
+    clear: async () => update("fabInstruction", { reference: "F-1" }, { receivedAt: new Date("2026-09-22T13:00:00Z") }),
+  },
+  {
+    code: "ALR-FAB-04",
+    trigger: async () => { await fabInstruction({ ackStatus: "NACK" }); return "F-1"; },
+    below: async () => { await fabInstruction({ ackStatus: "ACK" }); },
+    clear: async () => update("fabInstruction", { reference: "F-1" }, { correctedByRef: "F-2" }),
+  },
+  {
+    code: "ALR-FAB-05",
+    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "FAILED" }); return "F-1"; },
+    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "COMPLETED" }); },
+    clear: async () => update("fabSettlementLog", { id: "log-7" }, { status: "COMPLETED" }),
+  },
+  {
+    code: "ALR-FAB-06",
+    params: { valueDateCutoffLocal: "09:30" }, // BUSINESS is 10:00 London
+    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); return "F-1"; },
+    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "RECEIVED" }); },
+    clear: async () => { await fabLog({ status: "RECEIVED" }); },
+  },
+  {
+    code: "ALR-FAB-07",
+    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ kytStatus: "fail" }); return "log-7"; },
+    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ kytStatus: "none" }); },
+    clear: async () => update("fabSettlementLog", { id: "log-7" }, { kytStatus: "cleared" }),
+  },
+  {
+    code: "ALR-FAB-08",
+    params: { thresholds: { ETH: 1 } },
+    trigger: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 0.5, recordedAt: mins(now, -5) }); return "fee-1"; },
+    below: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 2, recordedAt: mins(now, -5) }); },
+    clear: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 3, recordedAt: mins(now, 1) }); },
+  },
   {
     code: "ALR-OES-01",
     trigger: async (now) => { await komainu("settlement", "set-1", { status: "FAILED", mappedStatus: "failed", occurredAt: mins(now, -30), fields: { exchange: "okx" } }); return "set-1"; },
@@ -339,6 +398,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const oes01 = SCENARIOS.find((x) => x.code === "ALR-OES-01")!;
+
 describe("catalogue", () => {
   it("covers every evaluated rule with a scenario", () => {
     const evaluated = Object.values(RULE_CATALOGUE).filter((d) => d.evaluate).map((d) => d.code).sort();
@@ -357,7 +418,7 @@ describe("catalogue", () => {
   });
 
   it("does not evaluate disabled rules", async () => {
-    await SCENARIOS[0].trigger(BUSINESS);
+    await oes01.trigger(BUSINESS);
     const out = await run(BUSINESS);
     expect(out.evaluated).toEqual([]);
     expect(await p().alert.count()).toBe(0);
@@ -464,7 +525,7 @@ describe("routing and escalation", () => {
 
   it("walks the escalation ladder for unacknowledged alerts", async () => {
     await enable("ALR-OES-01");
-    await SCENARIOS[0].trigger(BUSINESS);
+    await oes01.trigger(BUSINESS);
     await run(BUSINESS);
     emails.length = 0;
     await runEscalations(mins(BUSINESS, 10));
@@ -479,7 +540,7 @@ describe("routing and escalation", () => {
 
   it("out of hours, a critical alert not acknowledged in 15 minutes goes to the secondary and the lead", async () => {
     await enable("ALR-OES-01", { escalation: [] });
-    await SCENARIOS[0].trigger(OUT_OF_HOURS);
+    await oes01.trigger(OUT_OF_HOURS);
     await run(OUT_OF_HOURS);
     emails.length = 0;
     await runEscalations(mins(OUT_OF_HOURS, 14));
@@ -492,7 +553,7 @@ describe("routing and escalation", () => {
 
   it("does not escalate acknowledged alerts", async () => {
     await enable("ALR-OES-01");
-    await SCENARIOS[0].trigger(BUSINESS);
+    await oes01.trigger(BUSINESS);
     await run(BUSINESS);
     await update("alert", { ruleCode: "ALR-OES-01" }, { status: "acknowledged" });
     emails.length = 0;
@@ -512,7 +573,7 @@ describe("routing and escalation", () => {
 
   it("does not auto-resolve when an evaluator fails", async () => {
     await enable("ALR-OES-01");
-    await SCENARIOS[0].trigger(BUSINESS);
+    await oes01.trigger(BUSINESS);
     await run(BUSINESS);
     const spy = vi.spyOn(RULE_CATALOGUE["ALR-OES-01"], "evaluate").mockRejectedValue(new Error("db down"));
     await run(mins(BUSINESS, 1));
@@ -525,6 +586,20 @@ describe("routing and escalation", () => {
     await update("alertRule", { code: "ALR-RSK-01" }, { enabled: true });
     const out = await run(BUSINESS);
     expect(out.skipped).toEqual([{ code: "ALR-RSK-01", reason: "missing pendingMins (CONFIRM-RSK-MED-MINS)" }]);
+  });
+});
+
+describe("FAB module flag", () => {
+  it("evaluates no FAB rule while module.fab is off", async () => {
+    flagState.fab = false;
+    try {
+      await enable("ALR-FAB-01");
+      await fabInstruction({});
+      await run(BUSINESS);
+      expect(await openAlerts("ALR-FAB-01")).toHaveLength(0);
+    } finally {
+      flagState.fab = true;
+    }
   });
 });
 

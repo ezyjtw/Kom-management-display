@@ -216,31 +216,45 @@ export default function RcaPage() {
   async function disputeClosure(incidentId: string) {
     const reason = prompt("Why should this ticket not be closed?");
     if (!reason) return;
-    const jiraComment = prompt("Comment to post on the Jira ticket (leave blank to skip):");
+    const jiraComment = prompt("Draft a comment for the provider (optional). KOMmand Centre does not send it: copy it and send it yourself.");
     if (jiraComment === null) return;
     try {
       const res = await fetch("/api/rca/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ incidentId, action: "dispute", reason, jiraComment: jiraComment || "" }),
+        body: JSON.stringify({ incidentId, action: "dispute", reason, ...(jiraComment ? { draftComment: jiraComment } : {}) }),
       });
       if (!res.ok) { setError(`Failed to dispute closure (${res.status})`); return; }
+      if (jiraComment) await handOverDraft(incidentId, jiraComment);
     } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
   }
 
   async function requestReopen(incidentId: string) {
-    const jiraComment = prompt("Message to provider requesting reopen:");
+    const jiraComment = prompt("Draft the message asking the provider to reopen. KOMmand Centre does not send it: copy it and send it yourself.");
     if (!jiraComment) return;
     try {
       const res = await fetch("/api/rca/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ incidentId, action: "reopen_request", reason: jiraComment, jiraComment }),
+        body: JSON.stringify({ incidentId, action: "reopen_request", reason: "Asked the provider to reopen", draftComment: jiraComment }),
       });
       if (!res.ok) { setError(`Failed to request reopen (${res.status})`); return; }
+      await handOverDraft(incidentId, jiraComment);
     } catch (err) { setError(err instanceof Error ? err.message : "Network error"); return; }
     fetchData();
+  }
+
+  /** Drafts are never sent by KOMmand Centre (spec §12 CHK-12): copy, let the person send it, then record that it was sent. */
+  async function handOverDraft(incidentId: string, draft: string) {
+    await navigator.clipboard?.writeText(draft).catch(() => undefined);
+    if (confirm("The draft is copied. Send it to the provider yourself, then press OK to record that it was sent (Cancel if not sent yet).")) {
+      await fetch("/api/rca/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId, action: "comment_sent" }),
+      });
+    }
   }
 
   async function resolveDispute(incidentId: string) {

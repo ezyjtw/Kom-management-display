@@ -61,6 +61,12 @@ export const SETTINGS = {
   "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
   /** Spec §12 CHK-09K: named users (user ids) allowed kps:view, in addition to admins. */
   "kps.viewerUserIds": { schema: z.array(z.string().min(1).max(100)).max(50), default: [] as string[], label: "KPS viewers (user ids)" },
+  /** Incident severities that open an IAI draft (spec §12 CHK-11, TODO(CONFIRM-IAI-INCIDENT-CRITERIA)). Empty = none. */
+  "incidents.iaiSeverities": { schema: z.array(z.enum(["low", "medium", "high", "critical"])).max(4), default: [] as string[], label: "Incident severities that open an IAI draft" },
+  /** FAB instruction tickets (CONFIRM-FAB-PROJECT). Empty = instructions stay unticketed and appear in the daily report. */
+  "fab.ticketProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "FAB instruction ticket project" },
+  /** Exposure bands for ALR-OES-06 client comms (CF-39). Empty = free text until the bands are agreed (CONFIRM-EXPOSURE-BANDS). */
+  "oes.exposureBands": { schema: z.array(z.string().trim().min(1).max(60)).max(10), default: [] as string[], label: "OES client exposure bands" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

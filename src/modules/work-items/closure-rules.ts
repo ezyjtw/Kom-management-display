@@ -33,7 +33,7 @@ export class ClosureValidationError extends Error {
 }
 
 /** Returns the list of problems (empty when the write-up is complete). */
-export async function closureIssues(item: Pick<WorkItem, "id" | "kind">, basis: ClosureBasis | undefined): Promise<string[]> {
+export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"] }, basis: ClosureBasis | undefined): Promise<string[]> {
   if (!basis) return ["A closure write-up (resolution note, root cause and risk score) is required."];
   if ("nonActionable" in basis) {
     return item.kind === "client_request" && basis.nonActionable.reason
@@ -59,6 +59,12 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind">, basis: 
     issues.push(`Risk score must be one of: ${scale.join(", ")}.`);
   }
 
+  // Spec §12 CHK-10: after ALR-OES-06 the client exposure band must be chosen (CF-39).
+  if (item.kind === "oes_settlement" && (await prisma.alert.count({ where: { workItemId: item.id, ruleCode: "ALR-OES-06" } })) > 0) {
+    const meta = (item.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.exposureBand !== "string" || !meta.exposureBand) issues.push("Choose the client exposure band (ALR-OES-06) before closing.");
+  }
+
   if (item.kind === "client_request") {
     if (timeLogBucketMins !== undefined) {
       if (!(TIME_LOG_BUCKETS as readonly number[]).includes(timeLogBucketMins)) {
@@ -71,7 +77,7 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind">, basis: 
   return issues;
 }
 
-export async function assertClosable(item: Pick<WorkItem, "id" | "kind">, basis: ClosureBasis | undefined): Promise<void> {
+export async function assertClosable(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"] }, basis: ClosureBasis | undefined): Promise<void> {
   const issues = await closureIssues(item, basis);
   if (issues.length) throw new ClosureValidationError(issues);
 }

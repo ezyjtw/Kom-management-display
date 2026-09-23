@@ -4,8 +4,8 @@
  * them one by one. A `null` param is a CONFIRM placeholder that blocks enabling.
  *
  * Rules without `evaluate` are raised by events or jobs through raiseAlert
- * (status map, reports, reconciliation, IAI) or, for FAB, arrive with the
- * TASK-FAB register and mailbox parser (Phase 7, TODO(CONFIRM-FAB-TEMPLATES)).
+ * (status map, reports, reconciliation, IAI). FAB rules read the TASK-FAB
+ * register (spec §12) and evaluate nothing while module.fab is off.
  */
 
 import type { AlertSeverity } from "@prisma/client";
@@ -13,6 +13,7 @@ import type { EscalationStep, RuleDefinition } from "@/modules/alerting/types";
 import * as oes from "@/modules/alerting/evaluators/oes";
 import * as risk from "@/modules/alerting/evaluators/risk";
 import * as ops from "@/modules/alerting/evaluators/operations";
+import * as fab from "@/modules/alerting/evaluators/fab";
 import { onSlaRaised, slaEvaluator, SLA_RULES } from "@/modules/alerting/evaluators/sla";
 
 export const TEAMS = {
@@ -33,23 +34,23 @@ export function defaultEscalation(severity: AlertSeverity): EscalationStep[] {
 type Def = Omit<RuleDefinition, "params"> & { params?: Record<string, unknown> };
 
 const defs: Def[] = [
-  // ── FAB (MVP0, email-driven; process page is draft — ship disabled) ──
-  { code: "ALR-FAB-01", name: "FAB instruction received", ownerTeam: TEAMS.settlements, severity: "medium", clock: "immediate", ticketProject: undefined, autoResolve: true,
-    params: { parser: null }, confirm: { parser: "CONFIRM-FAB-TEMPLATES" } },
+  // ── FAB (MVP0; process page is draft — ship disabled; evaluated only while module.fab is on) ──
+  { code: "ALR-FAB-01", name: "FAB instruction received", ownerTeam: TEAMS.settlements, severity: "medium", clock: "immediate", autoResolve: true,
+    params: {}, evaluate: fab.evaluateInstructionReceived },
   { code: "ALR-FAB-02", name: "FAB instruction not acknowledged", ownerTeam: TEAMS.settlements, severity: "high", clock: "CONFIRM-FAB-ACK-MINS", autoResolve: true,
-    params: { ackMins: null }, confirm: { ackMins: "CONFIRM-FAB-ACK-MINS" } },
+    params: { ackMins: null }, confirm: { ackMins: "CONFIRM-FAB-ACK-MINS" }, evaluate: fab.evaluateNotAcknowledged },
   { code: "ALR-FAB-03", name: "FAB instruction after cut-off", ownerTeam: TEAMS.settlements, severity: "medium", clock: "immediate", autoResolve: false,
-    params: { cutoffLocal: "15:00", parser: null }, confirm: { parser: "CONFIRM-FAB-TEMPLATES" } },
+    params: { cutoffLocal: "15:00" }, evaluate: fab.evaluateAfterCutoff, onRaised: fab.onAfterCutoff },
   { code: "ALR-FAB-04", name: "FAB NACK sent", ownerTeam: TEAMS.settlements, severity: "medium", clock: "immediate", autoResolve: true,
-    params: { parser: null }, confirm: { parser: "CONFIRM-FAB-TEMPLATES" } },
+    params: {}, evaluate: fab.evaluateNackSent },
   { code: "ALR-FAB-05", name: "FAB settlement failed", ownerTeam: TEAMS.settlements, severity: "critical", clock: "immediate", autoResolve: false,
-    params: { parser: null }, confirm: { parser: "CONFIRM-FAB-TEMPLATES" } },
+    params: {}, evaluate: fab.evaluateSettlementFailed },
   { code: "ALR-FAB-06", name: "FAB deposit not received by value date", ownerTeam: TEAMS.settlements, severity: "high", clock: "CONFIRM-FAB-VALUE-DATE-CUTOFF", autoResolve: true,
-    params: { valueDateCutoffLocal: null }, confirm: { valueDateCutoffLocal: "CONFIRM-FAB-VALUE-DATE-CUTOFF" } },
+    params: { valueDateCutoffLocal: null }, confirm: { valueDateCutoffLocal: "CONFIRM-FAB-VALUE-DATE-CUTOFF" }, evaluate: fab.evaluateDepositNotReceived },
   { code: "ALR-FAB-07", name: "FAB inbound KYT lock", ownerTeam: TEAMS.settlements, severity: "critical", clock: "immediate", autoResolve: true,
-    params: { source: null }, confirm: { source: "CONFIRM-FAB-TEMPLATES" } },
+    params: {}, evaluate: fab.evaluateInboundKytLock },
   { code: "ALR-FAB-08", name: "FAB fee buffer low", ownerTeam: TEAMS.settlements, severity: "high", clock: "CONFIRM-FEE-THRESHOLDS", autoResolve: true,
-    params: { thresholds: null, alertFormat: null }, confirm: { thresholds: "CONFIRM-FEE-THRESHOLDS", alertFormat: "CONFIRM-FEE-ALERT-FORMAT" } },
+    params: { thresholds: null }, confirm: { thresholds: "CONFIRM-FEE-THRESHOLDS" }, evaluate: fab.evaluateFeeBufferLow },
 
   // ── OES and collateral settlement ──
   { code: "ALR-OES-01", name: "Settlement failed", ownerTeam: TEAMS.txOps, severity: "critical", clock: "immediate", ticketProject: "TOPS", autoResolve: true,

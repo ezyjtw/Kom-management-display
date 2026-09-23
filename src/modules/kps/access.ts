@@ -5,6 +5,8 @@
 import type { AuthUser } from "@/lib/auth-user";
 import { getSetting } from "@/modules/settings/settings";
 
+export const CF03_NOTICE = "Findings register CF-03: KPS VTHO transactions are excluded from screening without a recorded rationale. The screening logic is unchanged.";
+
 export async function canViewKps(auth: Pick<AuthUser, "id" | "role">): Promise<boolean> {
   if (auth.role === "admin") return true;
   return (await getSetting("kps.viewerUserIds")).includes(auth.id);

@@ -6,6 +6,10 @@
  * premature closures by providers.
  */
 import { prisma } from "@/lib/prisma";
+import { ensureTicketedWorkItem } from "@/modules/work-items/tickets";
+import { commentInternal } from "@/modules/work-items/ticket-writeback";
+import { createIaiDraft } from "@/modules/iai/drafts";
+import { getSetting } from "@/modules/settings/settings";
 import { logger } from "@/lib/logger";
 import type { RcaStatus, RcaFollowUpItem } from "@/types";
 
@@ -221,6 +225,10 @@ export const incidentService = {
       },
     });
 
+    await ticketIncident(incident.id).catch((error) =>
+      logger.warn("Incident ticket could not be created", { id: incident.id, error: error instanceof Error ? error.message : String(error) }),
+    );
+
     await writeAuditLog("incident_created", "incident", incident.id, input.reportedById, {
       title: input.title,
       provider: input.provider,
@@ -304,6 +312,13 @@ export const incidentService = {
     content: string,
     type: IncidentUpdateType = "update",
   ): Promise<void> {
+    // Spec §12 CHK-11: timeline updates post as comments on our Jira ticket first
+    // (write-first: if Jira refuses, the update is not recorded and the error is returned).
+    const incident = await prisma.incident.findUnique({ where: { id: incidentId }, select: { workItemId: true } });
+    if (incident?.workItemId) {
+      const item = await prisma.workItem.findUnique({ where: { id: incident.workItemId }, select: { ticketKey: true } });
+      if (item?.ticketKey) await commentInternal(incident.workItemId, `[Incident ${type}] ${content}`);
+    }
     await prisma.incidentUpdate.create({
       data: { incidentId, authorId, content, type },
     });
@@ -738,6 +753,39 @@ function buildIncidentWhere(filters: IncidentFilters): Record<string, unknown> {
   }
 
   return where;
+}
+
+/** GX platform issues go to GXS, other providers' issues to VSR (spec §12 CHK-11). */
+export function incidentTicketProject(provider: string): "GXS" | "VSR" {
+  return /^gx\b/i.test(provider.trim()) ? "GXS" : "VSR";
+}
+
+/**
+ * Give an incident its GXS/VSR ticket and, when it meets the configured IAI
+ * criteria (incidents.iaiSeverities, TODO(CONFIRM-IAI-INCIDENT-CRITERIA)), an IAI draft.
+ */
+export async function ticketIncident(incidentId: string): Promise<void> {
+  const inc = await prisma.incident.findUnique({ where: { id: incidentId } });
+  if (!inc) return;
+  const item = await ensureTicketedWorkItem({
+    kind: "incident",
+    title: `${inc.provider}: ${inc.title}`,
+    team: "Team 1",
+    taskCode: "CHK-11",
+    sourceSystem: "incident",
+    sourceId: inc.id,
+    clockStartedAt: inc.startedAt,
+    priority: inc.severity === "critical" ? "P1" : "P2",
+    ticket: {
+      projectKey: incidentTicketProject(inc.provider),
+      summary: `[Incident] ${inc.provider}: ${inc.title}`,
+      description: `Production issue raised in KOMmand Centre.\nProvider: ${inc.provider}\nSeverity: ${inc.severity}\n\n${inc.description}\n\nImpact: ${inc.impact}`,
+      labels: ["incident", `provider-${inc.provider.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`],
+    },
+  });
+  if (inc.workItemId !== item.id) await prisma.incident.update({ where: { id: inc.id }, data: { workItemId: item.id } });
+  const severities = await getSetting("incidents.iaiSeverities");
+  if (severities.includes(inc.severity)) await createIaiDraft(item.id, "INCIDENT");
 }
 
 async function writeAuditLog(

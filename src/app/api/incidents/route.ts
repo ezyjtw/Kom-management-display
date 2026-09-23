@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
@@ -177,6 +178,9 @@ export async function PATCH(request: NextRequest) {
     const updated = await incidentService.getIncidentById(id);
     return apiSuccess(updated ?? incident);
   } catch (error) {
+    if (error instanceof TicketWriteError) {
+      return NextResponse.json({ success: false, error: `The timeline update was not saved: ${error.message}` }, { status: 409 });
+    }
     return handleApiError(error, "PATCH /api/incidents");
   }
 }

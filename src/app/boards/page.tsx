@@ -130,6 +130,9 @@ export default function BoardsPage() {
                 )}
               </header>
 
+              {card.code === "CHK-09K" && !card.banners.includes("Restricted: requires kps:view.") && <a href="/kps" className="text-xs text-primary">Open the KPS view</a>}
+              {card.code === "CHK-10" && <a href="/settlements" className="text-xs text-primary">Open settlement monitoring</a>}
+              {card.code === "TASK-FAB" && !card.disabledByFlag && <a href="/fab" className="text-xs text-primary">Open the FAB register</a>}
               {card.banners.map((b) => (
                 <p key={b} className="text-xs text-amber-400 flex items-center gap-1"><AlertTriangle size={12} /> {b}</p>
               ))}

@@ -84,6 +84,11 @@ describe("Unauthenticated requests return 401", () => {
     "/api/staking",
     "/api/settlements",
     "/api/feature-flags",
+    "/api/boards",
+    "/api/kps",
+    "/api/fab",
+    "/api/work-items",
+    "/api/iai-drafts",
   ];
 
   for (const route of criticalRoutes) {

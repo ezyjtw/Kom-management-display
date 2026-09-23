@@ -357,5 +357,13 @@ export const config = {
     "/api/client-comms/:path*",
     "/api/client-preferences/:path*",
     "/client-comms/:path*",
+    "/boards/:path*",
+    "/kps/:path*",
+    "/fab/:path*",
+    "/api/boards/:path*",
+    "/api/kps/:path*",
+    "/api/fab/:path*",
+    "/api/work-items/:path*",
+    "/api/iai-drafts/:path*",
   ],
 };

@@ -77,14 +77,7 @@ export const SENSITIVE_ACTION_REGISTRY: Record<string, SensitiveAction> = {
     auditLevel: "enhanced",
   },
 
-  // Settlement approvals (dual control enforced at route level via maker/checker)
-  "PUT:/api/settlements": {
-    category: "settlement_approval",
-    requiresReauth: false,
-    requiresDualControl: true,
-    maxSessionAgeSeconds: 2 * 60 * 60,
-    auditLevel: "enhanced",
-  },
+  // (PUT:/api/settlements removed in Phase 7: the settlement view is read-only, H1.)
   "PUT:/api/usdc-ramp": {
     category: "settlement_approval",
     requiresReauth: false,

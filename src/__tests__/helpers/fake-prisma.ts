@@ -6,6 +6,8 @@
  * Not a general Prisma emulator.
  */
 
+import { Prisma } from "@prisma/client";
+
 type Row = Record<string, unknown>;
 type Where = Record<string, unknown>;
 
@@ -30,6 +32,14 @@ const COMPOUND: Record<string, Record<string, string[]>> = {
   workItem: { sourceSystem_sourceId: ["sourceSystem", "sourceId"] },
   dailyCheckItem: { definitionCode_periodKey: ["definitionCode", "periodKey"] },
 };
+
+/** Single-field unique constraints besides the primary key. */
+const UNIQUE: Record<string, string[]> = {
+  fabInstruction: ["reference"],
+  employee: ["email"],
+};
+
+const uniqueError = () => new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "fake" });
 
 const RELATIONS: Record<string, Record<string, Relation>> = {
   alert: { workItem: { model: "workItem", kind: "one", localKey: "workItemId", remoteKey: "id" } },
@@ -172,7 +182,11 @@ export function createFakePrisma() {
       create: async (args: { data: Row }) => {
         const row: Row = { ...(DEFAULTS[name]?.() ?? {}), createdAt: new Date(), updatedAt: new Date(), ...args.data };
         if (row[pk] === undefined) row[pk] = cuid();
-        if (table(name).some((r) => r[pk] === row[pk])) throw Object.assign(new Error("Unique constraint"), { code: "P2002" });
+        if (table(name).some((r) => r[pk] === row[pk])) throw uniqueError();
+        for (const f of UNIQUE[name] ?? []) if (row[f] != null && table(name).some((r) => r[f] === row[f])) throw uniqueError();
+        for (const fields of Object.values(COMPOUND[name] ?? {})) {
+          if (table(name).some((r) => fields.every((f) => r[f] != null && eq(r[f], row[f])))) throw uniqueError();
+        }
         table(name).push(row);
         return { ...row };
       },

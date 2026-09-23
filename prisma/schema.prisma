@@ -817,6 +817,7 @@ model Alert {
 
 model Incident {
   id                          String                @id @default(cuid())
+  workItemId                  String? // our GXS/VSR ticket (spec §12 CHK-11); timeline updates post there as comments
   title                       String // e.g. "Fireblocks signing service degraded"
   provider                    String // Fireblocks, Ledger, GX, Custody, Notabene, etc.
   severity                    IncidentSeverity      @default(medium)
@@ -1951,4 +1952,71 @@ model ApprovedValidator {
   updatedAt DateTime @updatedAt
 
   @@unique([chain, validator])
+}
+
+/// Notes on the read-only settlement matching view (spec §12 CHK-10).
+model SettlementNote {
+  id          String   @id @default(cuid())
+  windowKey   String // "2026-09-23:okx:09:00Z"
+  portfolioId String
+  text        String
+  authorId    String
+  createdAt   DateTime @default(now())
+
+  @@index([windowKey])
+}
+
+/// FAB instruction register (spec §12 TASK-FAB), behind flag module.fab.
+/// Rows are entered from the fab_ics mailbox until the parser is confirmed (CONFIRM-FAB-TEMPLATES).
+model FabInstruction {
+  id              String    @id @default(cuid())
+  messageType     String // TRD_NTF | STL_INS
+  reference       String    @unique // TradeReference or AgreementReference
+  instructionType String    @default("") // e.g. OPEN, MARGIN_RECEIVE, CLOSE (as in the message)
+  direction       String // RECEIVE | DELIVER
+  asset           String
+  amount          Float
+  valueDate       String // YYYY-MM-DD
+  receivedAt      DateTime
+  ackStatus       String    @default("none") // none | ACK | NACK
+  ackSentAt       DateTime?
+  correctedByRef  String? // for a NACK: the corrected instruction's reference
+  sourceMessageId String? // Graph internetMessageId
+  workItemId      String?
+  notes           String    @default("")
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([ackStatus])
+  @@index([valueDate])
+}
+
+/// FAB settlement log. txHash is stored for matching and masked in logs and views (H8).
+model FabSettlementLog {
+  id           String   @id @default(cuid())
+  reference    String // FabInstruction.reference
+  status       String // RECEIVED | INITIATED | COMPLETED | FAILED
+  txHash       String?
+  kytStatus    String   @default("none") // none | fail | escalated | cleared
+  occurredAt   DateTime
+  recordedById String?
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([reference])
+  @@index([status])
+}
+
+/// Manual fee-reserve balance entries for ALR-FAB-08 (CONFIRM-FEE-ALERT-FORMAT).
+model FabFeeBalance {
+  id           String   @id @default(cuid())
+  walletRef    String
+  asset        String
+  balance      Float
+  recordedAt   DateTime @default(now())
+  recordedById String?
+
+  @@index([walletRef, recordedAt])
 }
