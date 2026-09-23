@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/validation";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/usdc-ramp
@@ -13,6 +14,9 @@ import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/
  *   ?status=instruction_received&direction=onramp&client=Acme
  */
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -88,6 +92,9 @@ export async function GET(request: NextRequest) {
  * Create a new USDC ramp ticket (instruction received).
  */
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -146,6 +153,9 @@ export async function POST(request: NextRequest) {
  *   reject          — reject the ticket
  */
 export async function PATCH(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

@@ -16,10 +16,10 @@ import type { UserAccount } from "./UserAccountsTab";
 import type { SlackStatus, EmailStatus } from "./IntegrationsTab";
 
 const tabs = [
-  { key: "weights" as const, label: "Scoring Weights", icon: BarChart3 },
-  { key: "targets" as const, label: "Role Targets", icon: Shield },
+  { key: "weights" as const, label: "Scoring Weights", icon: BarChart3, scoring: true },
+  { key: "targets" as const, label: "Role Targets", icon: Shield, scoring: true },
   { key: "employees" as const, label: "Employees", icon: Users },
-  { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock },
+  { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock, scoring: true },
   { key: "users" as const, label: "User Accounts", icon: UserPlus },
   { key: "integrations" as const, label: "Integrations", icon: Link2 },
   { key: "branding" as const, label: "Branding", icon: Palette },
@@ -27,19 +27,22 @@ const tabs = [
 
 type TabKey = (typeof tabs)[number]["key"];
 
-export default function AdminClient() {
+export default function AdminClient({ scoringEnabled }: { scoringEnabled: boolean }) {
   const [config, setConfig] = useState<ScoringConfigData | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("weights");
+  const [activeTab, setActiveTab] = useState<TabKey>(scoringEnabled ? "weights" : "employees");
+  const visibleTabs = tabs.filter((t) => scoringEnabled || !("scoring" in t && t.scoring));
   const [slackStatus, setSlackStatus] = useState<SlackStatus | null>(null);
   const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/scoring-config").then((r) => r.json()),
+      scoringEnabled
+        ? fetch("/api/scoring-config").then((r) => r.json())
+        : Promise.resolve({ success: false }),
       fetch("/api/employees").then((r) => r.json()),
       fetch("/api/users").then((r) => r.json()).catch(() => ({ success: false })),
       fetch("/api/integrations/slack").then((r) => r.json()).catch(() => ({ success: false })),
@@ -58,7 +61,7 @@ export default function AdminClient() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [scoringEnabled]);
 
   async function saveConfig() {
     if (!config) return;
@@ -112,7 +115,7 @@ export default function AdminClient() {
       </div>
 
       <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button

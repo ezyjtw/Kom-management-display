@@ -8,8 +8,12 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

@@ -103,11 +103,6 @@ export default function CaseDetailPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  const [showApproveApi, setShowApproveApi] = useState(false);
-  const [requestId, setRequestId] = useState("");
-  const [submittingApproval, setSubmittingApproval] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(false);
-  const [approvalRequestId, setApprovalRequestId] = useState("");
   const [recheckLoading, setRecheckLoading] = useState(false);
   const [recheckResult, setRecheckResult] = useState<{
     previousMatchStatus: string;
@@ -200,27 +195,6 @@ export default function CaseDetailPage() {
     const json = await res.json();
     setAddingNote(false);
     if (json.success) { setNoteContent(""); fetchActivity(); }
-  }
-
-  async function handleApproveApi() {
-    if (!requestId.trim()) return;
-    setSubmittingApproval(true);
-    try {
-      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) });
-      const json = await res.json();
-      if (json.success) { setApprovalRequestId(requestId); setShowApproveApi(false); setRequestId(""); await refreshCase(); fetchActivity(); }
-    } catch (err) { console.error("API approval failed:", err); }
-    finally { setSubmittingApproval(false); }
-  }
-
-  async function handleCheckApprovalStatus() {
-    setCheckingStatus(true);
-    try {
-      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "check_status", requestId: approvalRequestId }) });
-      const json = await res.json();
-      if (json.success) { await refreshCase(); fetchActivity(); }
-    } catch (err) { console.error("Status check failed:", err); }
-    finally { setCheckingStatus(false); }
   }
 
   async function handleRecheckNotabene() {
@@ -356,8 +330,6 @@ export default function CaseDetailPage() {
           <StatusBanners
             caseData={caseData}
             recheckResult={recheckResult}
-            checkingStatus={checkingStatus}
-            onCheckApprovalStatus={handleCheckApprovalStatus}
             onDismissRecheck={() => setRecheckResult(null)}
           />
         </div>
@@ -383,12 +355,6 @@ export default function CaseDetailPage() {
           onEmailNameChange={setEmailName}
           onSelectVasp={(c) => { setEmailTo(c.email); setEmailName(c.vaspName); }}
           onPreviewEmail={handlePreviewEmail}
-          showApproveApi={showApproveApi}
-          requestId={requestId}
-          submittingApproval={submittingApproval}
-          onToggleApproveApi={setShowApproveApi}
-          onRequestIdChange={setRequestId}
-          onApproveApi={handleApproveApi}
           recheckLoading={recheckLoading}
           onRecheckNotabene={handleRecheckNotabene}
           showResolve={showResolve}

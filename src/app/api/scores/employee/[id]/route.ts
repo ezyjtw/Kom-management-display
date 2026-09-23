@@ -14,11 +14,15 @@ import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiNotFoundError, handleApiError, apiForbiddenError } from "@/lib/api/response";
 import type { Category } from "@/types";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

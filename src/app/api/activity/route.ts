@@ -6,6 +6,7 @@ import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
 import { createActivitySchema, endActivitySchema } from "@/lib/validation";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/activity
@@ -21,6 +22,9 @@ import { createActivitySchema, endActivitySchema } from "@/lib/validation";
  *   ?history=true&from=2026-03-03&to=2026-03-04 — return completed entries for date range
  */
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("people.activity_tracking");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -134,6 +138,9 @@ export async function GET(request: NextRequest) {
  * activity: one of project|bau|queue_monitoring|lunch|break|meeting|admin|training
  */
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("people.activity_tracking");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -192,6 +199,9 @@ export async function POST(request: NextRequest) {
  *   { employeeId } — end all active entries for that employee
  */
 export async function PATCH(request: NextRequest) {
+  const gated = await featureGate("people.activity_tracking");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

@@ -1,145 +1,20 @@
 /**
- * Custody integration adapter.
- *
- * Wraps the existing Custody API client from src/lib/integrations/custody.ts
- * behind the IntegrationAdapter interface with health tracking.
+ * Custody integration adapter — wraps the read-only Komainu API client.
  */
 
 import { logger } from "@/lib/logger";
-import { env } from "@/lib/env";
+import {
+  fetchRequests,
+  fetchTransactions,
+  isKomainuConfigured,
+} from "@/lib/integrations/komainu-api/client";
+import type { KomainuRequest, KomainuTransaction } from "@/lib/integrations/komainu-api/types";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
   NormalizedEvent,
   NormalizedPayload,
 } from "@/modules/integrations/types";
-
-// ---------------------------------------------------------------------------
-// Custody types (mirrors src/lib/integrations/custody.ts)
-// ---------------------------------------------------------------------------
-
-interface CustodyConfig {
-  baseUrl: string;
-  apiUser: string;
-  apiSecret: string;
-}
-
-interface TokenCache {
-  accessToken: string;
-  expiresAt: number;
-}
-
-interface CustodyTransaction {
-  id: string;
-  wallet_id: string;
-  direction: "IN" | "OUT" | "FLAT";
-  asset: string;
-  amount: number;
-  fees: number;
-  created_at: string;
-  transaction_type: string;
-  status: "PENDING" | "BROADCASTED" | "CONFIRMED" | "FAILED";
-  tx_hash: string;
-  sender_address: string;
-  receiver_address: string;
-  note: string;
-  created_by: string;
-  workspace: string;
-  external_reference: string;
-  organization: string;
-  account: string;
-}
-
-interface CustodyRequest {
-  id: string;
-  type: string;
-  status: "CREATED" | "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED" | "BLOCKED";
-  entity: string;
-  entity_id?: string;
-  requested_by: string;
-  requested_at: string;
-  expires_at: string;
-  updated_at: string;
-  workspace: string;
-  organization: string;
-  account: string;
-}
-
-interface CustodyPagedResponse<T> {
-  page: number;
-  count: number;
-  has_next: boolean;
-  data: T[];
-}
-
-// ---------------------------------------------------------------------------
-// Auth helpers
-// ---------------------------------------------------------------------------
-
-let tokenCache: TokenCache | null = null;
-
-function getConfig(): CustodyConfig | null {
-  const baseUrl = env("CUSTODY_API_BASE_URL");
-  const apiUser = env("CUSTODY_API_USER");
-  const apiSecret = env("CUSTODY_API_SECRET");
-  if (!baseUrl || !apiUser || !apiSecret) return null;
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiUser, apiSecret };
-}
-
-async function getAccessToken(config: CustodyConfig): Promise<string> {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) {
-    return tokenCache.accessToken;
-  }
-
-  const res = await fetch(`${config.baseUrl}/v1/auth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_user: config.apiUser,
-      api_secret: config.apiSecret,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Custody auth failed: ${res.status}`);
-  }
-
-  const data = await res.json();
-  const expiresIn = (data.expires_in || 3600) as number;
-  tokenCache = {
-    accessToken: data.access_token as string,
-    expiresAt: Date.now() + (expiresIn - 60) * 1000,
-  };
-
-  return tokenCache.accessToken;
-}
-
-async function custodyGet<T>(
-  config: CustodyConfig,
-  path: string,
-  params?: Record<string, string>,
-): Promise<T> {
-  const token = await getAccessToken(config);
-  const url = new URL(`${config.baseUrl}${path}`);
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, v);
-    }
-  }
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Custody API error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json() as Promise<T>;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -149,7 +24,7 @@ function sleep(ms: number): Promise<void> {
 // Mapping
 // ---------------------------------------------------------------------------
 
-function mapTransactionToEvent(tx: CustodyTransaction): NormalizedEvent {
+function mapTransactionToEvent(tx: KomainuTransaction): NormalizedEvent {
   const payload: NormalizedPayload = {
     subject: `${tx.direction} ${tx.amount} ${tx.asset}`,
     body: tx.note || undefined,
@@ -190,7 +65,7 @@ function mapTransactionToEvent(tx: CustodyTransaction): NormalizedEvent {
   };
 }
 
-function mapRequestToEvent(req: CustodyRequest): NormalizedEvent {
+function mapRequestToEvent(req: KomainuRequest): NormalizedEvent {
   const payload: NormalizedPayload = {
     subject: `${req.type} request (${req.entity})`,
     status: req.status.toLowerCase(),
@@ -237,12 +112,11 @@ export class CustodyAdapter implements IntegrationAdapter {
   private failureCount = 0;
 
   isConfigured(): boolean {
-    return getConfig() !== null;
+    return isKomainuConfigured();
   }
 
   async sync(opts?: Record<string, unknown>): Promise<NormalizedEvent[]> {
-    const config = getConfig();
-    if (!config) {
+    if (!isKomainuConfigured()) {
       logger.warn("Custody adapter not configured, skipping sync");
       return [];
     }
@@ -259,11 +133,7 @@ export class CustodyAdapter implements IntegrationAdapter {
           const txParams: Record<string, string> = {
             status: (opts?.transactionStatus as string) ?? "PENDING",
           };
-          const txResult = await custodyGet<CustodyPagedResponse<CustodyTransaction>>(
-            config,
-            "/v1/custody/transactions",
-            txParams,
-          );
+          const txResult = await fetchTransactions(txParams);
           for (const tx of txResult.data) {
             events.push(mapTransactionToEvent(tx));
           }
@@ -282,11 +152,7 @@ export class CustodyAdapter implements IntegrationAdapter {
           const reqParams: Record<string, string> = {
             status: (opts?.requestStatus as string) ?? "PENDING",
           };
-          const reqResult = await custodyGet<CustodyPagedResponse<CustodyRequest>>(
-            config,
-            "/v1/requests",
-            reqParams,
-          );
+          const reqResult = await fetchRequests(reqParams);
           for (const req of reqResult.data) {
             events.push(mapRequestToEvent(req));
           }

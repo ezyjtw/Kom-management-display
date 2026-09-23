@@ -20,6 +20,10 @@ interface FlagValue {
   percentage: number;
 }
 
+import { FLAG_DEFAULTS } from "@/lib/feature-flag-defaults";
+
+export { FLAG_DEFAULTS, SAFETY_FLAG_SEED, type SafetyFlagKey } from "@/lib/feature-flag-defaults";
+
 let cache: FlagCache | null = null;
 const CACHE_TTL_MS = 60_000; // 60 seconds
 
@@ -73,7 +77,8 @@ export async function isFeatureEnabled(
   const flags = await loadFlags();
   const flag = flags.get(key);
 
-  if (!flag || !flag.enabled) return false;
+  if (!flag) return (FLAG_DEFAULTS as Record<string, boolean>)[key] ?? false;
+  if (!flag.enabled) return false;
 
   // Check role targeting
   if (flag.roles.length > 0 && context?.role) {

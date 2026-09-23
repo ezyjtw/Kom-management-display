@@ -8,6 +8,7 @@
 
 import type { NotabeneTransfer } from "@/types";
 import { env } from "@/lib/env";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 interface NotabeneConfig {
   baseUrl: string;
@@ -199,6 +200,11 @@ export async function fetchAssetByIdentifier(
  */
 export function isNotabeneConfigured(): boolean {
   return getConfig() !== null;
+}
+
+/** H11: Notabene is used only when configured and its feature flag is on. */
+export async function isNotabeneEnabled(): Promise<boolean> {
+  return isNotabeneConfigured() && (await isFeatureEnabled("integration.notabene.enabled"));
 }
 
 /**

@@ -1,0 +1,25 @@
+// Pure data (no imports) so prisma/seed.ts can use it directly.
+
+export const FLAG_DEFAULTS = Object.freeze({
+  "ai.enabled": false,
+  "ai.compliance_bot": false,
+  "people.scoring": false,
+  "people.activity_tracking": false,
+  "module.usdc_ramp": false,
+  "integration.notabene.enabled": false,
+} as const);
+
+export type SafetyFlagKey = keyof typeof FLAG_DEFAULTS;
+
+export const SAFETY_FLAG_SEED: ReadonlyArray<{
+  key: SafetyFlagKey;
+  name: string;
+  description: string;
+}> = Object.freeze([
+  { key: "ai.enabled", name: "AI features", description: "All AI features: briefing, classifier, drafter, AI buttons (H3)" },
+  { key: "ai.compliance_bot", name: "Compliance bot", description: "Must stay off unless Compliance approves (H3)" },
+  { key: "people.scoring", name: "People scoring", description: "Team scores, employee pages, scoring config (H4)" },
+  { key: "people.activity_tracking", name: "Activity tracking", description: "Activity tracker and break/lunch status (H4)" },
+  { key: "module.usdc_ramp", name: "USDC ramp", description: "Not a current team process" },
+  { key: "integration.notabene.enabled", name: "Notabene integration", description: "Notabene adapter and routes (H11)" },
+]);

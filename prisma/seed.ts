@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, CommsSource, ThreadPriority, ThreadStatus, ProjectStatus, DailyCheckStatus, EmployeeRole, TeamName, TimePeriodType, ScoreCategory, Region } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { FLAG_DEFAULTS, SAFETY_FLAG_SEED } from "../src/lib/feature-flag-defaults";
 
 const prisma = new PrismaClient();
 
@@ -1296,21 +1297,6 @@ async function main() {
     console.log("Created screening entry seed data");
   }
 
-  // ─── Approval Audit Entries ───
-  const existingApprovalAudit = await prisma.approvalAuditEntry.count();
-  if (existingApprovalAudit === 0) {
-    await prisma.approvalAuditEntry.createMany({
-      data: [
-        { requestId: "req-001", action: "approved", performedById: emp["carol@ops.com"].id, riskLevel: "low" },
-        { requestId: "req-002", action: "approved", performedById: emp["grace@ops.com"].id, riskLevel: "medium" },
-        { requestId: "req-003", action: "escalated", performedById: emp["carol@ops.com"].id, riskLevel: "high", notes: "Large collateral operation — needs compliance sign-off" },
-        { requestId: "req-004", action: "flagged_stuck", performedById: emp["alice@ops.com"].id, riskLevel: "medium", notes: "Request pending > 2 hours" },
-        { requestId: "req-005", action: "approved", performedById: emp["kenji@ops.com"].id, riskLevel: "low" },
-      ],
-    });
-    console.log("Created approval audit entry seed data");
-  }
-
   // ─── Token Review Registry ───
   const existingTokens = await prisma.tokenReview.count();
   if (existingTokens === 0) {
@@ -1456,6 +1442,15 @@ async function main() {
       data: demandSignals.map(s => ({ ...s, recordedById: emp["carol@ops.com"].id })),
     });
     console.log("Created token review seed data");
+  }
+
+  // ─── Safety feature flags (Phase 0): created off; existing rows untouched ───
+  for (const flag of SAFETY_FLAG_SEED) {
+    await prisma.featureFlag.upsert({
+      where: { key: flag.key },
+      update: {},
+      create: { ...flag, enabled: FLAG_DEFAULTS[flag.key], roles: "[]", teams: "[]", percentage: 100 },
+    });
   }
 
   console.log("Seed complete!");

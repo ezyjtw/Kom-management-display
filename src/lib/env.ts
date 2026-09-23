@@ -66,9 +66,9 @@ const envSchema = z.object({
   SMTP_SECURE: z.string().optional(),
 
   // Custody / Fireblocks / Notabene
-  CUSTODY_API_BASE_URL: z.string().optional(),
-  CUSTODY_API_USER: z.string().optional(),
-  CUSTODY_API_SECRET: z.string().optional(),
+  KOMAINU_API_BASE_URL: z.string().optional(),
+  KOMAINU_API_USER: z.string().optional(),
+  KOMAINU_API_SECRET: z.string().optional(),
   FIREBLOCKS_API_KEY: z.string().optional(),
   FIREBLOCKS_API_SECRET: z.string().optional(),
   NOTABENE_API_BASE_URL: z.string().optional(),
@@ -76,7 +76,7 @@ const envSchema = z.object({
   NOTABENE_VASP_DID: z.string().optional(),
 
   // AI
-  AI_PROVIDER: z.enum(["groq", "anthropic", "ollama"]).optional(),
+  AI_PROVIDER: z.enum(["none", "groq", "anthropic", "ollama"]).default("none"),
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),

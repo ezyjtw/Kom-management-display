@@ -72,7 +72,7 @@ export default function TransactionsPage() {
           <div>
             <p className="text-sm font-medium text-amber-400">Custody API not configured</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Set CUSTODY_API_BASE_URL, CUSTODY_API_USER, and CUSTODY_API_SECRET in your environment to connect.
+              Set KOMAINU_API_BASE_URL, KOMAINU_API_USER, and KOMAINU_API_SECRET in your environment to connect.
             </p>
           </div>
         </div>

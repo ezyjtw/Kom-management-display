@@ -22,8 +22,6 @@ interface StatusBannersProps {
     resolvedAt: string | null;
   };
   recheckResult: RecheckResult | null;
-  checkingStatus: boolean;
-  onCheckApprovalStatus: () => void;
   onDismissRecheck: () => void;
 }
 
@@ -36,8 +34,6 @@ const MATCH_LABELS: Record<string, string> = {
 export function StatusBanners({
   caseData,
   recheckResult,
-  checkingStatus,
-  onCheckApprovalStatus,
   onDismissRecheck,
 }: StatusBannersProps) {
   return (
@@ -60,24 +56,16 @@ export function StatusBanners({
         </div>
       )}
 
-      {/* Pending Response (includes API approvals in progress) */}
+      {/* Pending Response */}
       {caseData.status === "PendingResponse" && (
         <div className="bg-card rounded-xl border-2 border-purple-500/30 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
             <Loader2 size={16} className="text-purple-400 animate-spin" />
             Pending Response
           </h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            An API approval has been submitted for this transaction. The Custody API is processing the request.
+          <p className="text-xs text-muted-foreground">
+            Awaiting a response from the counterparty.
           </p>
-          <button
-            onClick={onCheckApprovalStatus}
-            disabled={checkingStatus}
-            className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1"
-          >
-            <RefreshCw size={12} className={checkingStatus ? "animate-spin" : ""} />
-            {checkingStatus ? "Checking..." : "Check Status"}
-          </button>
         </div>
       )}
 

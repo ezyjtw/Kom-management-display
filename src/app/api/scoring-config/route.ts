@@ -14,8 +14,12 @@ import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiForbiddenError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { validateBody, createScoringConfigSchema } from "@/lib/validation";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET() {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   try {
     const config = await prisma.scoringConfig.findFirst({
       where: { active: true },
@@ -47,6 +51,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 

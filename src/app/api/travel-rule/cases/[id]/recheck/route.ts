@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, requireRecordAccess } from "@/modules/auth/services/authorization";
 import {
   fetchTransfers,
-  isNotabeneConfigured,
+  isNotabeneEnabled,
   hasOriginatorData,
   hasBeneficiaryData,
   extractPartyName,
@@ -47,7 +47,7 @@ export async function POST(
   }
 
   try {
-    if (!isNotabeneConfigured()) {
+    if (!(await isNotabeneEnabled())) {
       return apiValidationError("Notabene is not configured");
     }
 

@@ -34,7 +34,7 @@ export async function GET() {
     slack: ["SLACK_BOT_TOKEN"],
     email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
     fireblocks: ["FIREBLOCKS_API_KEY"],
-    custody: ["CUSTODY_API_SECRET"],
+    custody: ["KOMAINU_API_SECRET"],
     notabene: ["NOTABENE_API_TOKEN"],
   };
 

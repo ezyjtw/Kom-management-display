@@ -63,7 +63,7 @@ export async function GET() {
     jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
     email: ["IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"],
-    custody: ["CUSTODY_API_SECRET"],
+    custody: ["KOMAINU_API_SECRET"],
     notabene: ["NOTABENE_API_TOKEN"],
     fireblocks: ["FIREBLOCKS_API_KEY"],
   };

@@ -10,7 +10,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
-import { isAiEnabled } from "@/lib/ai";
+import { isAiActive } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
 import { incidentService } from "@/modules/incidents/services/incident-service";
@@ -45,7 +45,7 @@ async function classifyViaAi(
   systemPrompt: string,
   userMessage: string,
 ): Promise<string | null> {
-  if (!isAiEnabled()) return null;
+  if (!(await isAiActive())) return null;
 
   const breaker = CircuitBreaker.for("ai_classifier", {
     failureThreshold: 3,

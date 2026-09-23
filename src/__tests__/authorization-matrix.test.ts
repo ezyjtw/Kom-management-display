@@ -464,9 +464,15 @@ describe("New resource permissions", () => {
   const auditor = makeUser({ role: "auditor" });
 
   describe("transaction_confirmation", () => {
-    it("admin can create and approve confirmations", () => {
+    it("admin can create confirmations but never approve them", () => {
       expect(checkAuthorization(admin, "transaction_confirmation", "create").allowed).toBe(true);
-      expect(checkAuthorization(admin, "transaction_confirmation", "approve").allowed).toBe(true);
+      expect(checkAuthorization(admin, "transaction_confirmation", "approve").allowed).toBe(false);
+    });
+
+    it("no role can escalate confirmations manually", () => {
+      for (const u of [admin, lead, employee, auditor]) {
+        expect(checkAuthorization(u, "transaction_confirmation", "escalate").allowed).toBe(false);
+      }
     });
 
     it("lead can acknowledge confirmations with team scope", () => {
@@ -475,9 +481,10 @@ describe("New resource permissions", () => {
       expect(result.scope).toBe("team");
     });
 
-    it("employee can only view and acknowledge own confirmations", () => {
+    it("employee can view, take ownership of and annotate own confirmations", () => {
       expect(checkAuthorization(employee, "transaction_confirmation", "view").allowed).toBe(true);
       expect(checkAuthorization(employee, "transaction_confirmation", "acknowledge").allowed).toBe(true);
+      expect(checkAuthorization(employee, "transaction_confirmation", "update").allowed).toBe(true);
       expect(checkAuthorization(employee, "transaction_confirmation", "approve").allowed).toBe(false);
       expect(checkAuthorization(employee, "transaction_confirmation", "create").allowed).toBe(false);
     });

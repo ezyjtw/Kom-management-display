@@ -25,6 +25,7 @@ interface DashboardClientProps {
   initialEmployees: EmployeeOverview[];
   initialOpsData: OpsData | null;
   userRole: string;
+  scoringEnabled: boolean;
 }
 
 const VIEW_PRESETS: Record<string, { label: string; filters: Record<string, string> }> = {
@@ -32,19 +33,20 @@ const VIEW_PRESETS: Record<string, { label: string; filters: Record<string, stri
   critical: { label: "Critical Only", filters: { flags: "critical" } },
 };
 
-export function DashboardClient({ initialEmployees, initialOpsData, userRole }: DashboardClientProps) {
+export function DashboardClient({ initialEmployees, initialOpsData, userRole, scoringEnabled }: DashboardClientProps) {
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
       <DashboardContent
         initialEmployees={initialEmployees}
         initialOpsData={initialOpsData}
         userRole={userRole}
+        scoringEnabled={scoringEnabled}
       />
     </Suspense>
   );
 }
 
-function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientProps) {
+function DashboardContent({ initialEmployees, initialOpsData, scoringEnabled }: DashboardClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -79,7 +81,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
     setError(null);
     try {
       const [scoresRes, opsRes] = await Promise.all([
-        fetch(`/api/scores?periodType=${periodType}`).catch(() => null),
+        scoringEnabled ? fetch(`/api/scores?periodType=${periodType}`).catch(() => null) : Promise.resolve(null),
         fetch("/api/command-center").catch(() => null),
       ]);
 
@@ -98,7 +100,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
         } catch {
           console.warn("Failed to parse scores response");
         }
-      } else if (employees.length === 0) {
+      } else if (scoringEnabled && employees.length === 0) {
         setError("Network error — could not reach server");
       }
 
@@ -118,7 +120,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
     } finally {
       setLoading(false);
     }
-  }, [periodType, employees.length]);
+  }, [periodType, employees.length, scoringEnabled]);
 
   // Re-fetch when period changes (but not on initial mount — we have server data)
   const [hasMounted, setHasMounted] = useState(false);
@@ -316,6 +318,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
         </div>
       )}
 
+      {scoringEnabled && (<>
       <StatsCards employees={filteredEmployees} teamSizeOverride={opsData?.coverage?.active} />
 
       {/* Filters */}
@@ -397,6 +400,7 @@ function DashboardContent({ initialEmployees, initialOpsData }: DashboardClientP
       ) : (
         <TeamOverviewTable employees={filteredEmployees} />
       )}
+      </>)}
     </div>
   );
 }

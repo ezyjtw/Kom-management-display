@@ -10,8 +10,12 @@ import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import type { Category } from "@/types";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -208,6 +212,9 @@ export async function GET(request: NextRequest) {
  * Create or update a category score. Admin or lead only.
  */
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 

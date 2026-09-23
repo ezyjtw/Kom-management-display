@@ -175,8 +175,8 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
 
     case "poll_custody": {
       try {
-        const { isCustodyConfigured, fetchPendingTransactions } = await import("@/lib/integrations/custody");
-        if (!isCustodyConfigured()) return { skipped: true, reason: "Custody API not configured" };
+        const { isKomainuConfigured, fetchPendingTransactions } = await import("@/lib/integrations/komainu-api/client");
+        if (!isKomainuConfigured()) return { skipped: true, reason: "Custody API not configured" };
         const result = await fetchPendingTransactions();
         return { transactionsPolled: result.data.length };
       } catch {
@@ -185,9 +185,10 @@ async function executeJobHandler(type: string, payload: Record<string, unknown>)
     }
 
     case "check_confirmations": {
-      const { checkExpiredConfirmations } = await import("@/lib/transaction-confirmation");
+      const { checkExpiredConfirmations, syncConfirmationsWithSource } = await import("@/lib/transaction-confirmation");
+      const closedInSource = await syncConfirmationsWithSource();
       const expired = await checkExpiredConfirmations();
-      return { expiredConfirmations: expired };
+      return { expiredConfirmations: expired, closedInSource };
     }
 
     case "cleanup_sessions": {

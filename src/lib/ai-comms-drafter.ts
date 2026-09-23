@@ -8,7 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { isAiEnabled, getProviderName } from "@/lib/ai";
+import { isAiActive, getProviderName } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
 
@@ -53,7 +53,7 @@ export async function draftClientComms(
 
     // Attempt AI draft
     let aiDraft = "";
-    if (isAiEnabled()) {
+    if (await isAiActive()) {
       aiDraft = await generateAiDraft(impactRecord, incident) || "";
     }
 

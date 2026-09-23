@@ -290,12 +290,6 @@ export const createTransactionConfirmationSchema = z.object({
   workspace: z.string().max(500).default(""),
 });
 
-export const confirmationActionSchema = z.object({
-  action: z.enum(["acknowledge", "sign_off", "escalate"]),
-  confirmationId: z.string().min(1),
-  reason: z.string().max(2000).optional(),
-});
-
 export const transactionConfirmationPostSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
@@ -306,27 +300,28 @@ export const transactionConfirmationPostSchema = z.discriminatedUnion("action", 
     direction: z.string().min(1).max(20),
     account: z.string().max(500).default(""),
     workspace: z.string().max(500).default(""),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    riskLevel: z.enum(["low", "medium", "high", "critical", "unknown"]).optional(),
   }),
   z.object({
-    action: z.literal("acknowledge"),
+    action: z.literal("take_ownership"),
     confirmationId: z.string().min(1),
   }),
   z.object({
-    action: z.literal("sign_off"),
+    action: z.literal("add_note"),
     confirmationId: z.string().min(1),
+    note: z.string().trim().min(1).max(2000),
   }),
   z.object({
-    action: z.literal("escalate"),
+    action: z.literal("link_ticket"),
     confirmationId: z.string().min(1),
-    reason: z.string().min(1).max(2000),
+    ticketRef: z.string().trim().min(1).max(200),
   }),
 ]);
 
 // ─── Feature Flag Schemas ───
 
 export const upsertFeatureFlagSchema = z.object({
-  key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Key must be lowercase alphanumeric with underscores"),
+  key: z.string().min(1).max(100).regex(/^[a-z0-9_.]+$/, "Key must be lowercase alphanumeric with underscores or dots"),
   name: z.string().min(1).max(200),
   description: z.string().max(1000).default(""),
   enabled: z.boolean().default(false),
@@ -562,11 +557,6 @@ export const createTravelRuleCaseNoteSchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
-export const approveCustodySchema = z.object({
-  requestId: z.string().min(1).max(500).optional(),
-  action: z.enum(["check_status"]).optional(),
-});
-
 // ─── Staking Schemas ───
 
 export const createStakingWalletSchema = z.object({
@@ -619,15 +609,6 @@ export const updateStakingPatchSchema = z.object({
   tags: z.array(z.string().max(100)).max(50).optional(),
   notes: z.string().max(5000).optional(),
   status: z.string().max(50).optional(),
-});
-
-// ─── Approval Schemas ───
-
-export const approvalActionSchema = z.object({
-  action: z.enum(["approve", "reject", "reassign"]),
-  requestId: z.string().min(1),
-  reason: z.string().max(2000).optional(),
-  assignTo: z.string().max(200).optional(),
 });
 
 // ─── AI Assist Schema ───

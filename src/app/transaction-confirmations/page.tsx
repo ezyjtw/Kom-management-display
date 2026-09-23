@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Shield, ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, ArrowUpRight } from "lucide-react";
+import { RefreshCw, Shield, ShieldCheck, ShieldAlert, Clock, UserCheck, XCircle, ArrowUpRight, StickyNote, Link2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface Confirmation {
@@ -15,8 +15,10 @@ interface Confirmation {
   account: string;
   workspace: string;
   status: string;
-  acknowledgedAt: string | null;
-  signedOffAt: string | null;
+  ownedAt: string | null;
+  closedInSourceAt: string | null;
+  ticketRef: string;
+  notes: string;
   escalatedAt: string | null;
   escalationReason: string;
   slackNotifiedAt: string | null;
@@ -27,8 +29,8 @@ interface Confirmation {
 
 interface Summary {
   pending: number;
-  acknowledged: number;
-  signedOff: number;
+  owned: number;
+  closedInSource: number;
   escalated: number;
   expired: number;
 }
@@ -38,12 +40,13 @@ const RISK_COLORS: Record<string, string> = {
   medium: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
   high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
   critical: "bg-red-500/10 text-red-400 border-red-500/30",
+  unknown: "bg-slate-500/10 text-slate-300 border-slate-500/30",
 };
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/10 text-yellow-400",
-  acknowledged: "bg-blue-500/10 text-blue-400",
-  signed_off: "bg-emerald-500/10 text-emerald-400",
+  owned: "bg-blue-500/10 text-blue-400",
+  closed_in_source: "bg-emerald-500/10 text-emerald-400",
   escalated: "bg-red-500/10 text-red-400",
   expired: "bg-slate-500/10 text-slate-400",
 };
@@ -68,12 +71,17 @@ export default function TransactionConfirmationsPage() {
     } catch { /* ignore */ } finally { setLoading(false); }
   }
 
-  async function handleAction(confirmationId: string, action: string) {
+  async function handleAction(confirmationId: string, action: "take_ownership" | "add_note" | "link_ticket") {
     const body: Record<string, string> = { action, confirmationId };
-    if (action === "escalate") {
-      const reason = prompt("Escalation reason:");
-      if (!reason) return;
-      body.reason = reason;
+    if (action === "add_note") {
+      const note = prompt("Note:");
+      if (!note?.trim()) return;
+      body.note = note;
+    }
+    if (action === "link_ticket") {
+      const ticketRef = prompt("Ticket reference (e.g. OPS-123):");
+      if (!ticketRef?.trim()) return;
+      body.ticketRef = ticketRef;
     }
     try {
       const res = await fetch("/api/transaction-confirmations", {
@@ -98,7 +106,7 @@ export default function TransactionConfirmationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
-          <Shield size={24} /> Transaction Confirmations
+          <Shield size={24} /> Transactions Awaiting Action in GX
         </h1>
         <button onClick={fetchData} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md">
           <RefreshCw size={14} /> Refresh
@@ -109,16 +117,16 @@ export default function TransactionConfirmationsPage() {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
-            { label: "Pending", value: summary.pending, icon: Clock, color: "text-yellow-400" },
-            { label: "Acknowledged", value: summary.acknowledged, icon: CheckCircle2, color: "text-blue-400" },
-            { label: "Signed Off", value: summary.signedOff, icon: ShieldCheck, color: "text-emerald-400" },
-            { label: "Escalated", value: summary.escalated, icon: ShieldAlert, color: "text-red-400" },
-            { label: "Expired", value: summary.expired, icon: XCircle, color: "text-slate-400" },
-          ].map(({ label, value, icon: Icon, color }) => (
+            { label: "Pending", status: "pending", value: summary.pending, icon: Clock, color: "text-yellow-400" },
+            { label: "Owned", status: "owned", value: summary.owned, icon: UserCheck, color: "text-blue-400" },
+            { label: "Closed in source", status: "closed_in_source", value: summary.closedInSource, icon: ShieldCheck, color: "text-emerald-400" },
+            { label: "Escalated", status: "escalated", value: summary.escalated, icon: ShieldAlert, color: "text-red-400" },
+            { label: "Expired", status: "expired", value: summary.expired, icon: XCircle, color: "text-slate-400" },
+          ].map(({ label, status, value, icon: Icon, color }) => (
             <button
-              key={label}
-              onClick={() => setFilter(filter === label.toLowerCase().replace(" ", "_") ? "all" : label.toLowerCase().replace(" ", "_"))}
-              className={`bg-card border rounded-lg p-3 text-left hover:border-primary/30 transition ${filter === label.toLowerCase().replace(" ", "_") ? "border-primary/50" : "border-border"}`}
+              key={status}
+              onClick={() => setFilter(filter === status ? "all" : status)}
+              className={`bg-card border rounded-lg p-3 text-left hover:border-primary/30 transition ${filter === status ? "border-primary/50" : "border-border"}`}
             >
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Icon size={14} className={color} /> {label}
@@ -143,7 +151,7 @@ export default function TransactionConfirmationsPage() {
                       {c.riskLevel.toUpperCase()}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLORS[c.status]}`}>
-                      {c.status.replace("_", " ")}
+                      {c.status.replace(/_/g, " ")}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
@@ -170,32 +178,36 @@ export default function TransactionConfirmationsPage() {
                   {c.escalationReason && (
                     <div className="mt-1 text-xs text-red-400">Reason: {c.escalationReason}</div>
                   )}
+                  {c.ticketRef && (
+                    <div className="mt-1 text-xs text-muted-foreground">Ticket: <span className="font-mono">{c.ticketRef}</span></div>
+                  )}
+                  {c.notes && (
+                    <pre className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-sans">{c.notes}</pre>
+                  )}
                 </div>
 
-                {/* Actions */}
-                {c.status === "pending" && (
+                {/* Actions — no approval here; the transaction is actioned in GX */}
+                {c.status !== "closed_in_source" && (
                   <div className="flex flex-col gap-1.5">
-                    {(c.riskLevel === "low" || c.riskLevel === "medium") && (
+                    {(c.status === "pending" || c.status === "escalated") && (
                       <button
-                        onClick={() => handleAction(c.id, "acknowledge")}
+                        onClick={() => handleAction(c.id, "take_ownership")}
                         className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-1"
                       >
-                        <CheckCircle2 size={12} /> Acknowledge
-                      </button>
-                    )}
-                    {(c.riskLevel === "high" || c.riskLevel === "critical") && (
-                      <button
-                        onClick={() => handleAction(c.id, "sign_off")}
-                        className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-md flex items-center gap-1"
-                      >
-                        <ShieldCheck size={12} /> Sign Off
+                        <UserCheck size={12} /> Take ownership
                       </button>
                     )}
                     <button
-                      onClick={() => handleAction(c.id, "escalate")}
-                      className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-md flex items-center gap-1"
+                      onClick={() => handleAction(c.id, "add_note")}
+                      className="px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md flex items-center gap-1"
                     >
-                      <AlertTriangle size={12} /> Escalate
+                      <StickyNote size={12} /> Add note
+                    </button>
+                    <button
+                      onClick={() => handleAction(c.id, "link_ticket")}
+                      className="px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md flex items-center gap-1"
+                    >
+                      <Link2 size={12} /> Link ticket
                     </button>
                   </div>
                 )}

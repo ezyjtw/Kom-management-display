@@ -1102,20 +1102,9 @@ model ScreeningEntry {
   @@index([asset])
 }
 
-// ─── Approval Audit Trail ───
-
-model ApprovalAuditEntry {
-  id            String   @id @default(cuid())
-  requestId     String // Custody request ID
-  action        String // approved, escalated, flagged_stuck
-  performedById String
-  riskLevel     String   @default("medium") // low, medium, high
-  notes         String   @default("")
-  createdAt     DateTime @default(now())
-
-  @@index([requestId])
-  @@index([performedById])
-}
+// ─── Approval Audit Trail (archived in migration 0017) ───
+// The ApprovalAuditEntry table has been renamed to _archived_ApprovalAuditEntry.
+// Model removed from schema per H1: no transaction approval.
 
 // ─── Token Review & Onboarding ───
 
@@ -1284,12 +1273,13 @@ enum TransactionRiskLevel {
   medium
   high
   critical
+  unknown
 }
 
 enum ConfirmationStatus {
   pending
-  acknowledged
-  signed_off
+  owned
+  closed_in_source
   escalated
   expired
 }
@@ -1298,18 +1288,19 @@ model TransactionConfirmation {
   id                String             @id @default(cuid())
   transactionId     String // Custody transaction ID
   requestId         String? // Custody request ID (if applicable)
-  riskLevel         TransactionRiskLevel @default(medium)
+  riskLevel         TransactionRiskLevel @default(unknown) // from GX only (H5)
   asset             String
   amount            Float
   direction         String // IN, OUT
   account           String             @default("")
   workspace         String             @default("")
-  // Confirmation tracking
+  // Read-only tracking of GX items awaiting human action in GX
   status            ConfirmationStatus @default(pending)
-  acknowledgedById  String?
-  acknowledgedAt    DateTime?
-  signedOffById     String?
-  signedOffAt       DateTime?
+  ownedById         String?
+  ownedAt           DateTime?
+  closedById        String? // legacy sign-off actor; null for automatic closure
+  closedInSourceAt  DateTime?
+  ticketRef         String             @default("")
   escalatedById     String?
   escalatedAt       DateTime?
   escalationReason  String             @default("")

@@ -11,8 +11,12 @@ import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, handleApiError, apiForbiddenError, apiValidationError, apiNotFoundError } from "@/lib/api/response";
 import { z } from "zod";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -48,6 +52,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 
@@ -107,6 +114,9 @@ export async function POST(request: NextRequest) {
  *   - approver cannot be the reviewer
  */
 export async function PUT(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
 

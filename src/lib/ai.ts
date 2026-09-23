@@ -1,11 +1,13 @@
 /**
  * AI assist client for the ops dashboard — multi-provider.
  *
- * Supports three LLM backends, configured via environment variables:
+ * Off by default (H3). AI runs only when AI_PROVIDER is set explicitly AND the
+ * `ai.enabled` feature flag is on; otherwise every call returns null.
  *
- *   AI_PROVIDER=groq       → Groq free tier (default if GROQ_API_KEY set)
+ *   AI_PROVIDER=none       → disabled (default; keys alone never enable AI)
+ *   AI_PROVIDER=groq       → Groq (needs GROQ_API_KEY)
  *   AI_PROVIDER=anthropic  → Anthropic Claude API (needs ANTHROPIC_API_KEY)
- *   AI_PROVIDER=ollama     → Local Ollama instance (no key needed)
+ *   AI_PROVIDER=ollama     → Local Ollama instance
  *
  * The LLM never writes to the database directly — it returns suggestions
  * that the UI presents for human approval before any action is taken.
@@ -14,10 +16,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 // ─── Provider types ─────────────────────────────────────────────────────────
 
-type Provider = "anthropic" | "groq" | "ollama";
+type Provider = "anthropic" | "groq" | "ollama" | "none";
 
 interface CompletionRequest {
   system: string;
@@ -27,19 +30,21 @@ interface CompletionRequest {
 
 // ─── Provider detection ─────────────────────────────────────────────────────
 
-function getProvider(): Provider | null {
+function getProvider(): Provider {
   const explicit = env("AI_PROVIDER")?.toLowerCase();
   if (explicit === "anthropic" || explicit === "groq" || explicit === "ollama") return explicit;
+  if (explicit === "none") return "none";
 
-  // Auto-detect from available keys
-  if (env("GROQ_API_KEY")) return "groq";
-  if (env("ANTHROPIC_API_KEY")) return "anthropic";
-  if (env("OLLAMA_BASE_URL")) return "ollama";
-  return null;
+  return "none";
 }
 
 export function isAiEnabled(): boolean {
-  return getProvider() !== null;
+  return getProvider() !== "none";
+}
+
+/** H3: AI runs only when a provider is configured AND the ai.enabled flag is on. */
+export async function isAiActive(): Promise<boolean> {
+  return isAiEnabled() && (await isFeatureEnabled("ai.enabled"));
 }
 
 export function getProviderName(): string {
@@ -132,8 +137,8 @@ async function callOllama(req: CompletionRequest): Promise<string | null> {
 // ─── Unified completion call ────────────────────────────────────────────────
 
 async function complete(req: CompletionRequest): Promise<string | null> {
+  if (!(await isAiActive())) return null;
   const provider = getProvider();
-  if (!provider) return null;
 
   switch (provider) {
     case "anthropic":
@@ -142,6 +147,8 @@ async function complete(req: CompletionRequest): Promise<string | null> {
       return callGroq(req);
     case "ollama":
       return callOllama(req);
+    case "none":
+      return null;
   }
 }
 

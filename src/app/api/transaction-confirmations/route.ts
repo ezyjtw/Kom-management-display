@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole } from "@/lib/auth-user";
+import { requireAuth } from "@/lib/auth-user";
 import {
   createTransactionConfirmation,
-  acknowledgeConfirmation,
-  signOffConfirmation,
-  escalateConfirmation,
-  assessRiskLevel,
+  takeOwnership,
+  addNote,
+  linkTicket,
 } from "@/lib/transaction-confirmation";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
@@ -46,11 +45,10 @@ export async function GET(request: NextRequest) {
       prisma.transactionConfirmation.count({ where }),
     ]);
 
-    // Summary stats
     const summary = {
       pending: await prisma.transactionConfirmation.count({ where: { status: "pending" } }),
-      acknowledged: await prisma.transactionConfirmation.count({ where: { status: "acknowledged" } }),
-      signedOff: await prisma.transactionConfirmation.count({ where: { status: "signed_off" } }),
+      owned: await prisma.transactionConfirmation.count({ where: { status: "owned" } }),
+      closedInSource: await prisma.transactionConfirmation.count({ where: { status: "closed_in_source" } }),
       escalated: await prisma.transactionConfirmation.count({ where: { status: "escalated" } }),
       expired: await prisma.transactionConfirmation.count({ where: { status: "expired" } }),
     };
@@ -67,8 +65,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/transaction-confirmations
- * Create a new transaction confirmation or perform an action on an existing one.
- * Body: { action: "create" | "acknowledge" | "sign_off" | "escalate", ... }
+ * Record a GX-flagged item, or perform one of the allowed human actions:
+ * take_ownership, add_note, link_ticket. Nothing here approves a transaction (H1).
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAuth();
@@ -85,13 +83,14 @@ export async function POST(request: NextRequest) {
 
     const actorId = auth.employeeId || auth.id;
 
+    const requiredAction = validatedData.action === "create"
+      ? "create"
+      : validatedData.action === "take_ownership" ? "acknowledge" : "update";
+    const authz = requireAuthorization(auth, "transaction_confirmation", requiredAction);
+    if (authz instanceof NextResponse) return authz;
+
     switch (validatedData.action) {
       case "create": {
-        const riskLevel = validatedData.riskLevel ?? assessRiskLevel({
-          amount: validatedData.amount,
-          asset: validatedData.asset,
-          direction: validatedData.direction,
-        });
         const result = await createTransactionConfirmation({
           transactionId: validatedData.transactionId,
           requestId: validatedData.requestId,
@@ -100,42 +99,33 @@ export async function POST(request: NextRequest) {
           direction: validatedData.direction,
           account: validatedData.account,
           workspace: validatedData.workspace,
-          riskLevel,
+          riskLevel: validatedData.riskLevel,
         });
 
-        if (riskLevel !== "low") {
+        if (result.riskLevel === "high" || result.riskLevel === "critical") {
           emitHighRiskTransaction({
             confirmationId: result.id,
             transactionId: validatedData.transactionId,
             asset: validatedData.asset,
             amount: validatedData.amount,
-            riskLevel,
+            riskLevel: result.riskLevel,
           });
         }
 
         return apiSuccess(result, undefined, 201);
       }
 
-      case "acknowledge": {
-        await acknowledgeConfirmation(validatedData.confirmationId, actorId);
-        return apiSuccess({ acknowledged: true });
-      }
+      case "take_ownership":
+        await takeOwnership(validatedData.confirmationId, actorId);
+        return apiSuccess({ owned: true });
 
-      case "sign_off": {
-        const roleCheck = await requireRole("admin", "lead");
-        if (roleCheck instanceof NextResponse) return roleCheck;
+      case "add_note":
+        await addNote(validatedData.confirmationId, actorId, validatedData.note);
+        return apiSuccess({ noteAdded: true });
 
-        await signOffConfirmation(validatedData.confirmationId, actorId);
-        return apiSuccess({ signedOff: true });
-      }
-
-      case "escalate": {
-        await escalateConfirmation(validatedData.confirmationId, actorId, validatedData.reason);
-        return apiSuccess({ escalated: true });
-      }
-
-      default:
-        return apiValidationError("Unknown action");
+      case "link_ticket":
+        await linkTicket(validatedData.confirmationId, actorId, validatedData.ticketRef);
+        return apiSuccess({ ticketLinked: true });
     }
   } catch (error) {
     return handleApiError(error, "transaction-confirmations POST");

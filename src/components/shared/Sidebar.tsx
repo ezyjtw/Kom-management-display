@@ -26,7 +26,6 @@ import {
   DollarSign,
   Layers,
   ClipboardCheck,
-  UserCheck,
   ScanSearch,
   FileSearch,
   Coins,
@@ -41,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
 import { useState, useEffect } from "react";
+import type { SafetyFlagKey } from "@/lib/feature-flags";
 
 const navSections = [
   {
@@ -51,7 +51,7 @@ const navSections = [
       { href: "/comms", label: "Communications", icon: MessageSquare },
       { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
       { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
-      { href: "/activity", label: "Activity Tracker", icon: Activity },
+      { href: "/activity", label: "Activity Tracker", icon: Activity, flag: "people.activity_tracking" as SafetyFlagKey },
     ],
   },
   {
@@ -59,13 +59,12 @@ const navSections = [
     items: [
       { href: "/staking", label: "Staking Ops", icon: Layers },
       { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
-      { href: "/approvals", label: "Approvals Queue", icon: UserCheck },
-      { href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
+{ href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
       { href: "/screening", label: "Screening", icon: ScanSearch },
       { href: "/tokens", label: "Token Review", icon: Coins },
       { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
       { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
-      { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign },
+      { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign, flag: "module.usdc_ramp" as SafetyFlagKey },
     ],
   },
   {
@@ -77,8 +76,8 @@ const navSections = [
       { href: "/client-comms", label: "Client Comms", icon: Send },
       { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
       { href: "/projects", label: "Projects", icon: FolderKanban },
-      { href: "/briefing", label: "AI Briefing", icon: Sparkles },
-      { href: "/compliance-bot", label: "Compliance Bot", icon: Scale },
+      { href: "/briefing", label: "AI Briefing", icon: Sparkles, flag: "ai.enabled" as SafetyFlagKey },
+      { href: "/compliance-bot", label: "Compliance Bot", icon: Scale, flag: "ai.compliance_bot" as SafetyFlagKey },
     ],
   },
   {
@@ -109,6 +108,16 @@ export function Sidebar({ user }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { branding } = useBranding();
   const [clientCommsDraftCount, setClientCommsDraftCount] = useState(0);
+  // Flag-gated items stay hidden until the server says the flag is on.
+  const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const keys = navSections.flatMap((s) => s.items).flatMap((i) => ("flag" in i && i.flag ? [i.flag] : []));
+    fetch(`/api/feature-flags?keys=${encodeURIComponent(keys.join(","))}`)
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setEnabledFlags(json.data.flags); })
+      .catch(() => {});
+  }, []);
 
   // Fetch client comms draft count
   useEffect(() => {
@@ -197,6 +206,7 @@ export function Sidebar({ user }: SidebarProps) {
               </p>
               {section.items
                 .filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin)
+                .filter((item) => !("flag" in item && item.flag) || enabledFlags[item.flag] === true)
                 .map((item) => {
                   const Icon = item.icon;
                   const isActive = item.href === "/"

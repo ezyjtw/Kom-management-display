@@ -21,6 +21,15 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const key = searchParams.get("key");
+    const keys = searchParams.get("keys");
+
+    if (keys) {
+      const flags: Record<string, boolean> = {};
+      for (const k of keys.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 50)) {
+        flags[k] = await isFeatureEnabled(k, { role: auth.role, team: auth.team || undefined, userId: auth.id });
+      }
+      return apiSuccess({ flags });
+    }
 
     // Check a specific flag for the current user
     if (key) {

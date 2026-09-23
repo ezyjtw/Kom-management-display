@@ -8,6 +8,7 @@
 
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import type {
   IntegrationAdapter,
   IntegrationHealth,
@@ -221,6 +222,7 @@ export class NotabeneAdapter implements IntegrationAdapter {
   }
 
   async sync(opts?: Record<string, unknown>): Promise<NormalizedEvent[]> {
+    if (!(await isFeatureEnabled("integration.notabene.enabled"))) return [];
     const config = getConfig();
     if (!config) {
       logger.warn("Notabene adapter not configured, skipping sync");

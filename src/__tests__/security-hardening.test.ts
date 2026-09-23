@@ -36,7 +36,7 @@ import { metrics, recordApiRequest } from "@/lib/metrics";
 import { getIdempotencyStats } from "@/lib/idempotency";
 import {
   createTransactionConfirmationSchema,
-  confirmationActionSchema,
+  transactionConfirmationPostSchema,
   upsertFeatureFlagSchema,
   searchQuerySchema,
   reportQuerySchema,
@@ -385,13 +385,13 @@ describe("Extended Validation Schemas", () => {
   });
 
   it("validates confirmation actions", () => {
-    const valid = validateBody(confirmationActionSchema, {
-      action: "acknowledge",
+    const valid = validateBody(transactionConfirmationPostSchema, {
+      action: "take_ownership",
       confirmationId: "conf-123",
     });
     expect(valid.success).toBe(true);
 
-    const invalid = validateBody(confirmationActionSchema, {
+    const invalid = validateBody(transactionConfirmationPostSchema, {
       action: "invalid_action",
       confirmationId: "conf-123",
     });
