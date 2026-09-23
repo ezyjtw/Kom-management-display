@@ -38,7 +38,13 @@ const TEAM_ENUM: Record<string, string> = {
   [TEAMS.settlements]: "Settlements",
 };
 
+/** Lead for a team: TeamConfig (spec §12, "Team 1".."Team 3") first, else active Employees with role Lead. */
 export async function teamLeads(team: string): Promise<Recipient[]> {
+  const cfg = await prisma.teamConfig.findUnique({ where: { team } });
+  if (cfg?.leadEmployeeId) {
+    const lead = await prisma.employee.findUnique({ where: { id: cfg.leadEmployeeId }, select: { email: true, active: true } });
+    if (lead?.active) return [{ email: lead.email }];
+  }
   const teamEnum = TEAM_ENUM[team];
   if (!teamEnum) return [];
   const rows = await prisma.employee.findMany({

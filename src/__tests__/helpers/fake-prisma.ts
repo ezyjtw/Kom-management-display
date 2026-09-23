@@ -22,12 +22,13 @@ interface Relation {
 
 const PK: Record<string, string> = {
   alertRule: "code", appSetting: "key", assetThreshold: "asset", riskRuleTier: "rule", sourceHeartbeat: "source",
-  jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key",
+  jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key", teamConfig: "team", assetStatus: "asset",
 };
 
 const COMPOUND: Record<string, Record<string, string[]>> = {
   sourceRecord: { source_kind_externalId: ["source", "kind", "externalId"] },
   workItem: { sourceSystem_sourceId: ["sourceSystem", "sourceId"] },
+  dailyCheckItem: { definitionCode_periodKey: ["definitionCode", "periodKey"] },
 };
 
 const RELATIONS: Record<string, Record<string, Relation>> = {
@@ -37,6 +38,7 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     ticketLinks: { model: "ticketLink", kind: "many", localKey: "id", remoteKey: "workItemId" },
   },
   onCallSchedule: { employee: { model: "employee", kind: "one", localKey: "employeeId", remoteKey: "id" } },
+  dailyCheckItem: { definition: { model: "dailyCheckDefinition", kind: "one", localKey: "definitionCode", remoteKey: "code" } },
 };
 
 const DEFAULTS: Record<string, () => Row> = {
@@ -51,7 +53,8 @@ const DEFAULTS: Record<string, () => Row> = {
     firstResponseAt: null, resolvedAt: null, slaPolicyId: null, exposureUsd: null, clientId: null, riskScore: null, rootCause: null, resolutionNote: null,
   }),
   sourceRecord: () => ({ credentialLabel: "", status: null, mappedStatus: null, occurredAt: null, sourceUpdatedAt: null, fields: {}, firstSeenAt: new Date(), lastSeenAt: new Date() }),
-  dailyCheckItem: () => ({ status: "pending", exceptionWorkItemIds: [], evidence: {} }),
+  dailyCheckItem: () => ({ status: "pending", exceptionWorkItemIds: [], evidence: {}, autoResult: "", notes: "", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null, recordCount: null, dataAsOf: null }),
+  dailyCheckDefinition: () => ({ isActive: true, version: 1, kind: "check", requiredFlag: null, restricted: false }),
   iaiDraft: () => ({ jiraKey: null, completedAt: null }),
   ticketLink: () => ({ role: "primary" }),
 };

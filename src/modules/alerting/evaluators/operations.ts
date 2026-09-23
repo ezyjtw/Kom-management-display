@@ -6,7 +6,9 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { businessMinutesWith, isBusinessTimeWith, loadCalendar, londonInstant, londonParts } from "@/modules/alerting/calendar";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { businessMinutesWith, loadCalendar, londonInstant, londonParts } from "@/modules/alerting/calendar";
+import { periodsFor } from "@/modules/daily-checks/schedule";
 import { fieldsOf, komainuRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
 import { numParam, strListParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
 
@@ -114,22 +116,20 @@ export async function evaluateTravelRuleAgeing(ctx: EvaluatorContext): Promise<A
   });
 }
 
-/** ALR-CHK-01: a daily check past its due time (London) with no completed item for today. */
+/** ALR-CHK-01: a daily or weekly check past its due time (London) with no completed item for the period. */
 export async function evaluateCheckNotDone(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
-  const cal = await loadCalendar(String(ctx.params.calendar ?? "business_uk"), ctx.now, ctx.now);
   const today = londonParts(ctx.now);
-  // Checks run on business days (a check done at 09:05 on a holiday is not expected).
-  const businessDay = cal.is24x7 || isBusinessTimeWith({ ...cal, startMin: 0, endMin: 1440 }, ctx.now);
-  if (!businessDay) return [];
-  const defs = await prisma.dailyCheckDefinition.findMany({ where: { isActive: true, frequency: "daily" } });
+  const defs = await prisma.dailyCheckDefinition.findMany({ where: { isActive: true, frequency: { in: ["daily", "weekly"] } } });
   const out: AlertCandidate[] = [];
   for (const d of defs) {
+    if (d.requiredFlag && !(await isFeatureEnabled(d.requiredFlag))) continue;
     const [h, m] = d.dueByLocal.split(":").map(Number);
     if (!Number.isFinite(h) || ctx.now < londonInstant(today.date, h * 60 + (m || 0))) continue;
-    const done = await prisma.dailyCheckItem.count({ where: { definitionCode: d.code, periodKey: today.date, status: { not: "pending" } } });
-    if (!done) {
+    for (const period of await periodsFor(d, ctx.now)) {
+      const done = await prisma.dailyCheckItem.count({ where: { definitionCode: d.code, periodKey: period.key, status: { not: "pending" } } });
+      if (done) continue;
       out.push({
-        dedupeKey: `${d.code}:${today.date}`,
+        dedupeKey: `${d.code}:${period.key}`,
         severity: "high",
         title: `Daily check not done: ${d.code}`,
         detail: `${d.code} ${d.name} (${d.team}) was due by ${d.dueByLocal} and has not been completed.`,

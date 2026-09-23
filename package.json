@@ -25,7 +25,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "npx tsx prisma/seed.ts"
+    "db:seed": "npx tsx prisma/seed.ts",
+    "coverage:matrix": "tsx scripts/coverage-matrix.ts"
   },
   "repository": {
     "type": "git",

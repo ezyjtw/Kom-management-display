@@ -21,6 +21,7 @@ const SPEC_FLAGS = [
   "module.market_ticker", // spec §6.4
   "module.status_pages", // spec §8.6
   "iai.drafts.enabled", // spec §10.4
+  "module.fab", // spec §12 TASK-FAB
 ];
 
 function seededRows() {

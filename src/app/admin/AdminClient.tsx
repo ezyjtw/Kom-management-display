@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette, Building2, Timer, Inbox, Ticket, BellRing } from "lucide-react";
+import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette, Building2, Timer, Inbox, Ticket, BellRing, Database } from "lucide-react";
 import type { ScoringConfigData, Category } from "@/types";
 
 import ScoringWeightsTab from "./ScoringWeightsTab";
@@ -16,6 +16,7 @@ import SlaPoliciesTab from "./SlaPoliciesTab";
 import IntakeTab from "./IntakeTab";
 import JiraProjectsTab from "./JiraProjectsTab";
 import AlertRulesTab from "./AlertRulesTab";
+import ReferenceDataTab from "./ReferenceDataTab";
 import { SlaTargetsBanner } from "./SlaTargetsBanner";
 import type { Employee } from "./EmployeesTab";
 import type { UserAccount } from "./UserAccountsTab";
@@ -34,6 +35,7 @@ const tabs = [
   { key: "intake" as const, label: "Client Intake", icon: Inbox },
   { key: "jira" as const, label: "Jira Projects", icon: Ticket },
   { key: "alertRules" as const, label: "Alert Rules", icon: BellRing },
+  { key: "reference" as const, label: "Reference Data", icon: Database },
 ];
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -189,6 +191,7 @@ export default function AdminClient({ scoringEnabled }: { scoringEnabled: boolea
       {activeTab === "intake" && <IntakeTab />}
       {activeTab === "jira" && <JiraProjectsTab />}
       {activeTab === "alertRules" && <AlertRulesTab />}
+      {activeTab === "reference" && <ReferenceDataTab />}
     </div>
   );
 }

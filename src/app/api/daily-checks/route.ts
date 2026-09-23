@@ -6,6 +6,7 @@ import { apiSuccess, apiValidationError, apiConflictError, apiForbiddenError, ha
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateDailyCheckPatchSchema } from "@/lib/validation";
 import { DailyCheckRuleError, passItem, requestSkip } from "@/modules/daily-checks/enforcement";
+import { isRestrictedItemFor } from "@/modules/kps/access";
 
 const DEFAULT_CHECK_ITEMS = [
   { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count" },
@@ -145,6 +146,7 @@ export async function PATCH(request: NextRequest) {
 
     if ("itemId" in validatedData) {
       const { itemId, status, notes, evidence, skippedReason } = validatedData;
+      if (await isRestrictedItemFor(itemId, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
       if (notes !== undefined) await prisma.dailyCheckItem.update({ where: { id: itemId }, data: { notes } });
 
       // Spec §10.2: every status change goes through the daily-check rules.

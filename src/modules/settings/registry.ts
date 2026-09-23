@@ -59,6 +59,8 @@ export const SETTINGS = {
   "alerting.oohAckMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Out-of-hours acknowledgement window (minutes, critical)" },
   /** Spec §11.3 quiet rule: the same alert never re-notifies within this window. */
   "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
+  /** Spec §12 CHK-09K: named users (user ids) allowed kps:view, in addition to admins. */
+  "kps.viewerUserIds": { schema: z.array(z.string().min(1).max(100)).max(50), default: [] as string[], label: "KPS viewers (user ids)" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

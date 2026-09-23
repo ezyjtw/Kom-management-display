@@ -1124,6 +1124,9 @@ model DailyCheckDefinition {
   evidenceSpec  Json // what counts as positive evidence
   ticketProject String // default Jira project for exceptions
   confluenceUrl String
+  kind          String   @default("check") // check | task (spec §12 recurring non-check tasks)
+  requiredFlag  String? // feature flag that must be on (e.g. module.fab)
+  restricted    Boolean  @default(false) // RESTRICTED explainer: needs kps:view
   version       Int      @default(1)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -1916,4 +1919,36 @@ model RiskRuleTier {
   note      String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Team ownership (spec §12): team -> lead and deputy. Teams are fixed, no rotation.
+model TeamConfig {
+  team             String   @id // "Team 1" | "Team 2" | "Team 3"
+  leadEmployeeId   String?
+  deputyEmployeeId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// Operator-maintained asset status (CF-26). "known_degraded" suppresses CHK-01 exception tickets, with a reason.
+model AssetStatus {
+  asset       String   @id
+  status      String   @default("normal") // normal | known_degraded | sunset
+  reason      String   @default("")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Approved validator set (CF-10, CF-24). Ships empty; control 5.1 cannot be evidenced until populated.
+model ApprovedValidator {
+  id        String   @id @default(cuid())
+  chain     String
+  validator String
+  notes     String   @default("")
+  addedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([chain, validator])
 }

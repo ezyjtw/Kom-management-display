@@ -114,7 +114,7 @@ describe("pollers", () => {
   });
 
   it("stores pending requests with only the needed fields and marks vanished ones", async () => {
-    stubKomainu(() => ({
+    stubKomainu((url) => url.searchParams.get("status") !== "PENDING" ? { page: 1, count: 0, has_next: false, data: [] } : ({
       page: 1, count: 1, has_next: false,
       data: [{
         id: "req-1", type: "CREATE_TRANSACTION", status: "PENDING", entity: "TRANSACTION", entity_id: "tx-1",
@@ -134,7 +134,7 @@ describe("pollers", () => {
     expect(upsert.create.fields).not.toHaveProperty("requested_by");
 
     const vanished = prismaMock.sourceRecord.updateMany.mock.calls[0][0];
-    expect(vanished.where).toMatchObject({ kind: "request", status: { in: ["PENDING"] }, externalId: { notIn: ["req-1"] } });
+    expect(vanished.where).toMatchObject({ kind: "request", status: { in: ["PENDING", "CREATED", "BLOCKED"] }, externalId: { notIn: ["req-1"] } });
     expect(vanished.data).toEqual({ mappedStatus: "no_longer_listed" });
     expect(prismaMock.sourceHeartbeat.upsert.mock.calls[0][0].where.source).toBe("komainu_api.requests");
   });

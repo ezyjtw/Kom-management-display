@@ -41,6 +41,7 @@ export type JobType =
   | "komainu_poll_audit_logs"
   | "komainu_poll_eod_balances"
   | "komainu_poll_staking"
+  | "komainu_poll_stakes"
   | "graph_mail_sync"
   | "graph_teams_sync"
   | "report_unticketed"
@@ -48,7 +49,9 @@ export type JobType =
   | "iai_overdue"
   | "evaluate_alerts"
   | "alert_digest"
-  | "poll_risk_signals";
+  | "poll_risk_signals"
+  | "generate_daily_checks"
+  | "collect_check_evidence";
 
 /** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
 export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
@@ -93,6 +96,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "komainu_poll_audit_logs", cronExpression: "*/5 * * * *" },
     { type: "komainu_poll_eod_balances", cronExpression: "0 7 * * *" },
     { type: "komainu_poll_staking", cronExpression: "30 7 * * *" },
+    { type: "komainu_poll_stakes", cronExpression: "45 7 * * *" },
     { type: "graph_mail_sync", cronExpression: "*/3 * * * *" },
     { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
     { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
@@ -102,6 +106,8 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "evaluate_alerts", cronExpression: "*/1 * * * *" },    // spec §11.1: every 60 s; rules may declare their own cadence
     { type: "alert_digest", cronExpression: "TZ=Europe/London 0 8 * * *" }, // spec §11.3: daily digest of medium config rules
     { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
+    { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
+    { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
   ];
 
   await prisma.backgroundJob.deleteMany({

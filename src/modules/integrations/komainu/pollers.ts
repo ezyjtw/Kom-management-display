@@ -27,6 +27,7 @@ export const KOMAINU_HEARTBEATS = {
   auditLogs: { source: "komainu_api.audit_logs", expectedEveryMins: 5 },
   eodBalances: { source: "komainu_api.eod_balances", expectedEveryMins: 24 * 60 },
   staking: { source: "komainu_api.staking", expectedEveryMins: 24 * 60 },
+  stakes: { source: "komainu_api.stakes", expectedEveryMins: 24 * 60 },
 } as const;
 
 const date = (v: unknown): Date | null => {
@@ -139,7 +140,8 @@ async function pollByStatus<T>(
 }
 
 export function pollRequests() {
-  return pollByStatus<KomainuRequest>("request", "/v1/requests", ["PENDING"], requestToRecord, KOMAINU_HEARTBEATS.requests);
+  // CREATED and BLOCKED too, for CHK-03 Outstanding Requests in GX (spec §12). Read-only (H1).
+  return pollByStatus<KomainuRequest>("request", "/v1/requests", ["PENDING", "CREATED", "BLOCKED"], requestToRecord, KOMAINU_HEARTBEATS.requests);
 }
 
 export function pollTransactions() {
@@ -262,4 +264,14 @@ export function pollStakingRewards() {
   return pollDaily("staking_reward", "/v1/staking/rewards/daily", KOMAINU_HEARTBEATS.staking, (r) =>
     r.id !== undefined ? String(r.id) : r.wallet_id && r.date ? `${String(r.wallet_id)}:${String(r.date)}` : null,
   );
+}
+
+/** ETH and SOL stakes (CHK-22 newly staked accounts; CHK-16/17). Daily. */
+export async function pollStakes() {
+  // TODO(CONFIRM-KOMAINU-OPENAPI): confirm the stake identity fields.
+  const idOf = (chain: string) => (r: Record<string, unknown>) =>
+    r.id !== undefined ? `${chain}:${String(r.id)}` : r.wallet_id && r.validator ? `${chain}:${String(r.wallet_id)}:${String(r.validator)}` : null;
+  const eth = await pollDaily("stake", "/v1/staking/ethereum/stakes", KOMAINU_HEARTBEATS.stakes, idOf("ethereum"));
+  const sol = await pollDaily("stake", "/v1/staking/solana/stakes", KOMAINU_HEARTBEATS.stakes, idOf("solana"));
+  return { ethereum: eth.count, solana: sol.count };
 }

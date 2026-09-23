@@ -11,6 +11,7 @@ import { apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { dailyCheckExceptionsSchema } from "@/lib/validation";
 import { DailyCheckRuleError, recordExceptions } from "@/modules/daily-checks/enforcement";
+import { isRestrictedItemFor } from "@/modules/kps/access";
 import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
+    if (await isRestrictedItemFor(id, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
     const result = await recordExceptions(id, parsed.data.exceptions, auth.employeeId || auth.id);
     const actor = auditActor(auth);
     await createAuditEntry({

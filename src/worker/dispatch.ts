@@ -16,7 +16,7 @@ function str(payload: Payload, key: string): string {
 
 type KomainuJob =
   | "komainu_poll_requests" | "komainu_poll_transactions" | "komainu_poll_collateral"
-  | "komainu_poll_audit_logs" | "komainu_poll_eod_balances" | "komainu_poll_staking";
+  | "komainu_poll_audit_logs" | "komainu_poll_eod_balances" | "komainu_poll_staking" | "komainu_poll_stakes";
 
 function komainuHandlers(): Record<KomainuJob, Handler> {
   const run = (fn: (p: typeof import("@/modules/integrations/komainu/pollers")) => Promise<unknown>): Handler => async () => {
@@ -31,6 +31,7 @@ function komainuHandlers(): Record<KomainuJob, Handler> {
     komainu_poll_audit_logs: run((p) => p.pollAuditLogs()),
     komainu_poll_eod_balances: run((p) => p.pollEodBalances()),
     komainu_poll_staking: run((p) => p.pollStakingRewards()),
+    komainu_poll_stakes: run((p) => p.pollStakes()),
   };
 }
 
@@ -195,6 +196,16 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
   async poll_risk_signals() {
     const { pollRiskSignals } = await import("@/modules/risk/signal-source");
     return pollRiskSignals();
+  },
+
+  async generate_daily_checks() {
+    const { generateDailyItems } = await import("@/modules/daily-checks/schedule");
+    return generateDailyItems();
+  },
+
+  async collect_check_evidence() {
+    const { collectEvidenceForOpenItems } = await import("@/modules/daily-checks/collectors");
+    return collectEvidenceForOpenItems();
   },
 
   async score_vendor_reliability() {
