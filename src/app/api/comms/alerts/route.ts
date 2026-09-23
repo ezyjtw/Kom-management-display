@@ -5,6 +5,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateCommsAlertSchema } from "@/lib/validation";
+import { acknowledgeBlocker } from "@/modules/alerting/acknowledge";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -56,6 +58,11 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) return apiValidationError(parsed.error);
     const { alertId, action } = parsed.data;
 
+    if (action === "acknowledge") {
+      const blocker = await acknowledgeBlocker(alertId);
+      if (blocker) return NextResponse.json({ success: false, error: blocker }, { status: 422 });
+    }
+
     const data: Record<string, unknown> = {};
     if (action === "acknowledge") {
       data.status = "acknowledged";
@@ -75,8 +82,9 @@ export async function PATCH(request: NextRequest) {
         action: `alert_${action}`,
         entityType: "alert",
         entityId: alertId,
-        userId: auth.id,
+        userId: auditActor(auth).userId,
         details: JSON.stringify({
+          ...auditActor(auth).metadata,
           alertType: alert.type,
           alertMessage: alert.message,
           threadId: alert.threadId,

@@ -271,6 +271,10 @@ export const updateDailyCheckPatchSchema = z.union([
     itemId: z.string().min(1),
     status: z.enum(["pending", "pass", "issues_found", "skipped"]).optional(),
     notes: z.string().max(2000).optional(),
+    /** Required for `pass` (spec §10.2); validated by the daily-check rules. */
+    evidence: z.unknown().optional(),
+    /** Required for `skipped`, which only requests the skip. */
+    skippedReason: z.string().max(1000).optional(),
   }),
   z.object({
     runId: z.string().min(1),
@@ -799,6 +803,8 @@ export const updateAlertRuleSchema = z.object({
   route: z.object({
     businessHours: z.array(z.string().min(1).max(200)).max(20),
     outOfHours: z.array(z.string().min(1).max(200)).max(20),
+    /** Jira/JSM project that alerts of this rule are ticketed in (spec §10.1). */
+    ticketProject: z.string().regex(/^[A-Z][A-Z0-9_]+$/).optional(),
   }).optional(),
 }).refine((v) => Object.keys(v).length > 0, "No changes");
 
@@ -817,3 +823,33 @@ export const changePrioritySchema = z.object({
   priority: z.enum(["P0", "P1", "P2", "P3"]),
   reason: z.string().trim().max(500).optional(),
 });
+
+// ─── Tickets by default (spec §10) ───
+
+/** Shape only; the root-cause list, risk-score scale and buckets are checked by closure-rules (422). */
+export const closeWorkItemSchema = z.object({
+  resolutionNote: z.string().max(5000).default(""),
+  rootCause: z.string().max(60).default(""),
+  riskScore: z.string().max(40).default(""),
+  timeLogBucketMins: z.number().int().optional(),
+  target: z.enum(["resolved", "closed"]).optional(),
+  transitionName: z.string().max(100).optional(),
+});
+
+export const dailyCheckExceptionsSchema = z.object({
+  exceptions: z.array(z.object({
+    summary: z.string().trim().min(5).max(200),
+    detail: z.string().trim().max(4000).optional(),
+    reference: z.string().trim().max(200).optional(),
+    clientId: z.string().max(100).optional(),
+  })).min(1).max(50),
+});
+
+/** Local routing config for a Jira/JSM project; never changes Jira itself. */
+export const updateJiraProjectSchema = z.object({
+  enabled: z.boolean().optional(),
+  syncInbound: z.boolean().optional(),
+  /** Name of a discovered issue type used when KOMmand Centre creates tickets. */
+  defaultIssueType: z.string().min(1).max(100).optional(),
+  serviceDeskId: z.string().regex(/^\d*$/).max(20).optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");

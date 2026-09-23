@@ -171,10 +171,13 @@ describe("write-first", () => {
     ];
     stubJira((c) => (c.method === "GET" ? json({ transitions }) : new Response(null, { status: 204 })));
 
-    await expect(changeState("wi-1", "resolved")).rejects.toThrow(/Several transitions/);
+    const closure = { writeUp: { resolutionNote: "Client resent with the right memo.", rootCause: "client_error", riskScore: "Low" } };
+    await expect(changeState("wi-1", "resolved")).rejects.toThrow(/write-up/);
+    expect(calls).toHaveLength(0);
+    await expect(changeState("wi-1", "resolved", { closure })).rejects.toThrow(/Several transitions/);
     expect(prismaMock.workItem.update).not.toHaveBeenCalled();
 
-    await changeState("wi-1", "resolved", { transitionName: "Resolve" });
+    await changeState("wi-1", "resolved", { transitionName: "Resolve", closure });
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/rest/api/3/issue/OTC-5/transitions", body: { transition: { id: "31" } } });
     expect(prismaMock.workItem.update).toHaveBeenCalledTimes(1);
   });

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { AlertSeverity } from "@prisma/client";
+import { ensureAlertTicket } from "@/modules/work-items/tickets";
+import { maybeCreateIaiDraftForAlert } from "@/modules/iai/drafts";
 
 export interface AlertCandidateInput {
   ruleCode: string;
@@ -13,7 +15,8 @@ export interface AlertCandidateInput {
 /**
  * Raise (or re-fire) the open alert for (ruleCode, dedupeKey). Rules ship
  * disabled (spec §11.1): if the AlertRule is missing or disabled nothing is
- * raised. Returns the alert id, or null when the rule is off.
+ * raised. Returns the alert id, or null when the rule is off. Ticketing
+ * failures never stop the alert from being raised.
  */
 export async function raiseAlert(input: AlertCandidateInput): Promise<string | null> {
   const rule = await prisma.alertRule.findUnique({ where: { code: input.ruleCode } });
@@ -30,6 +33,7 @@ export async function raiseAlert(input: AlertCandidateInput): Promise<string | n
       where: { id: open.id },
       data: { lastFiredAt: new Date(), fireCount: { increment: 1 } },
     });
+    await ensureAlertTicket(open.id, { repeat: true });
     return open.id;
   }
 
@@ -44,6 +48,9 @@ export async function raiseAlert(input: AlertCandidateInput): Promise<string | n
         priority: input.priority ?? "P2",
       },
     });
+    // Spec §10.1: every alert that fires is ticketed; some also open an IAI draft (§10.4).
+    await ensureAlertTicket(alert.id, { repeat: false });
+    await maybeCreateIaiDraftForAlert(alert.id);
     return alert.id;
   } catch (error) {
     // Lost a race with another raiser: the partial unique index kept one open alert.

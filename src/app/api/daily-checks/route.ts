@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, apiValidationError, apiConflictError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateDailyCheckPatchSchema } from "@/lib/validation";
+import { DailyCheckRuleError, passItem, requestSkip } from "@/modules/daily-checks/enforcement";
 
 const DEFAULT_CHECK_ITEMS = [
   { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count" },
@@ -122,11 +123,15 @@ export async function POST(request: NextRequest) {
 /**
  * PATCH /api/daily-checks
  * Update a check item or the run itself.
- * Body: { itemId, status, notes } or { runId, jiraSummary }
+ * Body: { itemId, status, notes, evidence, skippedReason } or { runId, jiraSummary }
+ * `pass` needs evidence; `skipped` only requests a skip (a different lead/admin
+ * approves it); `issues_found` is set by recording exceptions.
  */
 export async function PATCH(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
+  const authz = requireAuthorization(auth, "daily_check", "update");
+  if (authz instanceof NextResponse) return authz;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
@@ -139,26 +144,30 @@ export async function PATCH(request: NextRequest) {
     const actorId = auth.employeeId || auth.id;
 
     if ("itemId" in validatedData) {
-      const { itemId, status, notes } = validatedData;
-      const updateData: Record<string, unknown> = {};
-      if (status) {
-        updateData.status = status;
-        updateData.operatorId = actorId;
-        updateData.completedAt = status !== "pending" ? new Date() : null;
+      const { itemId, status, notes, evidence, skippedReason } = validatedData;
+      if (notes !== undefined) await prisma.dailyCheckItem.update({ where: { id: itemId }, data: { notes } });
+
+      // Spec §10.2: every status change goes through the daily-check rules.
+      let item;
+      if (status === "pass") {
+        item = await passItem(itemId, evidence, actorId);
+      } else if (status === "skipped") {
+        item = await requestSkip(itemId, skippedReason, auth.id);
+      } else if (status === "issues_found") {
+        return NextResponse.json(
+          { success: false, error: "Record the exceptions with POST /api/daily-checks/items/:id/exceptions; each one gets a ticket." },
+          { status: 422 },
+        );
+      } else if (status === "pending") {
+        if (auth.role !== "lead" && auth.role !== "admin") return apiForbiddenError("Only leads and admins can reopen a check item");
+        item = await prisma.dailyCheckItem.update({
+          where: { id: itemId },
+          data: { status: "pending", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null },
+        });
+        await prisma.dailyCheckRun.update({ where: { id: item.runId }, data: { completedAt: null } });
+      } else {
+        item = await prisma.dailyCheckItem.findUnique({ where: { id: itemId } });
       }
-      if (notes !== undefined) updateData.notes = notes;
-
-      const item = await prisma.dailyCheckItem.update({ where: { id: itemId }, data: updateData });
-
-      // Check if all items are completed → mark run as completed
-      const run = await prisma.dailyCheckRun.findUnique({
-        where: { id: item.runId },
-        include: { items: { select: { status: true } } },
-      });
-      if (run && run.items.every((i) => i.status !== "pending")) {
-        await prisma.dailyCheckRun.update({ where: { id: run.id }, data: { completedAt: new Date() } });
-      }
-
       return apiSuccess(item);
     }
 
@@ -173,6 +182,9 @@ export async function PATCH(request: NextRequest) {
 
     return apiValidationError("itemId or runId required");
   } catch (error) {
+    if (error instanceof DailyCheckRuleError) {
+      return NextResponse.json({ success: false, error: error.message, issues: error.issues }, { status: error.status });
+    }
     return handleApiError(error, "daily-checks PATCH");
   }
 }

@@ -41,10 +41,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (item.state === "closed") return NextResponse.json({ success: false, error: "Already closed." }, { status: 409 });
 
-    const transitionName = (await getSetting("intake.jsm.nonQuestionTransition")) || undefined;
-    await changeState(id, "closed", { transitionName });
-
     const { reason, text } = parsed.data;
+    const transitionName = (await getSetting("intake.jsm.nonQuestionTransition")) || undefined;
+    await changeState(id, "closed", { transitionName, closure: { nonActionable: { reason } } });
+
     const metadata = (item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata) ? item.metadata : {}) as Record<string, unknown>;
     const updated = await prisma.workItem.update({
       where: { id },

@@ -15,6 +15,7 @@ import {
   getTransitions,
   transitionIssue,
 } from "@/lib/integrations/atlassian/client";
+import { assertClosable, type ClosureBasis } from "@/modules/work-items/closure-rules";
 
 export class TicketWriteError extends Error {
   constructor(message: string, readonly cause?: unknown) {
@@ -76,10 +77,16 @@ const CATEGORY_FOR_STATE: Record<WorkItemState, string> = {
  * Move the ticket to a status in the matching category (transition ids are
  * looked up at runtime), then update the WorkItem. When several transitions
  * lead into the category, `transitionName` must say which.
- * Closing validation (write-up, root cause, risk score) is added in Phase 5.
+ * Resolving or closing requires a valid closure basis (spec §10.2); it is
+ * checked before the ticket is transitioned.
  */
-export async function changeState(workItemId: string, target: WorkItemState, opts: { transitionName?: string } = {}): Promise<WorkItem> {
+export async function changeState(
+  workItemId: string,
+  target: WorkItemState,
+  opts: { transitionName?: string; closure?: ClosureBasis } = {},
+): Promise<WorkItem> {
   const item = await load(workItemId);
+  if (target === "resolved" || target === "closed") await assertClosable(item, opts.closure);
 
   if (item.ticketKey) {
     const transitions = await tryRemote("Transition lookup", () => getTransitions(item.ticketKey!));

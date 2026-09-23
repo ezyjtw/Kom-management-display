@@ -1093,6 +1093,7 @@ model DailyCheckItem {
   recordCount          Int?
   dataAsOf             DateTime?
   skippedReason        String?
+  skipRequestedBy      String? // who asked to skip; approval must come from a different lead/admin (spec §10.2)
   skipApprovedBy       String?
   exceptionWorkItemIds Json      @default("[]")
 

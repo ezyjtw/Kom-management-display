@@ -22,6 +22,12 @@ export interface DailyCheckItemEntry {
   notes: string;
   operatorId: string | null;
   completedAt: string | null;
+  recordCount?: number | null;
+  dataAsOf?: string | null;
+  skippedReason?: string | null;
+  skipRequestedBy?: string | null;
+  skipApprovedBy?: string | null;
+  exceptionWorkItemIds?: string[];
 }
 
 export interface DailyCheckRunEntry {

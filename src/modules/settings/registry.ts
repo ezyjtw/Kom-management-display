@@ -35,6 +35,20 @@ export const SETTINGS = {
   "intake.jsm.requestTypeId": { schema: z.string().regex(/^\d*$/), default: "", label: "JSM request type id (client question)" },
   /** Custom field id of JSM "Organizations" on the request type, discovered by an admin. */
   "intake.jsm.organizationFieldId": { schema: z.string().regex(/^(customfield_\d+|)$/), default: "", label: "JSM Organizations field id" },
+  /** Spec §10.2 root-cause list (seed; admin-editable). */
+  "workItem.rootCauses": {
+    schema: z.array(z.string().regex(/^[a-z_]{2,40}$/)).min(1).max(50),
+    default: ["client_error", "vendor_issue", "gx_defect", "data_issue", "process_gap", "configuration", "network_or_chain", "no_action_required", "duplicate", "other"],
+    label: "Root causes (closure)",
+  },
+  /** CONFIRM-RISK-SCORE-SCALE: the team's ticket risk-score values. Empty = any non-empty value is accepted until confirmed. */
+  "workItem.riskScoreScale": { schema: z.array(z.string().trim().min(1).max(40)).max(20), default: [] as string[], label: "Risk score scale (closure)" },
+  /** Jira project for exceptions of daily checks without a definition. */
+  "dailyChecks.defaultTicketProject": { schema: z.string().regex(/^[A-Z][A-Z0-9_]+$/), default: "TOPS", label: "Default ticket project for daily check exceptions" },
+  /** Default freshness limit for daily check evidence when the definition sets none. */
+  "dailyChecks.defaultFreshnessMinutes": { schema: z.number().int().min(1).max(7 * 24 * 60), default: 24 * 60, label: "Default evidence freshness (minutes)" },
+  /** Ticket project for alerts whose rule route names none (spec §10.1). Empty = such alerts stay unticketed and appear in the daily report. */
+  "alerts.defaultTicketProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "Default ticket project for alerts" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

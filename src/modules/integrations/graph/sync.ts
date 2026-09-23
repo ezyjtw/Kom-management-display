@@ -20,6 +20,7 @@ import { recordHeartbeat } from "@/modules/integrations/heartbeat";
 import { upsertSourceRecords } from "@/modules/integrations/source-records";
 import { parseVendorEmail, VENDOR_PARSERS, type VendorParser } from "@/modules/integrations/graph/vendor-parsers";
 import { handleEmailIntake, handleTeamsIntake } from "@/modules/intake/graph-intake-service";
+import { createTicketForWorkItem } from "@/modules/work-items/tickets";
 
 export const MAIL_EXPECTED_MINS = 3;
 export const TEAMS_EXPECTED_MINS = 5;
@@ -82,7 +83,7 @@ async function ingestVendorEmail(msg: GraphMessage, parsers: readonly VendorPars
     select: { id: true, ticketKey: true },
   });
   const at = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
-  await prisma.workItem.upsert({
+  const item = await prisma.workItem.upsert({
     where: { sourceSystem_sourceId: { sourceSystem: "email", sourceId: `vendor:${parsed.vendor}:${parsed.vendorKey}` } },
     update: {
       metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vsrKey: vsr?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
@@ -98,7 +99,21 @@ async function ingestVendorEmail(msg: GraphMessage, parsers: readonly VendorPars
       metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vsrKey: vsr?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
     },
   });
-  return "linked" as const;
+  if (vsr) return "linked" as const;
+
+  // Spec §10.1: a vendor update with no matching VSR opens one.
+  if (!item.ticketKey) {
+    await createTicketForWorkItem(item.id, {
+      projectKey: "VSR",
+      summary: `${parsed.vendor} ${parsed.vendorKey}: ${msg.subject ?? ""}`,
+      description: `Vendor portal update received by email with no matching VSR.
+Vendor: ${parsed.vendor}
+Vendor ticket: ${parsed.vendorKey}
+Status: ${parsed.status}`,
+      labels: ["vendor-update", `vendor-${parsed.vendor.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`],
+    });
+  }
+  return "vsr_created" as const;
 }
 
 async function lastRecordAt(source: string): Promise<Date | null> {

@@ -42,7 +42,10 @@ export type JobType =
   | "komainu_poll_eod_balances"
   | "komainu_poll_staking"
   | "graph_mail_sync"
-  | "graph_teams_sync";
+  | "graph_teams_sync"
+  | "report_unticketed"
+  | "reconcile_tickets"
+  | "iai_overdue";
 
 /** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
 export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
@@ -90,6 +93,9 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "graph_mail_sync", cronExpression: "*/3 * * * *" },
     { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
     { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
+    { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
+    { type: "reconcile_tickets", cronExpression: "15 * * * *" },   // spec §10.3: hourly
+    { type: "iai_overdue", cronExpression: "5 * * * *" },          // spec §10.4
   ];
 
   await prisma.backgroundJob.deleteMany({
@@ -451,9 +457,12 @@ export async function replayDeadLetterJob(jobId: string): Promise<void> {
  * An invalid expression falls back to five minutes from now so the job
  * keeps running instead of stalling; the error is logged.
  */
+/** Cron in UTC, or in a named zone with a `TZ=<zone> ` prefix (e.g. "TZ=Europe/London 30 8 * * *"). */
 export function getNextCronRun(cron: string, from: Date = new Date()): Date {
   try {
-    return CronExpressionParser.parse(cron, { currentDate: from, tz: "UTC" }).next().toDate();
+    const m = /^TZ=(\S+)\s+(.+)$/.exec(cron.trim());
+    const [tz, expr] = m ? [m[1], m[2]] : ["UTC", cron];
+    return CronExpressionParser.parse(expr, { currentDate: from, tz }).next().toDate();
   } catch (error) {
     logger.error("Invalid cron expression", {
       cron,

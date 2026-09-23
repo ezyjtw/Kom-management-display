@@ -167,6 +167,21 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return syncGraphTeams();
   },
 
+  async report_unticketed() {
+    const { runUnticketedReport } = await import("@/modules/work-items/ticket-jobs");
+    return runUnticketedReport();
+  },
+
+  async reconcile_tickets() {
+    const { reconcileTickets } = await import("@/modules/work-items/ticket-jobs");
+    return reconcileTickets();
+  },
+
+  async iai_overdue() {
+    const { checkOverdueIaiDrafts } = await import("@/modules/iai/overdue-job");
+    return checkOverdueIaiDrafts();
+  },
+
   async score_vendor_reliability() {
     const { computeAllVendorScores } = await import("@/lib/vendor-reliability");
     const now = new Date();
