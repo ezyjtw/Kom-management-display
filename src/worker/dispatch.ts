@@ -208,6 +208,11 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return collectEvidenceForOpenItems();
   },
 
+  async mtd_autoclose() {
+    const { autoCloseDailyMtdTickets } = await import("@/modules/daily-checks/mtd");
+    return autoCloseDailyMtdTickets();
+  },
+
   async score_vendor_reliability() {
     const { computeAllVendorScores } = await import("@/lib/vendor-reliability");
     const now = new Date();

@@ -2020,3 +2020,36 @@ model FabFeeBalance {
 
   @@index([walletRef, recordedAt])
 }
+
+/// OTC break types (spec §12 CHK-02), admin-editable. The list comes from
+/// Confluence "2.3 OTC Break Types" (TODO(CONFIRM-OTC-BREAK-TYPES)); ships empty.
+model OtcBreakType {
+  code        String   @id
+  label       String
+  description String   @default("")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-user notification preferences (spec §12 TASK-OTC: notify.on_assign.projects).
+model UserNotificationPreference {
+  userId           String   @id
+  onAssignProjects Json     @default("[]") // Jira project keys: DM + in-app when a ticket there is assigned to me
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// In-app notifications (informational; links only).
+model InAppNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String    @default("")
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}

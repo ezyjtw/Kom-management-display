@@ -51,7 +51,8 @@ export type JobType =
   | "alert_digest"
   | "poll_risk_signals"
   | "generate_daily_checks"
-  | "collect_check_evidence";
+  | "collect_check_evidence"
+  | "mtd_autoclose";
 
 /** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
 export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
@@ -108,6 +109,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
     { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
+    { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
   ];
 
   await prisma.backgroundJob.deleteMany({

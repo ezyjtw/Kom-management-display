@@ -6,6 +6,9 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { detectVendorSupport, getVendorNotes } from "@/lib/vendor-supported-assets";
 import { validateBody, tokenActionSchema } from "@/lib/validation";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { jiraView, ticketTokenReview, writeTokenChange } from "@/modules/tokens/jira-sync";
+import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 
 /**
  * GET /api/tokens
@@ -126,7 +129,14 @@ export async function GET(request: NextRequest) {
       highRisk: data.filter((d) => d.riskLevel === "high" || d.riskLevel === "critical").length,
     };
 
-    return apiSuccess({ tokens: data, summary });
+    // CHK-13: the TOKENS ticket is the record; show its state next to each review.
+    const jira = await jiraView(tokens);
+    const withJira = data.map((d) => {
+      const item = d.jiraTicket ? jira.stateFor(d.jiraTicket) : null;
+      return { ...d, jiraState: item?.state ?? null, jiraUrl: item?.ticketUrl ?? null };
+    });
+
+    return apiSuccess({ tokens: withJira, summary, jiraOnly: jira.jiraOnly });
   } catch (error) {
     return handleApiError(error, "tokens GET");
   }
@@ -217,7 +227,9 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        return apiSuccess({ id: token.id });
+        // CHK-13: open or link the TOKENS ticket (failures are kept for the unticketed report).
+        const item = await ticketTokenReview(token.id).catch(() => null);
+        return apiSuccess({ id: token.id, jiraTicket: item?.ticketKey ?? null });
       }
 
       case "update_status": {
@@ -249,6 +261,7 @@ export async function POST(request: NextRequest) {
           updateData.liveAt = new Date();
         }
 
+        await writeTokenChange(tokenId, `Review status changed to ${newStatus}${reason ? `: ${reason}` : ""}.`);
         await prisma.tokenReview.update({
           where: { id: tokenId },
           data: updateData,
@@ -323,15 +336,22 @@ export async function POST(request: NextRequest) {
           updateData.jurisdictionStatus = JSON.stringify(body.jurisdictionStatus);
         }
 
+        const changed = Object.keys(updateData).filter((k) => k !== "jiraTicket");
+        if (changed.length) await writeTokenChange(tokenId, `Review fields updated in KOMmand Centre: ${changed.join(", ")}.`);
         await prisma.tokenReview.update({
           where: { id: tokenId },
           data: updateData,
         });
+        if (updateData.jiraTicket) await ticketTokenReview(tokenId).catch(() => null);
 
         return apiSuccess(undefined);
       }
 
       case "save_research": {
+        // AI research and discovery are disabled (spec §12 CHK-13, H3).
+        if (!(await isFeatureEnabled("ai.enabled"))) {
+          return NextResponse.json({ success: false, error: "AI research is disabled." }, { status: 404 });
+        }
         const { tokenId, researchResult, recommendation } = body;
         if (!tokenId || !researchResult) {
           return apiValidationError("tokenId and researchResult are required");
@@ -353,6 +373,9 @@ export async function POST(request: NextRequest) {
         return apiValidationError(`Unknown action: ${action}`);
     }
   } catch (error) {
+    if (error instanceof TicketWriteError) {
+      return NextResponse.json({ success: false, error: `Not saved: ${error.message}` }, { status: 409 });
+    }
     return handleApiError(error, "tokens POST");
   }
 }

@@ -78,8 +78,8 @@ export default function BoardsPage() {
 
   function submitExceptions(card: BoardCard, item: BoardItem, el: HTMLFormElement) {
     const rows = String(new FormData(el).get("rows") ?? "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-      const [summary, reference] = l.split("|").map((p) => p.trim());
-      return { summary, ...(reference ? { reference } : {}) };
+      const [summary, reference, breakType] = l.split("|").map((p) => p.trim());
+      return { summary, ...(reference ? { reference } : {}), ...(breakType ? { breakType } : {}) };
     });
     void send(`/api/daily-checks/items/${item.id}/exceptions`, "POST", { exceptions: rows }, `${rows.length} exception(s) recorded for ${card.code}; each gets a ticket.`);
   }
@@ -132,6 +132,7 @@ export default function BoardsPage() {
 
               {card.code === "CHK-09K" && !card.banners.includes("Restricted: requires kps:view.") && <a href="/kps" className="text-xs text-primary">Open the KPS view</a>}
               {card.code === "CHK-10" && <a href="/settlements" className="text-xs text-primary">Open settlement monitoring</a>}
+              {card.code === "TASK-OTC" && <a href="/otc" className="text-xs text-primary">Open the OTC queue</a>}
               {card.code === "TASK-FAB" && !card.disabledByFlag && <a href="/fab" className="text-xs text-primary">Open the FAB register</a>}
               {card.banners.map((b) => (
                 <p key={b} className="text-xs text-amber-400 flex items-center gap-1"><AlertTriangle size={12} /> {b}</p>
@@ -202,7 +203,7 @@ export default function BoardsPage() {
                   )}
                   {form?.itemId === item.id && form.kind === "issues" && (
                     <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); submitExceptions(card, item, e.currentTarget); }}>
-                      <label className="text-xs text-muted-foreground block">One exception per line: <code>summary | reference</code>. Each becomes a work item and a {card.ticketProject} ticket.
+                      <label className="text-xs text-muted-foreground block">One exception per line: <code>summary | reference{card.code.startsWith("CHK-02") ? " | break type" : ""}</code>. Each becomes a work item and a {card.ticketProject} ticket.
                         <textarea name="rows" required rows={4} defaultValue={(item.proposal?.exceptions ?? []).map((x) => `${x.summary}${x.reference ? ` | ${x.reference}` : ""}`).join("\n")} className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
                       </label>
                       <button type="submit" className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg">Record exceptions</button>

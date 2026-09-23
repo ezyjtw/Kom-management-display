@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { browseUrl, searchIssues, type JiraIssue } from "@/lib/integrations/atlassian/client";
 import { recordHeartbeat } from "@/modules/integrations/heartbeat";
+import { notifyOnAssign } from "@/modules/notifications/on-assign";
 
 export const JIRA_HEARTBEAT = { source: "atlassian.issues", expectedEveryMins: 2 };
 
@@ -103,6 +104,13 @@ export async function applyIssue(issue: JiraIssue, cfg: { kind: string; defaultW
     });
     workItemId = created.id;
     outcome = "created";
+  }
+
+  // Spec §12 TASK-OTC: notify on assignment, per user preference.
+  if (ownerEmployeeId && ownerEmployeeId !== existing?.ownerEmployeeId) {
+    await notifyOnAssign({ employeeId: ownerEmployeeId, ticketKey: issue.key, title: issue.fields.summary ?? issue.key, url: browseUrl(issue.key) }).catch((error) =>
+      logger.warn("Assignment notification failed", { key: issue.key, error: error instanceof Error ? error.message : String(error) }),
+    );
   }
 
   const url = browseUrl(issue.key);

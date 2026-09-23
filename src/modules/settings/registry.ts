@@ -67,6 +67,10 @@ export const SETTINGS = {
   "fab.ticketProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "FAB instruction ticket project" },
   /** Exposure bands for ALR-OES-06 client comms (CF-39). Empty = free text until the bands are agreed (CONFIRM-EXPOSURE-BANDS). */
   "oes.exposureBands": { schema: z.array(z.string().trim().min(1).max(60)).max(10), default: [] as string[], label: "OES client exposure bands" },
+  /** CHK-02: risk score used when the daily TOPS MTD ticket closes automatically. Empty = comment only; the lead closes it. */
+  "mtd.autoCloseRiskScore": { schema: z.string().trim().max(40), default: "", label: "Risk score for the automatic daily MTD close" },
+  /** CHK-06: Jira project for "possible false positive" tickets to Tech (TODO(CONFIRM-TECH-PROJECT)). Empty = unticketed and reported. */
+  "scamDust.techProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "Tech project for scam/dust false positives" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

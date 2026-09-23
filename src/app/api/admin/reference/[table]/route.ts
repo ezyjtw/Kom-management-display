@@ -2,7 +2,8 @@
  * Admin reference data for daily coverage (spec §12), audit-logged:
  * - team-config: team -> lead and deputy (teams are fixed, no rotation);
  * - asset-status: known degraded / sunset assets (CF-26) suppress CHK-01 tickets with a reason;
- * - approved-validators: the approved validator set (CF-10, CF-24), shipped empty.
+ * - approved-validators: the approved validator set (CF-10, CF-24), shipped empty;
+ * - otc-break-types: CHK-02 break types from Confluence "2.3 OTC Break Types" (TODO(CONFIRM-OTC-BREAK-TYPES)).
  * GET lists; PUT upserts one row; DELETE removes one (?key=).
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -32,8 +33,16 @@ const approvedValidator = z.object({
   notes: z.string().trim().max(500).default(""),
 });
 
-type TableName = "team-config" | "asset-status" | "approved-validators";
-const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators"];
+const otcBreakType = z.object({
+  code: z.string().trim().regex(/^[a-z0-9_]{2,40}$/),
+  label: z.string().trim().min(2).max(100),
+  description: z.string().trim().max(500).default(""),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(1000).default(0),
+});
+
+type TableName = "team-config" | "asset-status" | "approved-validators" | "otc-break-types";
+const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators", "otc-break-types"];
 
 async function guard(request: NextRequest | null, write: boolean) {
   const auth = await requireAuth();
@@ -50,6 +59,7 @@ async function guard(request: NextRequest | null, write: boolean) {
 function list(table: TableName) {
   if (table === "team-config") return prisma.teamConfig.findMany({ orderBy: { team: "asc" } });
   if (table === "asset-status") return prisma.assetStatus.findMany({ orderBy: { asset: "asc" } });
+  if (table === "otc-break-types") return prisma.otcBreakType.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
   return prisma.approvedValidator.findMany({ orderBy: [{ chain: "asc" }, { validator: "asc" }] });
 }
 
@@ -89,6 +99,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       key = v.data.asset;
       const data = { ...v.data, updatedById: auth.id };
       row = await prisma.assetStatus.upsert({ where: { asset: key }, update: data, create: data });
+    } else if (table === "otc-break-types") {
+      const v = validateBody(otcBreakType, body);
+      if (!v.success) return apiValidationError(v.error);
+      key = v.data.code;
+      row = await prisma.otcBreakType.upsert({ where: { code: key }, update: v.data, create: v.data });
     } else {
       const v = validateBody(approvedValidator, body);
       if (!v.success) return apiValidationError(v.error);
@@ -117,7 +132,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { count } = table === "asset-status"
       ? await prisma.assetStatus.deleteMany({ where: { asset: key } })
-      : await prisma.approvedValidator.deleteMany({ where: { id: key } });
+      : table === "otc-break-types"
+        ? await prisma.otcBreakType.deleteMany({ where: { code: key } })
+        : await prisma.approvedValidator.deleteMany({ where: { id: key } });
     if (!count) return apiNotFoundError("Row");
     await createAuditEntry({ action: `reference_${table}_deleted`, entityType: "reference_data", entityId: key, userId: actor.userId, summary: `${table} ${key} removed`, metadata: actor.metadata });
     return apiSuccess({ deleted: count });

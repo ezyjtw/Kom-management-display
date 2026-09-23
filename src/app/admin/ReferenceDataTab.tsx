@@ -11,6 +11,7 @@ export default function ReferenceDataTab() {
   const [teams, setTeams] = useState<Row[]>([]);
   const [assets, setAssets] = useState<Row[]>([]);
   const [validators, setValidators] = useState<Row[]>([]);
+  const [breakTypes, setBreakTypes] = useState<Row[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   async function load() {
@@ -18,6 +19,7 @@ export default function ReferenceDataTab() {
     setTeams(await get("team-config"));
     setAssets(await get("asset-status"));
     setValidators(await get("approved-validators"));
+    setBreakTypes(await get("otc-break-types"));
   }
   useEffect(() => { void load(); }, []);
 
@@ -67,6 +69,23 @@ export default function ReferenceDataTab() {
           <input name="asset" required placeholder="Asset" aria-label="Asset" className={input} />
           <select name="status" aria-label="Status" className={input}><option value="known_degraded">known degraded</option><option value="sunset">sunset</option><option value="normal">normal</option></select>
           <input name="reason" placeholder="Reason" aria-label="Reason" className={`${input} flex-1`} />
+          <button type="submit" className="px-2 py-1 text-xs border border-border rounded-md">Save</button>
+        </form>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">OTC break types (CHK-02)</h3>
+        <p className="text-xs text-muted-foreground">From Confluence &quot;2.3 OTC Break Types&quot;. While the list is empty, MTD breaks are recorded as unclassified.</p>
+        {breakTypes.map((b) => (
+          <div key={String(b.code)} className="flex gap-2 items-center text-xs">
+            <span className="w-40 font-medium">{String(b.code)}</span><span className="flex-1">{String(b.label)}</span><span>{b.isActive ? "active" : "inactive"}</span>
+            <button aria-label={`Remove ${b.code}`} onClick={() => void call("otc-break-types", "DELETE", undefined, String(b.code))}><Trash2 size={12} /></button>
+          </div>
+        ))}
+        <form className="flex gap-2 flex-wrap" onSubmit={form((f) => call("otc-break-types", "PUT", { code: f.get("code"), label: f.get("label"), description: f.get("description") ?? "" }))}>
+          <input name="code" required placeholder="code (e.g. missing_tx)" aria-label="Break type code" className={input} />
+          <input name="label" required placeholder="Label" aria-label="Break type label" className={`${input} flex-1`} />
+          <input name="description" placeholder="Description" aria-label="Break type description" className={input} />
           <button type="submit" className="px-2 py-1 text-xs border border-border rounded-md">Save</button>
         </form>
       </section>

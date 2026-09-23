@@ -25,12 +25,16 @@ interface Relation {
 const PK: Record<string, string> = {
   alertRule: "code", appSetting: "key", assetThreshold: "asset", riskRuleTier: "rule", sourceHeartbeat: "source",
   jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key", teamConfig: "team", assetStatus: "asset",
+  otcBreakType: "code", userNotificationPreference: "userId",
 };
 
 const COMPOUND: Record<string, Record<string, string[]>> = {
   sourceRecord: { source_kind_externalId: ["source", "kind", "externalId"] },
   workItem: { sourceSystem_sourceId: ["sourceSystem", "sourceId"] },
   dailyCheckItem: { definitionCode_periodKey: ["definitionCode", "periodKey"] },
+  jiraIssueEvent: { system_key_updated: ["system", "key", "updated"] },
+  ticketLink: { system_key_workItemId: ["system", "key", "workItemId"] },
+  approvedValidator: { chain_validator: ["chain", "validator"] },
 };
 
 /** Single-field unique constraints besides the primary key. */
@@ -48,6 +52,7 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     ticketLinks: { model: "ticketLink", kind: "many", localKey: "id", remoteKey: "workItemId" },
   },
   onCallSchedule: { employee: { model: "employee", kind: "one", localKey: "employeeId", remoteKey: "id" } },
+  tokenReview: { demandSignals: { model: "tokenDemandSignal", kind: "many", localKey: "id", remoteKey: "tokenReviewId" } },
   dailyCheckItem: { definition: { model: "dailyCheckDefinition", kind: "one", localKey: "definitionCode", remoteKey: "code" } },
 };
 

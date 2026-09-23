@@ -65,6 +65,15 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
     if (typeof meta.exposureBand !== "string" || !meta.exposureBand) issues.push("Choose the client exposure band (ALR-OES-06) before closing.");
   }
 
+  // Spec §12 CHK-06: the client advisory is recorded; a client override of Komainu's scam assessment needs the client decision attached (CF-35).
+  if (item.kind === "scam_dust_case") {
+    const meta = (item.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.clientAdvisory !== "string" || !meta.clientAdvisory) issues.push("Record the client advisory before closing.");
+    if (meta.clientOverride === true && (typeof meta.clientDecisionUrl !== "string" || !meta.clientDecisionUrl)) {
+      issues.push("The client overrode Komainu's scam assessment: attach the client decision before closing (CF-35).");
+    }
+  }
+
   if (item.kind === "client_request") {
     if (timeLogBucketMins !== undefined) {
       if (!(TIME_LOG_BUCKETS as readonly number[]).includes(timeLogBucketMins)) {

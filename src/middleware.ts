@@ -365,5 +365,8 @@ export const config = {
     "/api/fab/:path*",
     "/api/work-items/:path*",
     "/api/iai-drafts/:path*",
+    "/otc/:path*",
+    "/api/otc/:path*",
+    "/api/notifications/:path*",
   ],
 };

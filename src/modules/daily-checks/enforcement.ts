@@ -7,7 +7,7 @@
  *   then the item stays `pending`.
  */
 
-import { Prisma, type DailyCheckItem } from "@prisma/client";
+import { Prisma, type DailyCheckItem, type WorkItemKind } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/modules/settings/settings";
@@ -31,6 +31,8 @@ export type PassEvidence = z.infer<typeof passEvidenceSchema>;
 
 export const exceptionRowSchema = z.object({
   summary: z.string().trim().min(5).max(200),
+  /** CHK-02: OTC break type code (OtcBreakType). */
+  breakType: z.string().trim().max(60).optional(),
   detail: z.string().trim().max(4000).optional(),
   reference: z.string().trim().max(200).optional(),
   clientId: z.string().max(100).optional(),
@@ -107,14 +109,25 @@ export async function recordExceptions(itemId: string, rows: ExceptionRow[], ope
   if (!rows.length) throw new DailyCheckRuleError(["Record at least one exception."]);
 
   const projectKey = item.definition?.ticketProject || (await getSetting("dailyChecks.defaultTicketProject"));
+  const code = item.definitionCode ?? "";
+  const kind = EXCEPTION_KIND[code] ?? "daily_check_exception";
+
+  // CHK-02: every break carries a type from the admin-editable list (once the list exists).
+  if (kind === "mtd_break") {
+    const types = new Set((await prisma.otcBreakType.findMany({ where: { isActive: true }, select: { code: true } })).map((t) => t.code));
+    const bad = rows.filter((r) => types.size > 0 && (!r.breakType || !types.has(r.breakType)));
+    if (bad.length) throw new DailyCheckRuleError([`Each MTD break needs a break type from the list (${[...types].join(", ")}).`]);
+  }
   const existing = Array.isArray(item.exceptionWorkItemIds) ? (item.exceptionWorkItemIds as string[]) : [];
   const taskCode = item.definitionCode ?? item.category;
   const ids: string[] = [];
   let unticketed = 0;
 
   for (const [i, row] of rows.entries()) {
+    const isBreak = kind === "mtd_break";
+    const breakType = isBreak ? row.breakType ?? "unclassified" : undefined;
     const wi = await ensureTicketedWorkItem({
-      kind: "daily_check_exception",
+      kind,
       title: `${item.name}: ${row.summary}`,
       team: item.definition?.team ?? "All",
       taskCode,
@@ -122,17 +135,28 @@ export async function recordExceptions(itemId: string, rows: ExceptionRow[], ope
       sourceId: `${item.id}:${existing.length + i + 1}`,
       clockStartedAt: now,
       clientId: row.clientId ?? null,
-      metadata: { dailyCheckItemId: item.id, reference: row.reference ?? null, detail: row.detail ?? null },
+      metadata: {
+        dailyCheckItemId: item.id, periodKey: item.periodKey, reference: row.reference ?? null, detail: row.detail ?? null,
+        ...(isBreak ? { breakType, gxStatusVsChain: "unverified" } : {}),
+      },
+      slaPolicyCode: isBreak ? "MTD-BREAK" : undefined,
       ticket: {
         projectKey,
-        summary: `[${taskCode}] ${row.summary}`,
-        description: [`Daily check exception: ${item.name}`, row.reference ? `Reference: ${row.reference}` : "", row.detail ?? ""].filter(Boolean).join("\n\n"),
-        labels: ["daily-check-exception", `check-${taskCode.toLowerCase()}`],
+        summary: `[${taskCode}] ${isBreak ? `${breakType}: ` : ""}${row.summary}`,
+        description: [
+          `Daily check exception: ${item.name}`,
+          isBreak ? `Break type: ${breakType}\nResolve by T+1 business day. GX status vs chain unverified (findings register CF-18).` : "",
+          row.reference ? `Reference: ${row.reference}` : "",
+          row.detail ?? "",
+        ].filter(Boolean).join("\n\n"),
+        labels: ["daily-check-exception", `check-${taskCode.toLowerCase()}`, ...(isBreak ? [`break-${String(breakType).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`] : [])],
       },
     });
     if (!wi.ticketKey) unticketed++;
     ids.push(wi.id);
   }
+
+  if (kind === "mtd_break") await ensureDailyMtdTicket(item, now);
 
   const updated = await prisma.dailyCheckItem.update({
     where: { id: itemId },
@@ -145,6 +169,37 @@ export async function recordExceptions(itemId: string, rows: ExceptionRow[], ope
   });
   await completeRunIfDone(item.runId);
   return { item: updated, workItemIds: ids, unticketed };
+}
+
+/** WorkItem kind for exceptions of each check (spec §12); others are daily_check_exception. */
+export const EXCEPTION_KIND: Record<string, WorkItemKind> = {
+  "CHK-02": "mtd_break",
+  "CHK-02-DEV": "mtd_break",
+  "CHK-06": "scam_dust_case",
+  "CHK-09": "travel_rule_case",
+  "CHK-09K": "kps_case",
+  "CHK-04": "screening_case",
+  "CHK-16": "staking_exception",
+  "CHK-21": "staking_exception",
+  "CHK-22": "staking_exception",
+};
+
+export const DAILY_REPORT_SOURCE = "daily_check_report";
+
+/** CHK-02: the daily TOPS MTD ticket for the period (closed automatically once every break is resolved or explained). */
+async function ensureDailyMtdTicket(item: DailyCheckItem & { definition: { team: string } | null }, now: Date) {
+  const code = item.definitionCode ?? "CHK-02";
+  await ensureTicketedWorkItem({
+    kind: "report_task",
+    title: `${item.name}: ${item.periodKey}`,
+    team: item.definition?.team ?? "Team 2",
+    taskCode: code,
+    sourceSystem: DAILY_REPORT_SOURCE,
+    sourceId: `${code}:${item.periodKey}`,
+    clockStartedAt: now,
+    metadata: { dailyCheckItemId: item.id },
+    ticket: { projectKey: "TOPS", summary: `Daily MTD variances ${item.periodKey}`, description: `MTD breaks for ${item.periodKey} are tracked as OTC tickets. This ticket closes when every break is resolved or explained.`, labels: ["mtd-daily"] },
+  });
 }
 
 /** Ask to skip. The item stays pending until a different lead/admin approves. */

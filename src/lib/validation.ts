@@ -839,6 +839,7 @@ export const closeWorkItemSchema = z.object({
 export const dailyCheckExceptionsSchema = z.object({
   exceptions: z.array(z.object({
     summary: z.string().trim().min(5).max(200),
+    breakType: z.string().trim().max(60).optional(),
     detail: z.string().trim().max(4000).optional(),
     reference: z.string().trim().max(200).optional(),
     clientId: z.string().max(100).optional(),

@@ -104,11 +104,14 @@ export interface NewTicketedWorkItem {
   priority?: string;
   clientId?: string | null;
   metadata?: Record<string, unknown>;
+  /** SlaPolicy.code to attach (e.g. "MTD-BREAK"). */
+  slaPolicyCode?: string;
   ticket: TicketSpec | null;
 }
 
 /** Upsert the WorkItem for (sourceSystem, sourceId), then make sure it has a ticket. */
 export async function ensureTicketedWorkItem(input: NewTicketedWorkItem): Promise<WorkItem> {
+  const sla = input.slaPolicyCode ? await prisma.slaPolicy.findUnique({ where: { code: input.slaPolicyCode }, select: { id: true } }) : null;
   const item = await prisma.workItem.upsert({
     where: { sourceSystem_sourceId: { sourceSystem: input.sourceSystem, sourceId: input.sourceId } },
     update: {},
@@ -122,6 +125,7 @@ export async function ensureTicketedWorkItem(input: NewTicketedWorkItem): Promis
       clockStartedAt: input.clockStartedAt,
       priority: input.priority ?? "P2",
       clientId: input.clientId ?? null,
+      slaPolicyId: sla?.id ?? null,
       metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
