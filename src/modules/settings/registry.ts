@@ -77,6 +77,29 @@ export const SETTINGS = {
     default: {} as Record<string, string>,
     label: "Import filename patterns",
   },
+  // ── Spec §9.7 client incidents and risks ──
+  /** Internal Jira project for incident and risk entries (TODO(CONFIRM-INCIDENT-PROJECT)). */
+  "clientIncidents.internalProject": { schema: z.string().regex(/^[A-Z][A-Z0-9_]+$/), default: "TOPS", label: "Internal project for client incidents/risks" },
+  /** JSM request type for client incident/risk notifications (TODO(CONFIRM-JSM-INCIDENT-REQUEST-TYPE)). Empty blocks client requests. */
+  "clientIncidents.jsmRequestTypeId": { schema: z.string().regex(/^\d*$/), default: "", label: "JSM request type id (client incident/risk)" },
+  /** JSM transition name that moves the client request into each of the four client-visible statuses (TODO(CONFIRM-JSM-INCIDENT-REQUEST-TYPE)). */
+  "clientIncidents.statusNames": {
+    schema: z.object({ Received: z.string().min(1).max(60), Investigating: z.string().min(1).max(60), "Update provided": z.string().min(1).max(60), Resolved: z.string().min(1).max(60) }),
+    default: { Received: "Received", Investigating: "Investigating", "Update provided": "Update provided", Resolved: "Resolved" },
+    label: "JSM transition per client-visible status",
+  },
+  /** Four-eyes on client-visible updates by severity (spec §9.7). */
+  "clientUpdates.requireSecondApprover": { schema: z.array(z.enum(["P0", "P1", "P2", "P3"])).max(4), default: ["P0", "P1"] as string[], label: "Severities whose client updates need a second approver" },
+  /** Categories that meet the IAI incident criteria (spec §10.4). Empty = none. */
+  "clientIncidents.iaiCategories": { schema: z.array(z.string().regex(/^[a-z_]{2,40}$/)).max(50), default: [] as string[], label: "Categories that open an IAI draft" },
+  /** Template for the human-sent message telling the client where to follow the ticket. */
+  "clientIncidents.notifyTemplate": {
+    schema: z.string().min(10).max(1000).refine((v) => v.includes("{key}") && v.includes("{link}"), "Must contain {key} and {link}"),
+    default: "We've logged this as {key}. You can follow progress here: {link}",
+    label: "Client notification template",
+  },
+  /** Email replies need the Graph Mail.Send permission (TODO(CONFIRM-GRAPH-MAIL-SEND)). Off: the operator sends from Outlook and marks it sent. */
+  "clientIncidents.emailReplyEnabled": { schema: z.boolean(), default: false, label: "Send client email replies through Graph" },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

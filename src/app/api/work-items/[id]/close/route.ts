@@ -14,6 +14,7 @@ import { closeWorkItem, WorkItemStateError } from "@/modules/work-items/closure"
 import { ClosureValidationError } from "@/modules/work-items/closure-rules";
 import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { ClientContentError } from "@/modules/client-incidents/guards";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params;
     const actor = auditActor(auth);
-    const updated = await closeWorkItem(id, parsed.data, actor.userId);
+    const updated = await closeWorkItem(id, parsed.data, actor.userId, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
     await createAuditEntry({
       action: "work_item_closed",
       entityType: "work_item",
@@ -42,6 +43,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return apiSuccess(updated);
   } catch (error) {
     if (error instanceof ClosureValidationError) {
+      return NextResponse.json({ success: false, error: error.message, issues: error.issues }, { status: 422 });
+    }
+    if (error instanceof ClientContentError) {
       return NextResponse.json({ success: false, error: error.message, issues: error.issues }, { status: 422 });
     }
     if (error instanceof WorkItemStateError) return NextResponse.json({ success: false, error: error.message }, { status: 409 });

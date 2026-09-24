@@ -31,7 +31,10 @@ const OPEN = ["open", "owned", "waiting_client", "waiting_vendor", "waiting_inte
 export function clockProgress(item: WorkItem, policy: SlaPolicy, clock: SlaClock, cal: BusinessCalendar, now: Date): { pct: number; elapsedMins: number; targetMins: number } | null {
   const stoppedAt = clock === "ownership" ? item.ownedAt : clock === "first_response" ? item.firstResponseAt : item.resolvedAt;
   if (stoppedAt) return null;
-  const elapsedMins = businessMinutesWith(cal, item.clockStartedAt, now);
+  // A client portal comment restarts the first-response clock (spec §9.7).
+  const meta = (item.metadata ?? {}) as Record<string, unknown>;
+  const start = clock === "first_response" && typeof meta.firstResponseClockStartedAt === "string" ? new Date(meta.firstResponseClockStartedAt) : item.clockStartedAt;
+  const elapsedMins = businessMinutesWith(cal, start, now);
   let targetMins: number | null = clock === "ownership" ? policy.ownershipMins : clock === "first_response" ? policy.firstRespMins : policy.resolveMins;
   if (clock === "resolution" && targetMins == null && policy.resolveRule === "next_business_day_eod") {
     targetMins = businessMinutesWith(cal, item.clockStartedAt, nextBusinessDayEod(cal, item.clockStartedAt));

@@ -79,16 +79,10 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return { cleanedSessions: await cleanupExpiredSessions() };
   },
 
-  async sync_slack_channel(payload) {
-    const { syncChannelMessages } = await import("@/modules/slack/services/slack-ingestion-service");
-    const channelId = str(payload, "channelId");
-    if (channelId) return syncChannelMessages(channelId);
-
-    const { findAllActive } = await import("@/modules/slack/repositories/slack-channel-repository");
-    const channels = await findAllActive();
-    const results = [];
-    for (const channel of channels) results.push(await syncChannelMessages(channel.channelId));
-    return { channelsSynced: results.length };
+  /** Spec §6.1: every registered channel once per 5-minute cycle, 24/7 (history from the cursor, then replies). */
+  async sync_slack() {
+    const { pollAllSlackChannels } = await import("@/modules/slack/services/slack-poller");
+    return pollAllSlackChannels();
   },
 
   async sync_slack_replies(payload) {
@@ -154,7 +148,8 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
 
   ...komainuHandlers(),
 
-  async graph_mail_sync() {
+  /** Spec §6.1: every configured shared mailbox every 5 minutes, 24/7, via Graph delta queries. */
+  async sync_mail() {
     const { isGraphConfigured } = await import("@/lib/integrations/graph/client");
     if (!isGraphConfigured()) return { skipped: true, reason: "Graph not configured" };
     const { syncGraphMail } = await import("@/modules/integrations/graph/sync");
@@ -211,6 +206,11 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
   async mtd_autoclose() {
     const { autoCloseDailyMtdTickets } = await import("@/modules/daily-checks/mtd");
     return autoCloseDailyMtdTickets();
+  },
+
+  async poll_client_ticket_comments() {
+    const { ingestPortalComments } = await import("@/modules/client-incidents/portal-comments");
+    return ingestPortalComments();
   },
 
   async score_vendor_reliability() {

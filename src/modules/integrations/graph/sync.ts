@@ -12,17 +12,21 @@ import {
   getMailboxes,
   getTeamsChannels,
   listChannelMessages,
-  listInboxSince,
+  listFolderDelta,
   type GraphMailbox,
   type GraphMessage,
 } from "@/lib/integrations/graph/client";
 import { recordHeartbeat } from "@/modules/integrations/heartbeat";
+import { recordPollCycle } from "@/modules/integrations/poll-cycles";
 import { upsertSourceRecords } from "@/modules/integrations/source-records";
 import { parseVendorEmail, VENDOR_PARSERS, type VendorParser } from "@/modules/integrations/graph/vendor-parsers";
 import { handleEmailIntake, handleTeamsIntake } from "@/modules/intake/graph-intake-service";
 import { createTicketForWorkItem } from "@/modules/work-items/tickets";
 
-export const MAIL_EXPECTED_MINS = 3;
+/** Spec §6.1: shared mailboxes are polled every 5 minutes, 24/7. */
+export const MAIL_EXPECTED_MINS = 5;
+/** On the very first sync of a folder, older mail is skipped (the delta returns the whole folder). */
+const FIRST_SYNC_LOOKBACK_MS = 24 * 3_600_000;
 export const TEAMS_EXPECTED_MINS = 5;
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -116,10 +120,6 @@ Status: ${parsed.status}`,
   return "vsr_created" as const;
 }
 
-async function lastRecordAt(source: string): Promise<Date | null> {
-  return (await prisma.sourceHeartbeat.findUnique({ where: { source } }))?.lastRecordAt ?? null;
-}
-
 type StoredMail = Pick<GraphMessage, "id" | "internetMessageId" | "conversationId" | "subject" | "receivedDateTime" | "bodyPreview"> & { fromAddress: string | null; threadId?: string | null };
 
 async function runEmailIntake(mailboxLabel: string, msg: GraphMessage, threadId: string | null, externalId: string) {
@@ -152,11 +152,24 @@ async function retryFailedIntake(mailboxLabel: string) {
   }
 }
 
+/** New messages across the mailbox's folders, via delta queries from the stored cursors. */
+async function fetchNewMessages(mailbox: GraphMailbox, now: Date): Promise<GraphMessage[]> {
+  const out: GraphMessage[] = [];
+  for (const folder of ["inbox", ...(mailbox.folders ?? [])]) {
+    const source = `outlook.${mailbox.label}.${folder}`;
+    const stored = await prisma.syncCursor.findUnique({ where: { source } });
+    const page = await listFolderDelta(mailbox.address, folder, stored?.cursor ?? null);
+    const cutoff = stored ? null : new Date(now.getTime() - FIRST_SYNC_LOOKBACK_MS);
+    out.push(...page.messages.filter((m) => !m["@removed"] && (!cutoff || !m.receivedDateTime || new Date(m.receivedDateTime) >= cutoff)));
+    if (page.cursor) await prisma.syncCursor.upsert({ where: { source }, update: { cursor: page.cursor }, create: { source, cursor: page.cursor } });
+  }
+  return out.sort((a, b) => (a.receivedDateTime ?? "").localeCompare(b.receivedDateTime ?? ""));
+}
+
 export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: readonly VendorParser[]; now?: Date } = {}) {
-  const hb = `graph_mail.${mailbox.label}`;
+  const hb = `outlook.${mailbox.label}`;
   const now = opts.now ?? new Date();
-  const since = (await lastRecordAt(hb)) ?? new Date(now.getTime() - 24 * 3_600_000);
-  const messages = await listInboxSince(mailbox.address, since);
+  const messages = await fetchNewMessages(mailbox, now);
   let ingested = 0;
   let newest: Date | null = null;
 
@@ -205,12 +218,27 @@ export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: reado
   return { mailbox: mailbox.label, fetched: messages.length, ingested };
 }
 
+/** Job `sync_mail` (every 5 minutes, 24/7; spec §6.1, §8.5). One failing mailbox does not stop the others. */
 export async function syncGraphMail() {
   const mailboxes = getMailboxes();
   if (mailboxes.length === 0) return { skipped: true, reason: "No GRAPH_MAILBOXES configured" };
   const results = [];
-  for (const mb of mailboxes) results.push(await syncMailbox(mb));
-  return { mailboxes: results };
+  let failures = 0;
+  for (const mb of mailboxes) {
+    const startedAt = new Date();
+    try {
+      const r = await syncMailbox(mb);
+      await recordPollCycle(`outlook.${mb.label}`, startedAt, true, r.fetched, null);
+      results.push(r);
+    } catch (error) {
+      failures++;
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollCycle(`outlook.${mb.label}`, startedAt, false, 0, message.slice(0, 300));
+      logger.error("Mailbox poll failed; retried next cycle", { mailbox: mb.label, error: message });
+    }
+  }
+  if (failures === mailboxes.length) throw new Error("Mail poll failed for every mailbox");
+  return { mailboxes: results, failures };
 }
 
 /** Teams channels: internal context only (client messages follow Section 9 in Phase 4). */

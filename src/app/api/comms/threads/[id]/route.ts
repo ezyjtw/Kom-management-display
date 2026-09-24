@@ -107,7 +107,23 @@ export async function GET(
       isOwner: isThreadOwnerOrCollaborator,
     });
 
-    return apiSuccess({ ...safeThread, slaStatus, secondaryOwners });
+    // Spec §9.7: "Raise incident / risk" from any message (deep link to the form).
+    const raiseLinks: Record<string, string> = {};
+    if (thread.source === "slack" && thread.slackChannelId) {
+      const channel = await prisma.slackChannel.findUnique({ where: { id: thread.slackChannelId }, select: { channelId: true } });
+      for (const m of thread.messages) {
+        if (channel && m.slackTs) raiseLinks[m.id] = `/client-incidents/new?kind=slack&channelId=${encodeURIComponent(channel.channelId)}&ts=${encodeURIComponent(m.slackTs)}`;
+      }
+    } else if (thread.source === "email") {
+      const mail = await prisma.sourceRecord.findFirst({
+        where: { source: "graph_mail", kind: "mail_message", fields: { path: ["message", "threadId"], equals: thread.id } },
+        orderBy: { occurredAt: "desc" },
+        select: { externalId: true },
+      });
+      if (mail) for (const m of thread.messages) raiseLinks[m.id] = `/client-incidents/new?kind=email&messageRecordId=${encodeURIComponent(mail.externalId)}`;
+    }
+
+    return apiSuccess({ ...safeThread, slaStatus, secondaryOwners, raiseLinks });
   } catch (error) {
     return handleApiError(error, "GET /api/comms/threads/[id]");
   }

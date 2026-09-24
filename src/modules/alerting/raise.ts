@@ -13,6 +13,8 @@ export interface AlertCandidateInput {
   detail?: string;
   severity?: AlertSeverity;
   priority?: string;
+  /** Link to an existing WorkItem (its ticket is reused, no alert ticket is opened). */
+  workItemId?: string;
 }
 
 async function safe(what: string, fn: () => Promise<unknown>) {
@@ -67,6 +69,7 @@ export async function raiseAlert(input: AlertCandidateInput): Promise<string | n
         detail: input.detail ?? "",
         severity: input.severity ?? (rule.severity as AlertSeverity),
         priority: input.priority ?? "P2",
+        workItemId: input.workItemId ?? null,
       },
     });
     id = alert.id;

@@ -12,6 +12,7 @@ export default function ReferenceDataTab() {
   const [assets, setAssets] = useState<Row[]>([]);
   const [validators, setValidators] = useState<Row[]>([]);
   const [breakTypes, setBreakTypes] = useState<Row[]>([]);
+  const [categories, setCategories] = useState<Row[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   async function load() {
@@ -20,6 +21,7 @@ export default function ReferenceDataTab() {
     setAssets(await get("asset-status"));
     setValidators(await get("approved-validators"));
     setBreakTypes(await get("otc-break-types"));
+    setCategories(await get("incident-categories"));
   }
   useEffect(() => { void load(); }, []);
 
@@ -69,6 +71,24 @@ export default function ReferenceDataTab() {
           <input name="asset" required placeholder="Asset" aria-label="Asset" className={input} />
           <select name="status" aria-label="Status" className={input}><option value="known_degraded">known degraded</option><option value="sunset">sunset</option><option value="normal">normal</option></select>
           <input name="reason" placeholder="Reason" aria-label="Reason" className={`${input} flex-1`} />
+          <button type="submit" className="px-2 py-1 text-xs border border-border rounded-md">Save</button>
+        </form>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Incident and risk categories (§9.7)</h3>
+        <p className="text-xs text-muted-foreground">Compliance-sensitive categories never create a client-visible ticket without a recorded Compliance decision (tipping-off risk).</p>
+        {categories.map((c) => (
+          <div key={String(c.code)} className="flex gap-2 items-center text-xs">
+            <span className="w-48 font-medium">{String(c.code)}</span><span className="flex-1">{String(c.label)}</span>
+            <span>{c.complianceSensitive ? "compliance-sensitive" : "client ticket"}</span><span>{c.isActive ? "active" : "inactive"}</span>
+            {c.isActive ? <button aria-label={`Deactivate ${c.code}`} onClick={() => void call("incident-categories", "DELETE", undefined, String(c.code))}><Trash2 size={12} /></button> : null}
+          </div>
+        ))}
+        <form className="flex gap-2 flex-wrap" onSubmit={form((f) => call("incident-categories", "PUT", { code: f.get("code"), label: f.get("label"), complianceSensitive: f.get("complianceSensitive") === "on" }))}>
+          <input name="code" required placeholder="code" aria-label="Category code" className={input} />
+          <input name="label" required placeholder="Label" aria-label="Category label" className={`${input} flex-1`} />
+          <label className="text-xs flex items-center gap-1"><input type="checkbox" name="complianceSensitive" /> compliance-sensitive</label>
           <button type="submit" className="px-2 py-1 text-xs border border-border rounded-md">Save</button>
         </form>
       </section>

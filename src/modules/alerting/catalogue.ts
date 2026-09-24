@@ -112,7 +112,15 @@ const defs: Def[] = [
   })),
   { code: "ALR-CHK-01", name: "Daily check not done", ownerTeam: TEAMS.txOps, severity: "high", clock: "due time (dueByLocal)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 5,
     params: {}, evaluate: ops.evaluateCheckNotDone },
-  { code: "ALR-CLI-01", name: "Client inbound threshold review overdue", ownerTeam: TEAMS.txOps, severity: "medium", clock: "12 months (CONFIRM)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 60, digest: true,
+  // ── Client incidents and risks (spec §9.7) ──
+  { code: "ALR-CLI-01", name: "Client incident or risk raised", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate (P0/P1 critical)", autoResolve: false,
+    params: {} },
+  { code: "ALR-CLI-02", name: "Client update overdue", ownerTeam: TEAMS.txOps, severity: "high", clock: "CONFIRM-CLIENT-UPDATE-CADENCE", autoResolve: true, cadenceMins: 5,
+    params: { cadenceMins: null }, confirm: { cadenceMins: "CONFIRM-CLIENT-UPDATE-CADENCE" }, evaluate: ops.evaluateClientUpdateOverdue },
+  { code: "ALR-CLI-03", name: "Compliance-sensitive entry raised", ownerTeam: TEAMS.txOps, severity: "critical", clock: "immediate", autoResolve: false,
+    // TODO(CONFIRM-COMPLIANCE-ROUTE): route targets for Compliance.
+    params: {} },
+  { code: "ALR-CLI-04", name: "Client inbound threshold review overdue", ownerTeam: TEAMS.txOps, severity: "medium", clock: "12 months (CONFIRM)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 60, digest: true,
     params: { reviewMonths: 12 }, evaluate: ops.evaluateThresholdReview },
   { code: "ALR-TKT-01", name: "Unticketed work found", ownerTeam: TEAMS.txOps, severity: "high", clock: "08:30", autoResolve: false },
   { code: "ALR-TKT-02", name: "Ticket divergence", ownerTeam: TEAMS.txOps, severity: "medium", clock: "hourly", autoResolve: false },
@@ -120,6 +128,10 @@ const defs: Def[] = [
     params: { escalation: [{ afterMins: 0, notifyRole: "admin" }] } },
   { code: "ALR-VND-01", name: "Vendor ticket no update", ownerTeam: TEAMS.txOps, severity: "medium", clock: "CONFIRM", ticketProject: "VSR", autoResolve: true, cadenceMins: 15,
     params: { businessHours: null }, confirm: { businessHours: "CONFIRM-VND-HOURS" }, evaluate: ops.evaluateVendorNoUpdate },
+  { code: "ALR-HB-SLACK", name: "Slack polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,
+    params: { staleMins: 10 }, evaluate: ops.evaluateMessagePolling("slack") },
+  { code: "ALR-HB-MAIL", name: "Mailbox polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,
+    params: { staleMins: 10 }, evaluate: ops.evaluateMessagePolling("mail") },
   { code: "ALR-HB-SOURCE", name: "Heartbeat lost", ownerTeam: TEAMS.txOps, severity: "high", clock: "2 x expectedEveryMins per source", autoResolve: true,
     params: { staleRecordMins: { "komainu_api.collateral": 24 * 60 } }, evaluate: ops.evaluateHeartbeats },
 ];

@@ -22,6 +22,7 @@ const SPEC_FLAGS = [
   "module.status_pages", // spec §8.6
   "iai.drafts.enabled", // spec §10.4
   "module.fab", // spec §12 TASK-FAB
+  "slack.events_push", // spec v2 §8.4
 ];
 
 function seededRows() {

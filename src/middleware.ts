@@ -369,5 +369,7 @@ export const config = {
     "/api/otc/:path*",
     "/api/notifications/:path*",
     "/metrics/:path*",
+    "/client-incidents/:path*",
+    "/api/client-incidents/:path*",
   ],
 };

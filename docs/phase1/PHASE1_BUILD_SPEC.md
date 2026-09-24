@@ -16,7 +16,7 @@ Rules for working through this spec:
 1. **One phase per branch and pull request.** Name branches `phase-<n>-<short-name>`, for example `phase-0-remove-approvals`. Never mix phases in one PR.
 2. **Run `npm run ci:check` before every commit you propose.** It runs Prisma generate, typecheck, lint, tests and build. Do not propose a commit that fails it.
 3. **Every behaviour in this spec needs a test.** Where a section lists "Acceptance tests", implement each one as a named Vitest test. Use the existing folders: unit tests in `src/__tests__/`, integration tests in `src/__tests__/integration/`.
-4. **Never guess an external format.** Where this spec says **CONFIRM**, a message format, field value, threshold or endpoint behaviour is not yet known. Build the code path behind configuration or a feature flag, write the parser against a fixture file, and leave a `TODO(CONFIRM-<id>)` comment. Section 17 lists every CONFIRM item. Do not invent sample payloads beyond what this spec gives. Where you need a fixture, create a clearly marked synthetic one under `src/__tests__/fixtures/synthetic/`, and name the file with the CONFIRM id.
+4. **Never guess an external format.** Where this spec says **CONFIRM**, a message format, field value, threshold or endpoint behaviour is not yet known. Build the code path behind configuration or a feature flag, write the parser against a fixture file, and leave a `TODO(CONFIRM-<id>)` comment. Section 20 lists every CONFIRM item. Do not invent sample payloads beyond what this spec gives. Where you need a fixture, create a clearly marked synthetic one under `src/__tests__/fixtures/synthetic/`, and name the file with the CONFIRM id.
 5. **Ask rather than assume** when this spec and the code disagree. Stop and report the conflict.
 6. **Do not modify Jira or Confluence configuration, workflows, automation rules or permissions** from code or scripts. Phase 1 may only create and update work items, comments, assignees, labels, fields and transitions in the projects listed in Section 8.3.
 7. **Do not add dependencies** without stating why in the PR description. Prefer libraries already in `package.json`.
@@ -33,6 +33,8 @@ Add this to the repository root `CLAUDE.md` (create it if absent) so every sessi
 - No secrets in code, fixtures, logs or commits. Use env vars validated in src/lib/env.ts.
 - Redact wallet addresses, tx hashes, client names and account numbers in logs.
 - Use api-demo.komainu.io or mocks only. Never point code or tests at production endpoints.
+- Slack channels and shared mailboxes are polled every 5 minutes, 24/7. Never pause polling out of hours.
+- Client-visible JSM content (portal requests, public comments) is written by a human. Never auto-post, and never AI-generate it.
 - Run `npm run ci:check` before proposing a commit. One phase per PR. Stop at each STOP point.
 ```
 
@@ -52,8 +54,10 @@ Transaction Operations will run the **whole desk from one screen**. Everything t
 Specifically:
 
 - **Every issue, problem, risk and client question becomes a ticket automatically.** The system creates the ticket; people cannot skip writing it up.
-- **Responsiveness is high and measured.** SLA clocks start at the client's message or the triggering event, not when someone notices.
+- **Responsiveness is high and measured.** Slack channels and shared mailboxes are polled every 5 minutes, 24/7. SLA clocks start at the client's message or the triggering event, not when someone notices.
+- **Incidents and risks raised from a message get a client-specific JSM ticket.** Any team member can raise one from a Slack message or email. The client can follow its progress in the JSM portal (Section 9.7).
 - **Alerts fire for events that need a human response**, including silence: a feed or check that stops producing data is itself an alert.
+- **GX changes are tested before they reach production.** Each GX sprint's release notes are pulled automatically. UAT tickets are created for every change that touches Transaction Operations, mapped to the daily tasks it affects (Section 16).
 - **Management reporting**: roughly how much team time each client takes, and responsiveness against internal SLAs. Reporting is at team and client level only.
 - **Systems of record stay where they are.** Jira Service Management (JSM) holds client requests, Jira holds internal work, and GX and the custody platforms hold transactions. KOMmand Centre reads from them and writes back ownership, status and comments only.
 
@@ -74,6 +78,7 @@ These override anything else in this document or the codebase. Each has an enfor
 | H9 | **No production targets in dev or tests.** Tests use mocks or `https://api-demo.komainu.io`. | Test that the base URL in `.env.example` and fixtures is not `api.komainu.io` |
 | H10 | **Hosting.** Remove Railway-specific configuration from the default path. Target Komainu's Azure environment (Section 6.3). Do not provision cloud resources from this repo. | Review |
 | H11 | **Notabene connection held.** Following Notabene's reported data breach (IAI #128, 14 September 2026), the Notabene connector ships disabled behind flag `integration.notabene.enabled=false`. | Feature flag; test |
+| H12 | **Client-visible content is human-written and client-scoped.** A client-facing JSM request or public comment may only contain information about that client. It is written or approved by a named person, never generated automatically or by AI. Compliance-sensitive categories (KYT, sanctions, suspected financial crime) never create client-visible tickets without a recorded Compliance decision, because of tipping-off risk. | Section 9.7 validation; tests `client-ticket-scoped-to-one-client`, `no-auto-public-comments`, `compliance-sensitive-blocks-client-ticket` |
 
 ---
 
@@ -192,6 +197,7 @@ Alerting and SLAs need jobs to run without a human.
   4. on SIGTERM, drains the in-flight job for up to 25 seconds and then exits.
 - Move the job dispatch `switch` out of `src/app/api/jobs/route.ts` into `src/worker/dispatch.ts` so the API route and the worker share one handler map. The API route keeps admin-only `trigger` and `process_next` for manual use.
 - Add npm script `"worker": "tsx src/worker/index.ts"`. Add a second service `worker` to `docker-compose.yml` using the same image with command `npm run worker`.
+- **Polling cadence for messages (24/7, never paused out of hours):** `sync_slack` (all registered Slack channels, root messages and replies) and `sync_mail` (all configured shared mailboxes) run every 5 minutes: `*/5 * * * *`. Change the existing `sync_email` from every 3 minutes to every 5 minutes and rename it `sync_mail`. Merge `sync_slack_channel` (every 2 minutes) into `sync_slack`, so each channel is polled exactly once per 5-minute cycle. Business-hours calendars affect SLA clocks only, never polling. Each cycle reads from the stored cursor (Slack `oldest` ts, Graph delta token), so nothing is missed if a cycle is late. A cycle that fails retries on the next tick; after two consecutive failures, `ALR-HB-SLACK` or `ALR-HB-MAIL` fires.
 - Recurring jobs must compute `nextRunAt` from `cronExpression`, using the `cron-parser` library (add it and justify in the PR). They must never overlap: skip a run if the previous run of the same type is still `running`.
 - **Heartbeat alert:** if `isAnyWorkerAlive(120000)` is false, the web app shows a red banner on every page and alert `ALR-HB-WORKER` fires. That alert has to fire from outside the worker: add a lightweight check in `/api/health` and expose `worker_alive=false` for external monitoring.
 
@@ -262,7 +268,7 @@ Seed no real client data. Admins maintain clients through a new admin tab, **Cli
 ### 7.2 WorkItem (the single queue)
 
 ```prisma
-enum WorkItemKind { client_request alert daily_check_exception mtd_break oes_settlement fab_instruction kps_case vendor_ticket travel_rule_case screening_case scam_dust_case coin_review staking_exception nft_review report_task incident rca internal_task }
+enum WorkItemKind { client_request client_incident client_risk alert daily_check_exception mtd_break oes_settlement fab_instruction kps_case vendor_ticket travel_rule_case screening_case scam_dust_case coin_review staking_exception nft_review report_task incident rca internal_task }
 enum WorkItemState { open owned waiting_client waiting_vendor waiting_internal resolved closed }
 
 model WorkItem {
@@ -289,6 +295,9 @@ model WorkItem {
   resolutionNote   String?
   rootCause        String?       // controlled list (Section 10.2)
   exposureUsd      Float?        // where relevant (OES, FAB)
+  clientTicketKey  String?       // client-visible JSM request (Section 9.7), separate from ticketKey
+  clientTicketUrl  String?       // portal URL shared with the client
+  sourceMessageRef String?       // Slack permalink or Graph message id the entry was raised from
   metadata         Json          @default("{}")
   @@unique([sourceSystem, sourceId])
   @@index([state, team]) @@index([clientId]) @@index([ticketKey]) @@index([taskCode, state])
@@ -511,12 +520,14 @@ These projects are used by or relevant to Transaction Operations, taken from the
 | AO | Admin Operations | cross-team items (visibility only) |
 | ITR, RCM | (as used) | CONFIRM-PROJECT-ROLES: confirm purpose before enabling |
 | JSM service desk (new) | Transaction Operations client requests | client questions, created by Section 9 |
+| KMNC | Komainu Changes | read-only: GX sprint "Upgrade in UAT" and "Release in PROD" change tickets, used to time UAT (Section 16) |
+| GXD, GXS, AMTK | GX Development, GX Service Management, GX release fix versions | read-only, except creating GXS defect tickets from failed UAT items and adding issue links (Section 16) |
 
 Project keys, issue types, transition ids and custom field ids are read at runtime. Store the mapping in `JiraProjectConfig` (admin-editable). Never hard-code them.
 
 ### 8.4 Slack
 
-- Keep the existing bot token and signing-secret verification. Add the Events API (push) for near-real-time delivery, via `@slack/events-api`, which is already a dependency. Keep polling as a fallback every 5 minutes.
+- Keep the existing bot token and signing-secret verification. **Polling every 5 minutes, 24/7, is the required mechanism** (Section 6.1): `conversations.history` per registered channel from its cursor, then `conversations.replies` for threads with new replies. Respect Slack rate limits with the existing `slack-rate-limiter.ts`, and spread channels across the 5-minute window if the channel count requires it. The Events API (push) may be added later behind flag `slack.events_push` (default `false`) to cut latency. Polling stays on even when push is enabled, as the completeness guarantee.
 - Channel registry (`SlackChannel`) gains:
   - `clientId` (FK to `Client`);
   - `purpose` (`client | gx_notifications | vendor | internal_ops | alerts_out`).
@@ -530,6 +541,7 @@ Project keys, issue types, transition ids and custom field ids are read at runti
   - `GRAPH_MAILBOXES` (JSON list of `{label, address, purpose}`);
   - `GRAPH_TEAMS_CHANNELS`.
 - Replace the IMAP email adapter with a Graph mail adapter. Delete `imap-simple` usage.
+- **Poll every configured shared mailbox every 5 minutes, 24/7,** using Graph delta queries on each mailbox's Inbox (and any configured subfolders). Store the delta token per mailbox so no message is missed across restarts. Group messages into conversations by `conversationId`. Record `SourceHeartbeat` per mailbox (`outlook.<label>`, `expectedEveryMins = 5`).
 - **Mailboxes (CONFIRM-MAILBOXES):**
   - the custody inbox (client instructions and emergency blotters);
   - the FAB ICS inbox (Section 12, FAB);
@@ -626,6 +638,89 @@ The team's existing emoji-triggered Slack-to-VSR skill (an operator adds an `:in
 - With `jsm_native` enabled, the `kommand` route creates nothing.
 - A "not a question" close without a reason is rejected (HTTP 422).
 
+### 9.7 Raise an incident or risk from a message (client-specific JSM ticket)
+
+Any team member can raise an **incident** or **risk** entry directly from:
+- an ingested Slack message or thread;
+- an email from a shared mailbox;
+- an existing WorkItem.
+
+This creates two linked records:
+- an **internal entry**, for the team's investigation;
+- a **client-specific JSM request** that the client uses to monitor progress in the JSM customer portal.
+
+The internal and client-facing records are deliberately separate, so internal notes are never exposed.
+
+**Entry point.** Show a "Raise incident / risk" action on every message in the WorkItem timeline and in the Slack or email message views. Also add the Slack message shortcut "Raise incident/risk in KOMmand Centre". It only opens a deep link to the form in KOMmand Centre and takes no action in Slack itself.
+
+**Form fields** (server-side validation; all required unless stated):
+
+| Field | Notes |
+|---|---|
+| Type | `incident` (operational: failed or delayed settlement, withdrawal issue, platform outage affecting the client) or `risk` (suspected compromise, phishing or impersonation, unusual activity, control failure) |
+| Client | Pre-filled from the source channel or mailbox mapping (`ClientChannel`). Must resolve to exactly one `Client` with a `jsmOrganizationId`. If unmapped, the form blocks with "map this channel or sender to a client first". |
+| Severity | P0–P3 |
+| Category | Controlled list (admin-editable), each flagged `complianceSensitive` true or false. Seed flagged true: `kyt_alert`, `sanctions`, `suspected_financial_crime`, `suspicious_activity`. Seed flagged false: `settlement_failure`, `withdrawal_delay`, `platform_issue`, `phishing_impersonation`, `account_compromise_suspected`, `data_issue`, `other`. |
+| Client-facing summary | Human-written, plain language, max 1,000 characters. This is the only text the client sees at creation. |
+| Internal description | Full detail for the team. Never sent to JSM as public content. |
+| Affected references | Optional. Transaction or request ids, stored internally, and **never** copied into the client-facing request automatically. |
+| Notify client now | Yes or no (default yes, unless compliance-sensitive) |
+
+**What happens on submit:**
+
+1. **Internal record.**
+   - Create a WorkItem of kind `client_incident` or `client_risk`, with `sourceMessageRef` set to the Slack permalink or Graph message id.
+   - Create an internal Jira ticket in the configured internal project (CONFIRM-INCIDENT-PROJECT; TOPS by default).
+   - Create an IAI draft if `iai.drafts.enabled` is on and the category meets the incident criteria (Section 10.4).
+   - Link the originating `client_request` WorkItem, if any.
+2. **Client-specific JSM request.** Created only if the category is **not** compliance-sensitive:
+   - create a new request in the Transaction Operations service desk, using request type CONFIRM-JSM-INCIDENT-REQUEST-TYPE (for example "Incident / Risk notification");
+   - the request **belongs to that client's JSM organisation only** (`organizationId` = `Client.jsmOrganizationId`, plus the client's mapped contacts added as request participants, CONFIRM-CLIENT-CONTACTS);
+   - summary = "<Type>: <client-facing summary first 80 chars>"; description = the client-facing summary only;
+   - store the key and portal URL in `WorkItem.clientTicketKey` and `clientTicketUrl`;
+   - do **not** reuse or convert the original `client_request` ticket, because it may contain internal comments.
+3. **Compliance-sensitive categories.**
+   - Do **not** create a client-visible request.
+   - Create the internal record only, set `metadata.clientTicketBlocked = "compliance_sensitive"`, and alert Compliance (`ALR-CLI-03`).
+   - Show a banner: "Client ticket withheld pending Compliance decision (tipping-off risk)".
+   - A user with role `admin` can later create the client request only after recording a Compliance decision reference (`complianceDecisionRef`, required, audit-logged).
+4. **Tell the client where to follow it** (if "Notify client now" is yes). Post a **human-reviewed** message in the originating Slack thread, or reply to the email conversation, containing the portal link, from a template such as:
+
+   > "We've logged this as <key>. You can follow progress here: <portal link>."
+
+   The message is shown to the operator as an editable draft and sent only when they click Send. It is never auto-posted (H12).
+
+**Keeping the client ticket current:**
+
+- **Client-visible statuses.** Map the internal workflow to a small set shown in the portal: `Received`, `Investigating`, `Update provided`, `Resolved`. Transition the client request only through these, using transition ids looked up at runtime.
+- **Public updates.** Written by a person in KOMmand Centre ("Post client update"). They are posted as a JSM **public** comment on the client request, and mirrored as an internal comment on the internal ticket.
+  - For P0 and P1, a second team member must approve each public update before it posts (four-eyes, configurable per severity: `clientUpdates.requireSecondApprover`). This is a review of outbound client communication, not a transaction approval.
+  - Internal notes go to the internal ticket only. The API must reject any attempt to post internal description text to the client request.
+- **Update cadence SLA.** Policy `CLIENT-INCIDENT-UPDATE`: the maximum time between client-visible updates while the item is open, per severity (CONFIRM-CLIENT-UPDATE-CADENCE). Breach raises `ALR-CLI-02`.
+- **Resolution.** Closing the internal WorkItem requires the write-up (Section 10.2). It also requires a final client-facing resolution message (human-written) and transitions the client request to `Resolved`. If the client comments on the portal request, the comment is ingested as a timeline message and restarts the first-response clock.
+
+**Client portal access (CONFIRM-JSM-PORTAL).** Client contacts need JSM customer accounts and membership of their organisation. KOMmand Centre does not create customer accounts in Phase 1; IT or Admin Operations does. The form shows "no portal users for this client" when the organisation has no customers, so the operator knows the client cannot yet view it.
+
+**Cross-client safety checks** (enforced server-side before any JSM call):
+- the request's organisation must equal the client resolved from the source message;
+- request participants must all belong to that organisation;
+- the client-facing text is scanned for other clients' names, account numbers and known wallet references from the `Client` table, and blocked if any are found (`client-ticket-scoped-to-one-client`).
+
+**Acceptance tests (9.7):**
+
+- Raising from a Slack message in a mapped client channel creates:
+  - one internal WorkItem;
+  - one internal Jira ticket;
+  - one JSM request in that client's organisation only, with the portal URL stored.
+- Raising from a shared-mailbox email does the same, with the client resolved from the sender domain.
+- An unmapped channel or sender blocks with 422.
+- A compliance-sensitive category creates no JSM request, alerts Compliance, and requires `complianceDecisionRef` to create one later.
+- Internal description text never appears in the JSM request body or public comments (`no-auto-public-comments`).
+- The client notification message is not sent without an explicit operator Send action.
+- A P1 public update without a second approver is rejected.
+- Client-visible statuses only move through the four allowed values.
+- Client-facing text containing another client's name is blocked.
+
 **STOP 4.**
 
 ---
@@ -641,6 +736,7 @@ Branch: `phase-5-ticket-enforcement`. All enforcement is **server-side**, in API
 | Every alert that fires (Section 11) | JSM or Jira per `AlertRule.route.ticketProject` | Repeat firings update the same ticket via `dedupeKey` |
 | Daily check item set to `issues_found` | One ticket per exception, in `DailyCheckDefinition.ticketProject` | The operator enters exceptions as structured rows (Section 12); each becomes a WorkItem and ticket |
 | Client question (Section 9) | JSM | |
+| Incident or risk raised from a message (Section 9.7) | Internal Jira ticket, plus a client-specific JSM request (unless compliance-sensitive) | Two linked tickets; the client sees only the JSM request |
 | FAB instruction email | Jira (project CONFIRM-FAB-PROJECT) | One ticket per instruction reference |
 | Vendor portal update without a matching VSR | VSR | Created as a `vendor_ticket` WorkItem |
 | Incident-criteria events (10.4) | IAI draft | Pre-filled |
@@ -789,8 +885,12 @@ Risk rule mapping follows the **current approved flow**: all triggers treated as
 | ALR-CHK-01 | Daily check not done | A `DailyCheckDefinition` due by `dueByLocal` with no completed item | daily checks | due time | high | TOPS |
 | ALR-TKT-01 | Unticketed work found | Section 10.3 report is non-empty | report | 08:30 | high | internal |
 | ALR-TKT-02 | Ticket divergence | Section 10.3 reconciliation | job | hourly | medium | internal |
+| ALR-CLI-01 | Client incident or risk raised | New `client_incident` or `client_risk` WorkItem | Section 9.7 | immediate | P0/P1 critical, else high | internal ticket |
+| ALR-CLI-02 | Client update overdue | No client-visible update within the `CLIENT-INCIDENT-UPDATE` cadence while the item is open | SLA engine | CONFIRM-CLIENT-UPDATE-CADENCE | high | internal ticket |
+| ALR-CLI-03 | Compliance-sensitive entry raised | Category flagged `complianceSensitive`; client ticket withheld | Section 9.7 | immediate | critical | internal ticket; route to Compliance (CONFIRM-COMPLIANCE-ROUTE) |
 | ALR-IAI-01 | IAI draft overdue | 10.4 | job | 24h | high | IAI |
 | ALR-VND-01 | Vendor ticket no update | VSR or vendor WorkItem with no vendor update for N business hours (CONFIRM) | Jira + vendor emails | CONFIRM | medium | VSR |
+| ALR-HB-SLACK / ALR-HB-MAIL | Message polling stopped | Slack or any shared-mailbox poll has not succeeded for 10 minutes (two missed 5-minute cycles), at any time of day | heartbeats | 10 min, 24/7 | critical | internal |
 | ALR-HB-* | Heartbeat lost | `SourceHeartbeat.lastSuccessAt` older than 2 × `expectedEveryMins`, or `lastRecordAt` stale beyond a source-specific limit (for example no settlement record at all for 24 hours) | heartbeats | per source | high (worker: critical) | internal |
 
 ### 11.3 Routing and escalation
@@ -935,9 +1035,9 @@ Evidence specs below list the minimum fields.
 ### Team 2
 
 **CHK-02 Daily MTD Variances** (daily for client assets, Team 2; weekly for dev assets, Team 3)
-- Source: the Power BI MTD report (link) plus the optional CSV import of variances (CONFIRM-MTD-EXTRACT); EOD balances from the Komainu API for cross-checks.
+- Source: variances recomputed from Komainu API EOD balances and transactions (Section 18), with the Power BI MTD report used in parallel for verification until the recomputation is proven (18.9).
 - Evidence: variance rows reviewed, count, and report data date.
-- Exceptions: each break becomes an `mtd_break` WorkItem → OTC with the break type. The break type list comes from Confluence page "2.3 OTC Break Types"; store it as an admin-editable enum table.
+- Exceptions: each break becomes an `mtd_break` WorkItem, diagnosed deterministically and, where the rules allow, with a drafted OTC ticket and workings file for human review (Section 18).
 - SLA: resolve by T+1 business day from reporting.
 - Close the daily TOPS MTD ticket automatically when all breaks for the day are resolved or explained, as a comment plus transition. It is the Team 2 lead's responsibility per Task Distribution.
 - Known issue: GX transaction status can be wrong versus the chain (CF-18). Show "GX status vs chain unverified" on break items.
@@ -1088,6 +1188,8 @@ Branch: `phase-8-metrics`.
 | MTD break closure | share closed within T+1 business day |
 | OES window health | windows on time, failed, stuck, or not run, by exchange |
 | Unticketed work | daily count from Section 10.3 (target 0) |
+| Client incident communication | per client and severity: time from raise to client-visible request, time to first public update, update-cadence attainment, time to resolved; count withheld for Compliance (count only, no detail) |
+| Polling health | share of 5-minute Slack and mailbox cycles completed on time, per source |
 
 ### 13.3 Reports and UI
 
@@ -1132,9 +1234,10 @@ Branch: `phase-9-work-ui`.
 4. **Alerts**: active by severity, with rule code, fire count, linked WorkItem and ticket.
 5. **Clients**: per client, open items, SLA status, recent activity, effort (team-level) and channels.
 6. **Settlements (OES)**, **Travel rule**, **Staking**, **KPS** (restricted), **FAB** (flagged), **Coin reviews**, **Incidents and RCA**.
-7. **Metrics**.
-8. **Morning board**.
-9. **Admin**: clients and channels, SLA policies, alert rules, check definitions, team config, Jira project config, imports, feature flags, audit log and health.
+7. **GX sprints** (UAT; Section 16).
+8. **Metrics**.
+9. **Morning board**.
+10. **Admin**: clients and channels, GX impact rules, UAT templates, SLA policies, alert rules, check definitions, team config, Jira project config, imports, feature flags, audit log and health.
 
 Remove from navigation:
 - approvals (deleted);
@@ -1153,6 +1256,8 @@ Remove from navigation:
   - add internal note (posts as an internal Jira comment);
   - log time;
   - link related ticket;
+  - **raise incident / risk** (Section 9.7), available on every message in the timeline;
+  - **post client update** on items with a client ticket (human-written; four-eyes for P0 and P1);
   - close (requires the write-up per 10.2).
 - **No transaction actions of any kind** (H1).
 
@@ -1198,7 +1303,583 @@ Branch: `phase-10-jira-inventory`.
 
 ---
 
-## 16. Testing, security and quality gates
+## 16. PHASE 11 — GX sprint change intake and UAT tickets
+
+Branch: `phase-11-gx-sprint-uat`.
+
+**Goal.** Every GX sprint that changes something Transaction Operations relies on produces UAT tickets automatically:
+- before the release reaches production;
+- mapped to the daily tasks, alerts and controls it affects;
+- with nobody having to read the release notes line by line to decide what to test.
+
+### 16.1 Sources (read-only)
+
+| Source | What it gives | How to read |
+|---|---|---|
+| Confluence pages titled `[GX-Orchestrate] Sprint <X.YY> Release Notes` in the AMTK space | The structured change list for each sprint | Confluence REST (read), same Atlassian service account. Find pages by title pattern under the release-notes parent page (CONFIRM-GX-RELEASE-PARENT). Re-read whenever the page `version.number` changes. |
+| KMNC change tickets named like `GX Sprint <X.YY> Upgrade in UAT` / `Release in UAT` and `GX Sprint <X.YY> Release in PROD (…)` | When the sprint lands in UAT, and the planned PROD date | Jira JQL on project KMNC, summary contains "GX Sprint" (CONFIRM-KMNC-NAMING) |
+| Jira issues labelled `Sprint_<X.YY>` (GXS service tickets) and fix versions `<X.YY>.0-alpha.n` / `-rc.n` | Individual fixes, including tickets Transaction Operations raised | JQL of the form `labels = Sprint_6.19`, as linked from the release notes |
+
+Observed cadence (from release notes June to September 2026):
+- one sprint roughly every two weeks, for example 6.15 to 6.19;
+- one or two intermediate alpha releases mid-sprint;
+- a final `rc` release;
+- a UAT upgrade followed by a PROD release.
+
+**Cadence of intake.** The user asked for "every few weeks"; make it event-driven plus a safety net:
+- a daily job `gx_sprint_intake` at 07:00 UTC finds new or updated release-notes pages;
+- the same job runs when a KMNC "Upgrade in UAT" or "Release in UAT" ticket is created or changes status;
+- a manual "Run sprint intake" button on `/gx-sprints` (lead or admin);
+- config `gx.sprint_intake.cron` (default daily) lets the team change the schedule.
+
+### 16.2 Parsing the release notes
+
+The release notes follow a fixed template, "[GX-Orchestrate] Sprint X.XX Release Notes – Template" in AMTK. Parse by heading and table. Ignore rows whose cells are all empty: the template ships with blank rows. Sections to parse, and how each becomes a change item:
+
+| Release-notes section | Change item type | Creates a UAT ticket when |
+|---|---|---|
+| 1.1 "Function Released (but disabled or recently enabled in PROD)" (columns: Function, Ops Testing Status, Ops PIC, Comments) | `function_toggle` | Every row. Pre-assign to Ops PIC if the name matches an `Employee`. |
+| 1.1 "New screens / actions" (UAT/PROD, Ops UI or Client UI, Screen, Action, Roles, Description) | `ui_change` | Ops UI rows always; Client UI rows as a "client-facing awareness" ticket |
+| 1.1 "New API" | `api_change` | Every row. Also create a KOMmand Centre connector regression task (16.4). |
+| 1.1 "Changes in Permission" | `permission_change` | Every row, plus an access-review sub-task |
+| 1.1 "Stake / Unstake Operation Changes" | `staking_change` | Every row |
+| 1.1 "Risk Engine Calc. / Auto Approval Changes" | `risk_engine_change` | Every row, priority P1, and notify Compliance (FYI) |
+| 1.1 "Important version changes", "Core file changes" | `technical_change` | Only when "Impacted Functions" matches the operational function keyword list (16.3) |
+| 1.5 "Major Highlights" (Workstream, Deliverable, Remarks for Ops, Remarks for Client) | `highlight` | When "Remarks for Ops" is not empty, or the workstream maps to a Transaction Operations task |
+| 2.2.1 "This release specific instruction" | `deployment_note` | When the text matches data-impact patterns (16.3), for example renamed columns in `analytics.*` views |
+| 1.4 "JIRA Versions & Artifacts" | sprint metadata | Never; gives fix versions and dates |
+
+Store each change item in a new model:
+
+```prisma
+model GxSprint {
+  id              String   @id @default(cuid())
+  sprint          String   @unique        // "6.19"
+  releaseNotesUrl String
+  pageVersion     Int
+  uatLandedAt     DateTime?              // from KMNC ticket
+  prodPlannedAt   DateTime?              // from KMNC ticket or release notes
+  parentTicketKey String?                // UAT parent ticket
+  changes         GxChange[]
+}
+model GxChange {
+  id            String   @id @default(cuid())
+  sprintId      String
+  section       String                   // parsed heading
+  itemType      String                   // function_toggle | ui_change | ...
+  summary       String
+  detail        Json                     // the parsed row, cell by cell
+  gxJiraKeys    Json     @default("[]")  // GXD/GXS/AMTK keys found in the row
+  env           String   @default("")    // UAT | PROD | both
+  rowHash       String                   // stable hash of normalised row content
+  affectedTasks Json     @default("[]")  // task codes from Section 12
+  affectedAlerts Json    @default("[]")  // alert codes from Section 11
+  affectedControls Json  @default("[]")  // e.g. "3.3", "5.1"
+  uatTicketKey  String?
+  uatOutcome    String?                  // pass | fail | not_applicable | blocked
+  removedAt     DateTime?                // row disappeared from a later page version
+  @@unique([sprintId, section, rowHash])
+}
+```
+
+Parsing rules:
+- **Idempotent.** A row with the same `rowHash` is the same change. A changed row gets a new hash and is linked to its predecessor by the Jira keys it contains, or by section and first-cell text. It updates the existing ticket with a "release notes updated (v<n>)" comment rather than opening a new one.
+- **A row that disappears** in a later version is marked `removedAt`, and its UAT ticket gets a comment. It is never auto-closed.
+- **Extract Jira keys** (`[A-Z]{2,10}-\d+`) from row text and link the UAT ticket to them (the "relates to" link type).
+- **Don't follow GitHub links.** They are not needed and are out of scope.
+- **Redact** names of release engineers in stored `detail`; they are not needed for UAT.
+
+### 16.3 Impact mapping (config, not code)
+
+Create `GxImpactRule` (admin-editable, versioned, audit-logged):
+
+```prisma
+model GxImpactRule {
+  id          String  @id @default(cuid())
+  matchOn     String  // section | workstream | keyword | jira_project
+  pattern     String  // e.g. "Staking", "analytics\\.", "Collateral"
+  taskCodes   Json    // e.g. ["CHK-16","CHK-21","CHK-22"]
+  alertCodes  Json
+  controls    Json
+  team        String
+  uatTemplate String  // code of a UatTemplate (below)
+  priority    String  @default("P2")
+}
+```
+
+Seed mapping (the team reviews it before enabling; CONFIRM-GX-IMPACT-RULES):
+
+| Match | Affected tasks | Alerts | Controls | Team |
+|---|---|---|---|---|
+| Workstream "Staking", section "Stake / Unstake" | CHK-16, CHK-17, CHK-21, CHK-22 | — | 5.1, 5.2, 5.3 | 3 (CHK-17: 1) |
+| Workstream "Tx Automation (Risk Engine + Tx Auto Approval + Tx Signing)", section "Risk Engine Calc. / Auto Approval" | TASK-RISKVIEW | ALR-RSK-* | 3.2, 3.3 | All |
+| Workstream "Collateral Management" | CHK-10 | ALR-OES-* | — | 1 |
+| Workstream "FAB Integration" | TASK-FAB | ALR-FAB-* | — | 1 |
+| Workstream "Travel Rule" | CHK-09 | ALR-TR-01 | — | 3 |
+| Workstream "Komainu API", section "New API" | KOMmand Centre connector (16.4) | ALR-HB-*, ALR-CFG-02 | — | Head of Transaction Operations |
+| Workstream "Fee Management" | TASK-FAB (fees), TASK-BILL | ALR-FAB-08 | — | 1 |
+| Keyword `analytics\.` or "renamed" or "view" in deployment notes | CHK-02 (MTD Power BI), CHK-05 (inbound dashboard) | — | 4.2 | 2 and 3 |
+| Section "Changes in Permission" | Access review | — | — | Head of Transaction Operations |
+| GXS ticket in sprint label whose reporter is a Transaction Operations team member | "Verify fix" for the originating WorkItem | — | — | the reporter's team |
+| Workstream "Client UI" or "Client On-boarding" | Client-facing awareness (no test by default) | — | — | All |
+
+Worked example: the Sprint 6.19 notes include a deployment note renaming columns in the `analytics.Account` and `analytics.[reports.WalletSummary]` views. The analytics keyword rule would raise a UAT ticket against CHK-02, prompting a check that the MTD Power BI report still works after the rename.
+
+**New wallet technology (H6).** Items that mention the Wallet Tech project or new wallet technology are ingested and tagged `scoped_not_operational`. They create no UAT ticket unless an admin enables rule `gx.uat.include_wallet_tech`, and they never update process documentation as live.
+
+**Released but disabled (H5 and the preference in Section 2).** Items in "Function Released (but disabled…)" are **not live behaviour** until enabled in PROD and passed by Operations. Their UAT tickets carry the label `disabled-in-prod`, and any documentation sub-task stays in draft.
+
+### 16.4 KOMmand Centre's own regression
+
+When a sprint includes a `New API` item or a "Komainu API" highlight, create an internal task: "Check Komainu API spec version and re-run connector contract tests".
+- Add contract tests in `src/__tests__/integration/komainu-api-contract.test.ts`. They validate the fields this app depends on (Section 8.1) against the committed spec file.
+- Add a script `scripts/check-komainu-api-spec.ts` that compares a newly supplied spec file with the committed one. It reports:
+  - added, removed or changed paths and fields;
+  - **any newly added write endpoint**, so the allowlist stays deliberate (H2).
+
+### 16.5 Ticket creation
+
+- **Project:** CONFIRM-UAT-PROJECT (default TOPS, issue type "Task", label `uat`). Configurable in `JiraProjectConfig`.
+- **Structure per sprint:**
+  - one parent ticket "GX Sprint <X.YY> — Transaction Operations UAT";
+  - one child (sub-task or linked task) per change item that qualifies (16.2);
+  - further child tasks for documentation follow-ups (below).
+- **Child ticket content:**
+  - summary `[UAT <X.YY>] <item type>: <summary>`;
+  - a description with:
+    - the parsed row (as a table);
+    - a link to the release-notes page and section;
+    - linked GX Jira keys;
+    - affected tasks, alerts and controls;
+    - the UAT test outline from the mapped `UatTemplate`;
+    - an environment line: "Test in GX UAT only".
+  - labels `uat`, `gx-sprint-6-19` (sprint with dashes), and the item type.
+- **Test outlines are human-authored.** Create a `UatTemplate` model (`code`, `title`, `steps` markdown, `expectedResults`, `evidenceRequired`). Seed it with **empty templates named per mapping row**, for the team to write. Do not write test steps for GX functions yourself, and do not use AI. Until a template has content, the ticket says "Test outline not yet written: owner to define".
+- **Due date:** `prodPlannedAt − CONFIRM-UAT-LEAD-DAYS` business days. If there is no PROD date yet, use `uatLandedAt + 5` business days (configurable).
+- **Assignment:** Ops PIC from the release notes if it matches an Employee; otherwise the mapped team's lead (Section 12, `TeamConfig`).
+- **Outcome capture:** closing a UAT child requires the Section 10.2 write-up, plus:
+  - `uatOutcome` (`pass | fail | not_applicable | blocked`);
+  - evidence (screenshot or reference);
+  - a **fail** needs a linked GXS defect ticket. KOMmand Centre may create it with a pre-filled description, and the tester confirms before it is sent.
+- **Documentation follow-up.** For each affected task code, create one "Review TOP procedure for <task>" task, linked to the task's Confluence page. It is due after PROD release. It must not describe the change as live until the UAT item passes and the release is in PROD.
+- **Testing happens in GX UAT, by people.** KOMmand Centre creates and tracks tickets only. It never executes tests against GX, and never performs approvals in any environment (H1).
+
+### 16.6 Alerts (add to the Section 11.2 catalogue)
+
+| Code | Name | Trigger | Clock | Severity | Ticket |
+|---|---|---|---|---|---|
+| ALR-UAT-01 | New GX sprint changes need UAT | New or updated release-notes page produced new qualifying change items | immediate | medium | UAT parent |
+| ALR-UAT-02 | UAT not complete before PROD | Any child UAT ticket for the sprint without an outcome when `prodPlannedAt − 2 business days` is reached | 2 business days before PROD | high | UAT parent |
+| ALR-UAT-03 | UAT failed | Child closed with `fail` | immediate | high | linked GXS defect |
+| ALR-UAT-04 | Release notes changed after UAT sign-off | Page version changes after all children have outcomes, adding or changing rows | immediate | high | UAT parent |
+| ALR-UAT-05 | Risk-engine or permission change in sprint | Any `risk_engine_change` or `permission_change` item | immediate | high | child ticket; notify Compliance or IT per mapping |
+| ALR-HB-GXNOTES | Release notes not found | No release-notes page for a sprint that has a KMNC UAT ticket | 1 day | medium | internal |
+
+### 16.7 UI
+
+A `/gx-sprints` page lists sprints, showing:
+- UAT landed and PROD planned dates;
+- change items by type;
+- mapping to tasks;
+- UAT ticket status and outcomes;
+- a gate indicator (green once all outcomes are recorded and there are no open fails).
+
+Each team board (Section 14) shows "UAT due this sprint" for its tasks.
+
+### 16.8 Metrics (add to Section 13.2)
+
+Per sprint:
+- change items affecting Transaction Operations;
+- UAT tickets created;
+- completed before PROD (%);
+- fails and defects raised;
+- items added after sign-off.
+
+These are team-level only.
+
+### 16.9 Acceptance tests
+
+- **Template parse:** a synthetic release-notes page built from the template headings (fixture `synthetic/CONFIRM-GX-RELEASE-SAMPLE.md`) parses into the expected change items; blank template rows are ignored.
+- **Page updates:** re-parsing an unchanged page creates no new items or tickets. An edited row updates its ticket with a comment. A removed row sets `removedAt` without closing the ticket.
+- **Mapping:**
+  - a staking row maps to CHK-16/21/22 and Team 3;
+  - an `analytics.` rename in deployment notes maps to CHK-02;
+  - a risk-engine row creates a P1 ticket and fires ALR-UAT-05.
+- **Wallet technology:** wallet-tech items create no UAT ticket by default.
+- **PROD gate:** ALR-UAT-02 fires at the right business-day offset from a KMNC PROD ticket date.
+- **Failed items:** closing a child as `fail` without a linked GXS ticket is rejected with 422.
+- **No GX execution:** a static check confirms no code in `src/modules/gx-sprints/` calls anything other than Confluence GET, Jira search and GET, and Jira create or update for issues, comments and links.
+
+**STOP 11.**
+
+---
+
+## 17. PHASE 12 — Security architecture (evaluation readiness)
+
+Branch: `phase-12-security-hardening`. Some items here are prerequisites for earlier phases (see 17.9); build them in the order given there, not necessarily after Phase 11.
+
+This section maps KOMmand Centre onto Komainu's own Platform Security Principles so the design can be assessed against the standard the platform is already held to, rather than a generic checklist. Sources: [Platform Security Principles](https://komainu.atlassian.net/wiki/spaces/EB/pages/1815347239/Platform+Security+Principles), [Defence in Depth Platform Architecture](https://komainu.atlassian.net/wiki/spaces/EB/pages/1823309829/Defence+in+Depth+Platform+Architecture), [Threat Modelling and Security Design Reviews](https://komainu.atlassian.net/wiki/spaces/EB/pages/1822720004/Threat+Modelling+and+Security+Design+Reviews), [GX Security Design](https://komainu.atlassian.net/wiki/spaces/AMTK/pages/8504022/Security+Design), [Workload Identity, tmpfs Secret Injection and JWS Inter-Service Auth](https://komainu.atlassian.net/wiki/spaces/AMTK/pages/1723334657/Security+Enhancement+Workload+Identity+tmpfs+Secret+Injection+and+JWS+Inter-Service+Auth), [Developer Environment Security](https://komainu.atlassian.net/wiki/spaces/EB/pages/1816068157/Developer+Environment+Security+IDEs+Extensions+MCP+and+AI+Tooling), [Access management](https://komainu.atlassian.net/wiki/spaces/PS/pages/311590915/Access+management), [Secret Leak Actions](https://komainu.atlassian.net/wiki/spaces/PS/pages/928776298/Secret+Leak+Actions).
+
+Several of those pages are marked DRAFT. Treat them as the current direction of travel and confirm the binding requirements with Platform Security during the design review (17.8).
+
+### 17.1 Principle mapping (what the reviewer will ask)
+
+| Principle | What it means here | Phase 1 implementation |
+|---|---|---|
+| D1 Zero trust, explicit trust boundaries, least privilege | Every call authenticated and authorised; deny by default; no standing privilege | Entra SSO (6.2); per-route `requireAuthorization`; documented trust boundaries (17.2); read-only Komainu API user; Entra PIM for the admin role (17.3) |
+| D2 Defence in depth | No single control failure is a breach | Network isolation, authn/authz, input validation and egress allowlist as independent layers (17.2, 17.4) |
+| D3 Data and tenant isolation | Client data separated; each service owns its store | Client scoping enforced server-side (17.5); KOMmand Centre owns its database and never writes another service's store |
+| D4 Third-party trust explicit | Dependencies reviewed, pinned by SHA, SBOM, provenance | 17.6 |
+| D5 Security by default | Minimal surface, fail securely, no internal detail in errors, observability by design | 17.4, 17.7 |
+| DL1 Protected mainline | Peer review, two-person review for production | Branch protection and CODEOWNERS (17.6) |
+| DL2 Pipeline scanning | SAST, SCA, IaC, image scanning, secret detection | 17.6 |
+| DL3 No secrets in source or logs | Managed identity over secrets; no secrets in env, files or logs | 17.3 |
+| DL6 Signed artefacts | Commit signing, signed images, verification at deploy | 17.6 |
+| O1 Just-in-time privileged access | No standing admin; two-person review where a service account is unavoidable | 17.3 |
+| O2, O3 Vulnerability and issue SLAs | Findings owned and remediated to SLA | 17.6 |
+| O5 Continuous assurance | Pen test and review, tracked to closure | 17.8 |
+
+### 17.2 Layered architecture for KOMmand Centre
+
+The platform's defence-in-depth model runs from client authentication through perimeter, edge, core application, vault access and egress. KOMmand Centre is an **internal, staff-only** application with no client-facing surface, so its layers are:
+
+| Layer | Control | Notes |
+|---|---|---|
+| 1. Access path | No public internet exposure. Reachable only through ZScaler Private Access (ZPA), as an application segment named per the existing convention, or equivalent private access agreed with IT | This is the single biggest posture difference from the current codebase, which assumes public hosting |
+| 2. Identity | Entra ID SSO, phishing-resistant MFA inherited from tenant Conditional Access; no local passwords in production; roles from Entra groups only | 6.2 |
+| 3. Edge | Azure Application Gateway or Front Door with WAF (OWASP Core Rule Set), rate limiting, and the security headers below | 17.4 |
+| 4. Application | Server-side authorisation on every route; input validation; output encoding; CSRF protection; session controls | 17.4, 17.5 |
+| 5. Data | Azure PostgreSQL, private endpoint only, TLS enforced, encryption at rest with Microsoft-managed keys as a minimum, automated backups | 17.5 |
+| 6. Egress | Outbound allowlist to the six permitted hosts (6.4), enforced in code and at the network layer | 6.4 |
+| 7. Monitoring | Application and audit logs shipped to the tenant's log platform for SecOps correlation | 17.7 |
+
+There is **no signing, vault or custody domain** in this application, and there must never be one. That is the architectural reason the approvals module is deleted rather than restricted (H1). State this explicitly in the design review: KOMmand Centre sits entirely outside the custody trust boundary and holds no key material.
+
+### 17.3 Identity, secrets and privileged access
+
+- **Workload identity, not secrets.** Where KOMmand Centre talks to Azure services (database, Key Vault, storage), use a **user-assigned managed identity per workload** (web and worker separately), federated to its Kubernetes ServiceAccount or App Service identity. No connection strings, no account keys.
+- **Residual third-party secrets** (Atlassian API token, Slack bot token, Komainu API user secret) have no Entra equivalent. Hold them in Azure Key Vault and mount them as **files on an in-memory tmpfs volume**, read at startup. Do not create Kubernetes `Secret` objects and do not inject them as environment variables. This means `src/lib/env.ts` needs a small loader that reads a secrets directory (`SECRETS_DIR`, default `/mnt/secrets`), where each file name is the config key, falling back to environment variables in development only.
+- **Rotation.** Every credential has a named owner and a rotation cadence recorded in `docs/phase1/credentials.md`: what it is, where it lives, who owns it, how to rotate, and the blast radius if leaked. Tokens are rotated at least annually and immediately on suspected leak, following the Secret Leak Actions procedure (revoke first, then remove, then remediate).
+- **Least privilege on external accounts.** The Atlassian service account gets project-scoped permissions for the projects in 8.3 only, with no admin rights. The Slack app requests only the scopes it uses, listed in `docs/phase1/slack-scopes.md`. The Graph app registration is restricted to named mailboxes by an Exchange application access policy. The Komainu API user has read-only rights (H2), configured Komainu-side.
+- **No standing admin.** The KOMmand Centre `admin` role, which can change alert rules, SLA policies and impact mappings, is assigned through an **Entra PIM-eligible group** with approval and time-bound activation, mirroring O1. Day-to-day users hold `employee` or `lead`.
+- **Break-glass.** If Entra SSO is unavailable, recovery follows the existing application-admin pattern held by IT and Security, not a local password. Document that any break-glass use raises `ALR-SEC-04` and is reviewed.
+- **Access reviews.** KOMmand Centre is registered in the IT Services inventory with a service owner, an access review owner, a business criticality, and a note that it holds personal data (staff names and client contact details). Access reviews follow the existing periodic cadence, with evidence stored where the access management template says.
+
+### 17.4 Application hardening
+
+Apply the controls the platform already requires of GX, adapted to Next.js:
+
+- **Security headers** at the edge and in `next.config.js`: `Strict-Transport-Security` (one year, includeSubDomains), `Content-Security-Policy` (no `unsafe-inline` or `unsafe-eval`; use nonces for scripts), `X-Frame-Options: deny`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `X-Permitted-Cross-Domain-Policies: none`; strip `X-Powered-By`. Test: `security-headers-present`.
+- **Sessions.** Cookies `httpOnly`, `secure`, `sameSite: lax`, host-scoped. No token in localStorage or sessionStorage. Session lifetime 12 hours, idle timeout 1 hour, revocation preserved.
+- **CSRF.** All state-changing routes require a CSRF token; the check runs in middleware, not per route, so a new route cannot forget it. Test: `csrf-required-on-mutations`.
+- **Input validation.** Every API route validates its body and query with a Zod schema (the codebase already uses Zod); reject unknown fields, and cap string lengths, array sizes and JSON depth. Test: `every-api-route-has-a-schema` walks the route files and fails on any mutation route with no schema.
+- **Output encoding.** No `dangerouslySetInnerHTML` anywhere. Test asserts it does not appear in `src/`.
+- **Fail securely.** A standard error model returns a code and a safe message; stack traces, SQL and upstream payloads never reach the client. Unhandled errors return 500 with a correlation id only.
+- **Rate limiting.** Per-user and per-IP limits on authentication, search and export routes. Exports are already audit-logged; add a daily volume cap per user with `ALR-SEC-03` on breach.
+- **Untrusted content is data, never instruction.** Slack messages, emails, Jira and Confluence text, GX release notes and vendor emails are parsed as data. Nothing in them is ever executed, evaluated, used to build a query, or treated as an instruction. Because the AI features are off (H3) there is no prompt path in Phase 1; if AI is ever enabled, this is the indirect prompt-injection risk that Platform Security has already documented for agentic tooling, and it needs its own review before the flag is turned on.
+- **File handling.** Imports (Chainalysis, MTD, Tatum) accept only allowlisted extensions and MIME types, cap file size, parse in a worker with a timeout, and never execute macros. `.xlsm` is rejected outright.
+
+### 17.5 Data protection
+
+- **Classification.** The application holds confidential data: client names, wallet addresses, transaction ids and amounts, client contact details, and staff identities. Record this in the service inventory entry and in `docs/phase1/data-inventory.md`, listing each dataset, its source, its retention and its owner (D5 observability, dataset cataloguing).
+- **Isolation.** Client scoping is enforced server-side in a single place (a query helper every client-scoped read and write goes through), not per route. The cross-client checks in 9.7 are part of this. Test: `client-scoping-enforced` proves a user cannot fetch another client's items by id.
+- **Encryption.** TLS 1.2 or above everywhere, including to the database. At rest, Azure platform encryption as a minimum; ask Security whether customer-managed keys are required at this classification.
+- **Minimisation.** Store the fields the features need. Do not mirror full GX transaction history; keep identifiers and the fields each check uses. Message bodies are needed for the inbox, so they carry the shortest retention that still serves the audit need.
+- **Redaction in logs (H8).** Wallet addresses, transaction hashes, client names, account numbers, message bodies, tokens, user IP addresses and geolocation are redacted by the logger. Test: `logger-redacts-sensitive-fields` feeds known patterns through and asserts none survives.
+- **Backups and restore.** Automated database backups with point-in-time restore; a restore is tested once before go-live and the result recorded.
+- **Deletion.** Retention jobs delete on schedule (CONFIRM-RETENTION). A staff leaver's personal data follows the tenant's HR process; document how their WorkItems and notes are preserved for audit while their identity is handled per policy.
+
+### 17.6 Supply chain and pipeline
+
+- **Dependency pinning.** Commit `package-lock.json`; pin GitHub Actions by commit SHA, not by floating tag (D4). Pin the Docker base image by digest.
+- **Scanning in CI**, each failing the build on a finding above the agreed threshold: SAST (CodeQL or SonarQube per the platform's existing tooling), SCA for dependencies, secret detection (`detect-secrets`, with the baseline file the platform already uses), container image scanning (Wiz), and IaC scanning for any deployment manifests. Local Wiz scanning applies to developer machines, as it does for the rest of engineering.
+- **SBOM** generated per build and retained with the artefact.
+- **Signing.** Signed commits, signed images, and signature verification at deployment, targeting SLSA Level 1 initially.
+- **Branch protection.** Protected `main`, required review, CODEOWNERS on `src/lib/integrations/`, `src/modules/auth/`, `src/worker/` and anything under `deploy/`. Two-person review for production changes (DL1).
+- **Findings** are logged with an owner and remediated within the platform vulnerability SLAs; exceptions are recorded and accepted only by an authorised role.
+- **Provenance of this build.** Because much of this codebase was AI-assisted, state that plainly in the review pack. The engineering rule is that AI output is treated as your own and reviewed as critically as a colleague's pull request; the Phase 0 audit in 17.9 is how that is evidenced here.
+
+### 17.7 Logging, monitoring and detection
+
+- **Structured audit logging** already exists (`AuditLog`); extend it so every one of these records actor, action, target, result and correlation id: sign-in and sign-out, permission denied, role change, alert rule or SLA policy change, client or channel mapping change, export, client-visible content posted, compliance-sensitive withholding and override, Komainu API credential use, and break-glass access.
+- **Immutability.** Audit rows are append-only: no update or delete path in code, and the database role the app uses has no `DELETE` on that table. Retention is at least as long as the regulatory record-keeping requirement (CONFIRM-AUDIT-RETENTION with Compliance).
+- **Ship logs to the tenant platform** (Sentinel or the agreed SIEM) so SecOps can correlate KOMmand Centre events with Entra sign-ins and platform logs, per the existing log-correlation work. Provide the log schema and a source-onboarding note in `docs/phase1/logging.md`.
+- **Detection use cases to propose to SecOps** (they own the rules, not this repo):
+  - repeated authorisation failures for one user or across users;
+  - export volume spike, or export by a user who does not normally export;
+  - alert rule or SLA policy changed outside change hours;
+  - client mapping changed then immediately used to raise a client ticket;
+  - Komainu API credential used from an unexpected workload;
+  - worker heartbeat lost while alerts remain unacknowledged.
+- **Internal security alerts** (add to the Section 11.2 catalogue):
+
+| Code | Name | Trigger | Severity |
+|---|---|---|---|
+| ALR-SEC-01 | Repeated authorisation failures | More than N denied requests for one user within a window | high |
+| ALR-SEC-02 | Privileged configuration change | Alert rule, SLA policy, impact rule, client mapping or role changed | medium (informational, ticketed) |
+| ALR-SEC-03 | Export threshold exceeded | Export volume above the daily cap | high |
+| ALR-SEC-04 | Break-glass or non-SSO access used | Any production login not through Entra | critical |
+| ALR-SEC-05 | Integration credential failure | Repeated 401 or 403 from a connector, which may indicate revocation or misuse | high |
+
+### 17.8 Threat model and review route
+
+Produce a written threat model in `docs/phase1/threat-model.md` before the security review, using STRIDE against each trust boundary, plus the Komainu-specific abuse cases the hybrid method calls for. Boundaries to enumerate: browser to app, app to database, app to Komainu API, app to Atlassian, app to Slack, app to Graph, app to client-visible JSM content, and worker to all of the above.
+
+Abuse cases that must appear, with the mitigation each maps to:
+
+| Abuse case | Mitigation |
+|---|---|
+| A compromised dashboard session is used to move client funds | No custody write path exists at all (H1, H2); the Komainu API user cannot write |
+| An operator leaks one client's data to another through a client ticket | Server-side client scoping and cross-client text checks (9.7, 17.5) |
+| Tipping off a client under investigation | Compliance-sensitive categories never auto-create client-visible tickets (H12) |
+| An attacker suppresses an alert to hide an incident | Alerts cannot be cleared without a ticket; audit is append-only; SecOps receives the log stream |
+| A malicious Slack message or vendor email manipulates the system | All external content parsed as data; no execution path; AI off (17.4) |
+| The Atlassian token is stolen | Project-scoped permissions, tmpfs storage, rotation, `ALR-SEC-05`, revoke-first procedure |
+| An insider edits an alert rule to stop a control firing | Rule changes need PIM-activated admin, are audit-logged and raise `ALR-SEC-02` |
+| Stale data causes a missed break | Heartbeats and freshness indicators on every view (11.2, 13.3) |
+
+**Review route, in order:** threat model and design review with Platform Security → engineering security review of authentication, authorisation and integration code → pipeline scanning clean → penetration test scoped to the application (the platform's continuous assurance principle) → findings remediated and retested → sign-off recorded before any production credential is issued.
+
+### 17.9 Build order note
+
+Three items are prerequisites rather than a final phase, and must land with the phases they protect:
+- **Entra SSO and no local passwords** (6.2) before any real data is loaded.
+- **Secrets in Key Vault with tmpfs mounting** (17.3) before the first live credential is issued, which is Phase 3.
+- **Private access, WAF and egress allowlist** (17.2, 6.4) before the first deployment to a shared environment.
+
+The rest of this section can be built alongside Phases 4 to 11, but all of it must be complete before the security review.
+
+### 17.10 Acceptance tests
+
+- `security-headers-present`, `csrf-required-on-mutations`, `every-api-route-has-a-schema`, `no-dangerously-set-inner-html`, `client-scoping-enforced`, `logger-redacts-sensitive-fields`, `audit-log-is-append-only`, `prod-has-no-credentials-provider`, `allowed-hosts-enforced`, `no-secrets-in-env-in-production` (asserts the secret loader is used and that secret-bearing environment variables are absent when `SECRETS_DIR` is set).
+- A documentation check that `threat-model.md`, `data-inventory.md`, `credentials.md`, `logging.md` and `slack-scopes.md` exist and are not placeholders.
+
+**STOP 12.**
+
+---
+
+## 18. PHASE 13 — Deterministic MTD break diagnosis and OTC ticket drafting
+
+Branch: `phase-13-otc-automation`. This phase automates CHK-02, the daily MTD variance check, and the OTC tickets that follow from it.
+
+**The goal and the boundary.** Given the Komainu API's balance and transaction data, the dashboard recomputes the MTD variances itself, diagnoses each break against the documented break types, reconciles the exact transactions responsible, and drafts the OTC ticket with its workings. **Every step is deterministic: rules, arithmetic and table lookups only. There is no AI, no inference and no fuzzy matching anywhere in this pipeline** (H3). A person reviews and submits every ticket.
+
+### 18.1 Why this can be deterministic
+
+The existing `late-snapshot-otcs` skill already expresses the diagnosis as exact arithmetic: a sign table per transaction type, a reconciliation that must match to the last decimal place, and a bidirectional sanity check on the variance shape. What it uses a model for is orchestration, file wrangling and judgement, not the maths. Moving it into code replaces the model with:
+
+| Skill element | Deterministic replacement |
+|---|---|
+| Finding and classifying input files | Direct Komainu API reads; no file handling at all |
+| Interpreting the trigger message | A wallet and date chosen in the UI, or the whole day's scan |
+| Sign table lookup | `SignRule` table (18.4), exact match on type, direction and sub-category |
+| Reconciling late transactions | A fixed algorithm with an exact-match requirement (18.5) |
+| Variance shape sanity check | The same checks as blocking assertions |
+| Deciding the break type | A decision table over computed signals (18.4) |
+| Filling the template | `exceljs` writing the template at full precision (18.6) |
+| Drafting the ticket | String templates with computed values (18.7) |
+| Judgement, exceptions, submission | The human reviewer (18.8) |
+
+Anything the rules cannot resolve is **not guessed**. It is shown to the reviewer as undiagnosed, with the evidence attached.
+
+### 18.2 Data sourcing: replacing the exports
+
+The skill reads three files: a Power BI MTD export, a Discrepancies Recon CSV and a GX Transaction Summary CSV. With the Komainu API connected, all three come from primary data:
+
+| Skill input | Replacement | Endpoint |
+|---|---|---|
+| Discrepancies Recon (EOD balances per wallet per day) | `EodBalanceSnapshot` table, filled daily | `GET /v1/custody/wallets/eodbalances`, `/v1/custody/wallets/{id}/eodbalances` |
+| GX Transaction Summary | `GxTransaction` table | `GET /v1/custody/transactions` |
+| Power BI MTD daily variances | Computed by the dashboard (18.3) | derived |
+
+**The 30-day limit matters.** The end-of-day balance endpoint returns at most the last 30 days, so the daily pull is the only way to build history. Snapshots are immutable once written, **except** for a late catch-up: if a re-read of a past date returns different figures, write a new row version and keep the old one, because that change is itself evidence of a late snapshot.
+
+```prisma
+model EodBalanceSnapshot {
+  id           String   @id @default(cuid())
+  walletId     String
+  date         DateTime @db.Date      // the EOD date
+  version      Int      @default(1)   // increments if GX restates the day
+  total        Decimal  @db.Decimal(38,18)
+  available    Decimal  @db.Decimal(38,18)
+  locked       Decimal  @db.Decimal(38,18)
+  staked       Decimal  @db.Decimal(38,18)
+  pending      Decimal  @db.Decimal(38,18)
+  quarantined  Decimal? @db.Decimal(38,18)
+  delegated    Decimal? @db.Decimal(38,18)
+  fetchedAt    DateTime @default(now())
+  @@unique([walletId, date, version])
+}
+model GxTransaction {
+  id                String   @id           // GX transaction id
+  walletId          String
+  createdAtUtc      DateTime
+  asset             String
+  txnType           String
+  direction         String                 // In | Out
+  amount            Decimal  @db.Decimal(38,18)
+  stakeRewards      Decimal? @db.Decimal(38,18)
+  walletCategory    String?
+  walletSubCategory String?
+  status            String?
+  firstSeenAt       DateTime @default(now())
+  @@index([walletId, createdAtUtc])
+}
+```
+
+**Precision is non-negotiable.** Use `Decimal` columns and `decimal.js` (add it) for every balance and amount. **Never** use JavaScript numbers in reconciliation arithmetic: floating point is exactly how a figure ends up truncated, and the break catalogue names truncated figures as a recurring misdiagnosis. Test: `no-float-arithmetic-in-mtd` fails on any arithmetic operator applied to a balance or amount outside `Decimal`.
+
+### 18.3 Recomputing the variances
+
+Compute per wallet per date from the two tables above. The definitions come from the documented MTD variance semantics and must be verified against Power BI before the output is trusted (18.9).
+
+- **Balance Variation** = `total − (available + locked + staked + pending + quarantined + delegated)`; an internal-consistency check.
+- **Transaction Variation** = cumulative rolling net transactions against either **Total** or **Available**, by asset: Available for ATOM, ETH, INJ_INJ and NEAR, Total for everything else. Hold this in an admin-editable `AssetVarianceReference` table seeded with those four, not in code: new assets are onboarded regularly, and a wrong reference silently misdiagnoses every break on that asset.
+- **Staked Variation** = cumulative staking actions against the EOD staked balance.
+- **Daily delta** for each = today's cumulative minus yesterday's.
+
+Store **both** the cumulative figure and the daily delta in separately named columns (`txnVariationCumulative`, `txnVariationDaily`). One column name meaning a cumulative figure in one export and a daily figure in another is the most error-prone step in the manual process; naming them apart removes the ambiguity permanently.
+
+Persist as `MtdVariance` (wallet, date, three cumulative figures, three daily deltas, reference column used, computation version).
+
+### 18.4 Rule tables (the deterministic core)
+
+All admin-editable, versioned and audit-logged; each change raises `ALR-SEC-02`. Seeded from the documented break types and reviewed by the team before anything is enabled (CONFIRM-OTC-RULE-REVIEW).
+
+**`SignRule`** — the balance signature per transaction type, from the OTC break types page and the skill's sign table:
+
+| txnType | direction | subCategory | Δtotal | Δavailable | Δlocked | Δstaked |
+|---|---|---|---|---|---|---|
+| REWARD (SOL) | In | — | +amt | | | +amt |
+| REWARD_MEV (SOL) | In | — | +amt | | +amt | |
+| REWARD_CL (ETH) | In | — | | +amt | −amt | |
+| REWARD_EL (ETH) | In | — | +amt | +amt | | |
+| Transfer IN | In | non-staking | +amt | +amt | | |
+| Transfer IN | In | staking | +amt | | +amt | |
+| Transfer OUT | Out | — | −amt | −amt | | |
+| DELEGATE | Out | — | 0 | −amt | | +amt |
+| UNSTAKE / WITHDRAW | In | — | 0 | +amt | | −amt |
+| FEES | Out | — | −fee | −fee | | |
+
+Types the documentation marks as varying or needing confirmation (REWARD_PAYOUT, REWARD_ST, REWARD_RB, TRANSFER_TO_CHILD, RAW, TYPED_MESSAGE, CONTRACT_CALL) are seeded with **no signature** and `requiresHuman = true`. A break containing one is never auto-diagnosed. **Never extrapolate a signature for an unknown type**; that rule holds in code as it does in the skill.
+
+**`BreakTypeRule`** — the decision table from the break amendment catalogue:
+
+| # | Conditions (all must hold) | Break type | OTC action | Auto-draft? |
+|---|---|---|---|---|
+| 1 | `txnVariationDaily < 0`; every reconciled transaction has a known signature; the transactions exist in GX on the break date with timestamps after the snapshot; reconciliation exact | Late GX snapshot | EOD Balance Request | Yes |
+| 2 | Rule 1's shape, but the snapshot repeats the prior day's figures and misses in-day transactions | Stale carry-forward | EOD Balance Request | Yes, flagged |
+| 3 | `txnVariationDaily > 0`; balance moved with no matching GX transaction | Missing transaction | Upload Internal Transaction | **No** |
+| 4 | `balanceVariationDaily ≠ 0` | Sub-balances do not sum to total | Investigate | **No** |
+| 5 | Two GX transactions for the same economic event (same amount, type, near-identical timestamp) | Possible duplicate | Void Transaction Request | **No** |
+| 6 | Non-zero balance on surrounding days, zero or impossible on the break date, no transactions | Phantom dropped snapshot | EOD Balance Request | Yes, flagged |
+| 7 | Pending non-zero across the day boundary, transaction lifecycle spans two days | Overnight pending | EOD Balance Request | **No** |
+| 8 | Anything else, any `requiresHuman` type present, or reconciliation not exact | Undiagnosed | — | **No** |
+
+Only rules 1, 2 and 6 auto-draft, and all three are EOD Balance Requests: the highest-volume type with the cleanest evidence. Rule 3 must not auto-draft, because the catalogue warns that raising an internal transaction before checking whether the provider will backfill it creates duplicates.
+
+**`AssetVarianceReference`** (asset → Total or Available) and **`SnapshotWindow`** (EOD snapshot time, 00:00 UTC by default, used to decide whether a transaction is after the snapshot).
+
+### 18.5 The reconciliation algorithm
+
+For a candidate (wallet, break date) matching rule 1 or 2:
+
+1. **Target** = `Σ(signed GX transaction amounts for the break date) − (net transactions the snapshot captured for that date)`, both at full precision from the API. This is the skill's preferred target and depends on no Power BI figure.
+2. Take the wallet's transactions for the break date, sorted by `createdAtUtc` **descending**.
+3. Accumulate signed amounts from the latest backwards.
+4. **Stop when the accumulated sum equals the target exactly** — `Decimal` equality, not a tolerance.
+5. If the accumulation overshoots without an exact hit, or would include a transaction timestamped before the snapshot window, **stop and mark undiagnosed**. No approximate fallback. Report the shortfall and the candidate set as evidence.
+6. Record the reconciled set: per transaction, id, timestamp, type, direction, amount and sub-category.
+
+**Partial runs are handled by construction.** Because the target is computed from what the snapshot actually captured, a reward run where the snapshot caught some transactions reconciles to the remainder, not the day's total. Applying the full day's total to a partial run is one of the catalogue's listed misdiagnoses.
+
+**The masked case.** Where a break date shows a daily transaction variation of zero because both the snapshot and the rolling aggregation missed the same transactions, the break surfaces the next day. The scan therefore examines a **two-day window** per wallet and attributes the break to the date the transactions belong to, flagging it `maskedBreak = true` so the reviewer sees why the dates differ.
+
+### 18.6 Corrections and workings
+
+- **Corrections** are computed per transaction from `SignRule` and summed per balance column; mixed types stack. Never derive the correction from the variance shape — the shape is only a check.
+- **Blocking sanity checks**, bidirectional. Any failure marks the break undiagnosed instead of drafting:
+  - computed Δ staked non-zero but observed staked variation zero, or the reverse;
+  - observed balance variation non-zero on a late-snapshot diagnosis;
+  - `|txnVariationDaily|` not equal to the sum of late transaction amounts affecting the asset's reference column;
+  - applying the correction does not take the break date's transaction variation to **exactly** zero.
+- **Workings file**, generated with `exceljs` from the canonical template committed at `docs/phase1/templates/EOD_Balance_Request_template.xlsx`:
+  - full precision throughout; write `Decimal` values with a 15-decimal display format, never rounded or re-typed;
+  - balance figures come from the EOD snapshot for that wallet and date;
+  - **blank, not zero**, for balance columns with no adjustment, because a literal zero makes the direction-of-change formulas read "Lower" instead of "-";
+  - one row per wallet and break date; wallets sharing a break type and date go on consecutive rows;
+  - a workings table listing **every late transaction individually** with its timestamp, grouped per wallet, with a per-wallet subtotal checked against that wallet's delta cell and a grand total checked against the sum of the delta column, using independent reference paths on each side;
+  - wallet category, sub-category and status from the wallet's most recent transaction, flagged if they disagree across the day;
+  - **one workings file per ticket**;
+  - recalculate after writing and assert zero formula errors before the file is offered for review.
+
+### 18.7 Ticket drafting
+
+Draft, never submit.
+
+- **Project** OTC, issue type `OT - EOD Balance Request`.
+- **Title:** `OT - EOD Balance Request_<DD-MM-YYYY today> - <break type> - <wallet(s)> | <break date(s)> | <variance at full precision> | <brief> | <initials>/Claude`. The brief is generated by counting types in the reconciled set, for example "2x REWARD_CL".
+- **Body:** a fixed template with computed values substituted — wallet, break date, count and types of late transactions, their timestamps, which balance column the snapshot missed, the self-resolution date, and the signed delta per balance column. No free text is generated.
+- **Custom fields:** Wallet Type, Variance Type and MTD, using the team's existing field mapping. Variance Type comes from the diagnosed break type through a `BreakTypeRule` mapping; Wallet Type is derived from the wallet's category, with reviewer override (CONFIRM-OTC-FIELD-MAPPING).
+- **Duplicate check before drafting, mandatory.** Search OTC for tickets covering the same wallet and break date **whatever their creation date**, not just today's, since a re-run or a backdated review would otherwise duplicate. Any match blocks the draft and shows the existing ticket. Two live tickets for the same wallet and break date can cause a correction to be applied twice to a client balance.
+- **Supersession.** Withdrawing a drafted or raised ticket requires, as one action, that the replacement links to the original, comments on it instructing that it not be actioned, and transitions it out of the open queue.
+- **Attachment is manual.** The Atlassian API cannot attach files, so the ticket is unactionable until a person attaches the workings. The draft screen says so, the ticket is tracked as `awaiting_attachment`, and `ALR-OTC-02` fires after 30 minutes.
+
+### 18.8 The review step
+
+Nothing reaches Jira without a person. The daily MTD screen shows, for the selected date:
+
+1. **Auto-diagnosed breaks:** break type, reconciled transactions, computed corrections, sanity-check results, the workings file and the drafted ticket. The reviewer opens the evidence, then creates or rejects with a reason.
+2. **Undiagnosed breaks:** variance figures, the day's transactions, and which rule fell over and why ("reconciliation overshot by X", "transaction type CONTRACT_CALL has no signature"). No draft is offered.
+3. **No-auto-draft rules:** the suggested OTC action with the catalogue's diagnosis steps for that category linked, so the analyst follows the documented route.
+
+Creating a ticket requires the reviewer to confirm they have checked the workings. That confirmation, the rule versions used, the reconciled transaction ids and the computed figures are written to the audit log, so any ticket traces back to the exact data and rule versions that produced it.
+
+**Rejections improve the rules, not a model.** A rejection records a reason from a controlled list (wrong break type, wrong transactions, wrong signature, figures wrong, not a break, other). A weekly report of rejections by rule shows which tables need correcting.
+
+### 18.9 Verification before trust
+
+1. **Parallel run.** Compute variances daily and compare against the Power BI MTD report for at least a full month. Target: zero unexplained differences for 20 consecutive business days before auto-drafting is enabled.
+2. **Back-test.** Replay the last 90 days through the rules and compare against the OTC tickets actually raised: same break type, same reconciled transaction set, same corrections. Differences are investigated as either a rule gap or a historical error. Include the cases the team's own documentation names as validated: the multi-wallet SOL MEV late snapshot, the single-wallet ETH CL late snapshot, and the superseded pair from 25 July 2026 (a partial MEV run affecting Locked only, and a CL-only late set that was Total-neutral).
+3. **Precision test.** Assert that every computed correction takes the break date's transaction variation to exactly zero across the back-test set.
+4. **Failure-mode test.** Constructed cases that must land as undiagnosed: an unknown transaction type, an overshooting reconciliation, a non-zero balance variation, a masked break and a partial run.
+
+Only after 1 and 2 pass is `mtd.autodraft.enabled` switched on, and every ticket is still reviewed.
+
+### 18.10 Alerts (add to Section 11.2)
+
+| Code | Name | Trigger | Severity |
+|---|---|---|---|
+| ALR-OTC-01 | MTD breaks awaiting review | Any break for yesterday unreviewed by the check due time | high |
+| ALR-OTC-02 | Ticket awaiting workings attachment | Created OTC ticket with no confirmed attachment after 30 minutes | high |
+| ALR-OTC-03 | Undiagnosed break rate high | More than N undiagnosed breaks in a day, suggesting a rule gap or a GX change | medium |
+| ALR-OTC-04 | Unknown transaction type seen | A transaction type with no `SignRule` appears in a break | medium |
+| ALR-OTC-05 | Snapshot restated | An EOD snapshot for a past date changed on re-read | medium |
+| ALR-OTC-06 | Break older than T+1 unresolved | An MTD break open past its T+1 target | high |
+| ALR-OTC-07 | Duplicate OTC risk | Two open tickets covering the same wallet and break date | critical |
+
+### 18.11 Relationship to the existing skill
+
+The `late-snapshot-otcs` skill stays useful for ad-hoc work and for break types the pipeline does not auto-draft. Once the pipeline is live for late snapshots, the skill should defer to it for that type so the two cannot both raise a ticket. The rule tables in 18.4 and the template in 18.6 become the single source for both, and the skill's reference files should point at them rather than holding a second copy.
+
+### 18.12 Acceptance tests
+
+- Rule tables load, and a transaction type with no signature never produces a correction.
+- Reconciliation matches exactly on a fixture and refuses an approximate match.
+- A partial run reconciles to the remainder, not the day's total.
+- A masked break is attributed to the correct date.
+- Every blocking sanity check marks the break undiagnosed rather than drafting.
+- The generated workbook has full-precision values, blank (not zero) unadjusted columns, per-wallet subtotals that tie, and no formula errors.
+- Duplicate detection blocks a draft for an existing wallet and break date regardless of the existing ticket's age.
+- No ticket is created without a recorded human confirmation.
+- `no-float-arithmetic-in-mtd` passes.
+- The back-test harness runs against fixtures and reports break type, transaction set and correction differences per historical ticket.
+
+**STOP 13.**
+
+---
+
+## 19. Testing, security and quality gates
 
 - **Unit:** every evaluator, metric formula, parser (against fixtures) and enforcement rule.
 - **Integration:** use MSW (Mock Service Worker, add it and justify) or Vitest fetch mocks for the Komainu API, Jira and JSM, Slack and Graph. No live network in CI. Add a CI guard that fails if any test makes a real network call (block via a global fetch mock that throws on unmocked hosts).
@@ -1208,6 +1889,8 @@ Branch: `phase-10-jira-inventory`.
   3. A daily check with an exception creates a ticket.
   4. An attempt to close without a write-up returns 422.
   5. An attempt to acknowledge an alert without a ticket returns 422.
+  6. An email in a shared mailbox is raised as a risk entry: an internal ticket is created, a client JSM request is created in the right organisation, a human-sent notification carries the portal link, a public update passes four-eyes, and the item resolves with a client-facing resolution message.
+  7. A simulated 24-hour clock shows `sync_slack` and `sync_mail` run every 5 minutes with no out-of-hours gap, and that ALR-HB-SLACK fires after two missed cycles.
 - **Security:**
   - keep existing tests;
   - add `custody-client-is-read-only`, `no-approval-routes`, `prod-has-no-credentials-provider`, `logger-redacts-sensitive-fields`, `allowed-hosts-enforced` and `ai-disabled-by-default`;
@@ -1224,7 +1907,7 @@ Branch: `phase-10-jira-inventory`.
 
 ---
 
-## 17. CONFIRM register (blocking inputs from humans)
+## 20. CONFIRM register (blocking inputs from humans)
 
 Each item gates the listed rules or features. They stay disabled until resolved. Surface this list on `/admin/health` as a checklist.
 
@@ -1251,10 +1934,28 @@ Each item gates the listed rules or features. They stay disabled until resolved.
 | CONFIRM-KPS-THRESHOLD | Current RiskCo realisation threshold (was $1m; an increase was tabled in August) | ALR-KPS-01 |
 | CONFIRM-RETENTION | Retention periods | Retention jobs |
 | JSM Slack verification | Section 9.1 checklist completed | `intake.slack.route=jsm_native` |
+| CONFIRM-JSM-INCIDENT-REQUEST-TYPE | JSM request type for client incident and risk notifications, and its portal-visible statuses | Section 9.7 client tickets |
+| CONFIRM-JSM-PORTAL | Client portal set-up: customer accounts, organisation membership, branding | Clients viewing their tickets |
+| CONFIRM-CLIENT-CONTACTS | Which client contacts become request participants | Section 9.7 |
+| CONFIRM-INCIDENT-PROJECT | Internal Jira project for incident and risk entries | Section 9.7 |
+| CONFIRM-CLIENT-UPDATE-CADENCE | Maximum time between client updates per severity | ALR-CLI-02 |
+| CONFIRM-COMPLIANCE-ROUTE | Where compliance-sensitive entries are routed, and who records the decision | ALR-CLI-03, withheld tickets |
+| CONFIRM-GX-RELEASE-PARENT | Confluence parent page and title pattern for GX sprint release notes | Section 16 intake |
+| CONFIRM-KMNC-NAMING | KMNC ticket naming for UAT and PROD GX releases | Section 16 timing |
+| CONFIRM-GX-IMPACT-RULES | Team review of the seed impact mapping | Section 16 ticket creation |
+| CONFIRM-UAT-PROJECT | Jira project and issue type for UAT tickets | Section 16 tickets |
+| CONFIRM-UAT-LEAD-DAYS | Business days before PROD that UAT must finish | Due dates, ALR-UAT-02 |
+| CONFIRM-UAT-TEMPLATES | Test outlines per mapping row, written by the team | Ticket content |
+| CONFIRM-GX-RELEASE-SAMPLE | A redacted real release-notes page for the parser fixture | Parser tests beyond the synthetic template |
+| CONFIRM-AUDIT-RETENTION | Regulatory retention period for the audit log | Section 17.7 |
+| CONFIRM-OTC-RULE-REVIEW | Team review of the seeded `SignRule` and `BreakTypeRule` tables | Section 18.4, before any drafting |
+| CONFIRM-VARIANCE-DEFINITIONS | Confirmation that the recomputed variances match the Power BI definitions | Sections 18.3 and 18.9 |
+| CONFIRM-OTC-FIELD-MAPPING | Variance Type and Wallet Type field values per break type | Section 18.7 |
+| CONFIRM-CATEGORY-LIST | Final incident and risk categories, and which are compliance-sensitive (Compliance to confirm) | Section 9.7 form |
 
 ---
 
-## 18. Pull request plan and definition of done
+## 21. Pull request plan and definition of done
 
 | PR | Phase | Must include |
 |---|---|---|
@@ -1262,20 +1963,28 @@ Each item gates the listed rules or features. They stay disabled until resolved.
 | 2 | Phase 1: worker, SSO, hosting config, egress allowlist | Worker in docker-compose, SSO tests |
 | 3 | Phase 2: data model | Migrations, seed of definitions (no real data) |
 | 4 | Phase 3: integrations (Komainu API read-only, Jira/JSM, Slack, Graph, imports) | Mocks, health endpoint |
-| 5 | Phase 4: client intake | Route flag, rules, tests |
+| 5 | Phase 4: client intake, plus raising incidents or risks with client JSM tickets | Route flag, 5-minute polling, rules, Section 9.7 form and linked tickets, tests |
 | 6 | Phase 5: ticket enforcement | 422 rules, reports |
 | 7 | Phase 6: alerting | Engine, catalogue (all disabled), routing |
 | 8a–c | Phase 7: daily coverage by team | Definitions, pulls, evidence, coverage test |
 | 9 | Phase 8: metrics | Formulas, reports, per-person guard |
 | 10 | Phase 9: UI | Work queue, boards, morning board |
 | 11 | Phase 10: Jira inventory | Read-only script output |
+| 12 | Phase 11: GX sprint intake and UAT tickets | Parser, impact rules, UAT tickets, gate alerts, spec-diff script |
+| 13 | Phase 12: security hardening (parts land earlier, see 17.9) | Headers, CSRF, schemas, scoping, audit immutability, threat model, pipeline gates |
+| 14 | Phase 13: MTD diagnosis and OTC drafting | Snapshot and transaction stores, variance engine, rule tables, reconciliation, workings, draft tickets, back-test |
 
 **Definition of done (Phase 1 overall):**
 
 - **CI and constraints:** `npm run ci:check` passes, and every hard constraint in Section 2 has a passing enforcing test.
 - **Coverage:** the coverage test passes for all 27 tasks, and each shows in the Work UI with evidence capture.
 - **Rules and CONFIRM items:** every alert rule exists, is disabled by default, and cannot be enabled while its CONFIRM params are missing. The CONFIRM checklist shows on `/admin/health`.
-- **End-to-end demo against mocks:** a client Slack question, an OES failure and a daily check exception each produce a ticket, SLA timers and metrics, with no manual ticket creation.
+- **End-to-end demo against mocks:**
+  - a client Slack question, an OES failure and a daily check exception each produce a ticket, SLA timers and metrics, with no manual ticket creation;
+  - a Slack message and a shared-mailbox email are each raised as an incident, producing an internal ticket and a client-specific JSM request visible only to that client's organisation;
+  - polling has run every 5 minutes through a simulated 24-hour period, including out of hours;
+  - a synthetic GX sprint release-notes page produces a UAT parent and mapped child tickets, due before the PROD date, and ALR-UAT-02 fires if outcomes are missing;
+  - a seeded late-snapshot break is diagnosed, reconciled exactly, and produces a workings file and a drafted OTC ticket that no code can submit without a human.
 - **Documentation updated:**
   - `docs/architecture.md`;
   - `docs/integration-guide.md`;

@@ -21,6 +21,7 @@ const prismaMock = vi.hoisted(() => ({
   commsThread: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   commsMessage: { create: vi.fn() },
   workItem: { findFirst: vi.fn(), upsert: vi.fn() },
+  syncCursor: { findUnique: vi.fn(), upsert: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
@@ -78,8 +79,9 @@ describe("custody mailbox sync", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: URL | string) => {
       const url = new URL(input.toString());
       if (url.host === "login.microsoftonline.com") return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
-      expect(url.pathname).toBe("/v1.0/users/custody%40example.com/mailFolders/inbox/messages");
+      expect(url.pathname).toBe("/v1.0/users/custody%40example.com/mailFolders/inbox/messages/delta");
       return new Response(JSON.stringify({
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/custody%40example.com/mailFolders/inbox/messages/delta?$deltatoken=t1",
         value: [
           { id: "m1", internetMessageId: "<m1@x>", conversationId: "conv-1", subject: "Withdrawal query", receivedDateTime: "2026-09-23T09:00:00Z", from: { emailAddress: { address: "client@example.org" } }, bodyPreview: "hello" },
           { id: "m2", internetMessageId: "<m2@x>", conversationId: "conv-1", subject: "RE: Withdrawal query", receivedDateTime: "2026-09-23T09:05:00Z", from: { emailAddress: { address: "client@example.org" } }, bodyPreview: "again" },
@@ -91,9 +93,12 @@ describe("custody mailbox sync", () => {
     prismaMock.commsThread.findFirst.mockResolvedValue(null);
     prismaMock.commsThread.create.mockResolvedValue({ id: "t1" });
 
-    const result = await syncMailbox({ label: "custody", address: "custody@example.com", purpose: "custody" });
+    prismaMock.syncCursor.findUnique.mockResolvedValue(null);
+
+    const result = await syncMailbox({ label: "custody", address: "custody@example.com", purpose: "custody" }, { now: new Date("2026-09-23T10:00:00Z") });
     expect(result).toMatchObject({ fetched: 2, ingested: 1 });
     expect(prismaMock.commsThread.create.mock.calls[0][0].data.sourceThreadRef).toBe("graph-conv-1");
-    expect(prismaMock.sourceHeartbeat.upsert.mock.calls[0][0].where.source).toBe("graph_mail.custody");
+    expect(prismaMock.sourceHeartbeat.upsert.mock.calls[0][0].where.source).toBe("outlook.custody");
+    expect(prismaMock.syncCursor.upsert.mock.calls[0][0].create).toMatchObject({ source: "outlook.custody.inbox", cursor: expect.stringContaining("$deltatoken=t1") });
   });
 });

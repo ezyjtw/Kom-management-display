@@ -345,11 +345,13 @@ export const revokeSessionSchema = z.object({
 
 const jobTypeSchema = z.enum([
   "sync_jira", "check_sla", "check_staking", "check_confirmations", "cleanup_sessions",
-  "sync_slack_channel", "sync_slack_replies", "slack_event",
+  "sync_slack", "sync_slack_replies", "slack_event",
   "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
   "komainu_poll_requests", "komainu_poll_transactions", "komainu_poll_collateral",
-  "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking",
-  "graph_mail_sync", "graph_teams_sync",
+  "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking", "komainu_poll_stakes",
+  "sync_mail", "graph_teams_sync",
+  "report_unticketed", "reconcile_tickets", "iai_overdue", "evaluate_alerts", "alert_digest", "poll_risk_signals",
+  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments",
 ]);
 
 export const enqueueJobSchema = z.object({
@@ -837,6 +839,7 @@ export const closeWorkItemSchema = z.object({
   timeLogBucketMins: z.number().int().optional(),
   target: z.enum(["resolved", "closed"]).optional(),
   transitionName: z.string().max(100).optional(),
+  clientResolutionMessage: z.string().max(2000).optional(),
 });
 
 export const dailyCheckExceptionsSchema = z.object({

@@ -25,13 +25,15 @@ interface Relation {
 const PK: Record<string, string> = {
   alertRule: "code", appSetting: "key", assetThreshold: "asset", riskRuleTier: "rule", sourceHeartbeat: "source",
   jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key", teamConfig: "team", assetStatus: "asset",
-  otcBreakType: "code", userNotificationPreference: "userId",
+  otcBreakType: "code", userNotificationPreference: "userId", incidentCategory: "code", syncCursor: "source",
 };
 
 const COMPOUND: Record<string, Record<string, string[]>> = {
   sourceRecord: { source_kind_externalId: ["source", "kind", "externalId"] },
   workItem: { sourceSystem_sourceId: ["sourceSystem", "sourceId"] },
   dailyCheckItem: { definitionCode_periodKey: ["definitionCode", "periodKey"] },
+  commsThread: { slackChannelId_slackRootTs: ["slackChannelId", "slackRootTs"] },
+  commsMessage: { threadId_slackTs: ["threadId", "slackTs"] },
   jiraIssueEvent: { system_key_updated: ["system", "key", "updated"] },
   ticketLink: { system_key_workItemId: ["system", "key", "workItemId"] },
   approvedValidator: { chain_validator: ["chain", "validator"] },
@@ -52,6 +54,7 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     ticketLinks: { model: "ticketLink", kind: "many", localKey: "id", remoteKey: "workItemId" },
   },
   onCallSchedule: { employee: { model: "employee", kind: "one", localKey: "employeeId", remoteKey: "id" } },
+  commsMessage: { thread: { model: "commsThread", kind: "one", localKey: "threadId", remoteKey: "id" } },
   commsThread: { slackChannel: { model: "slackChannel", kind: "one", localKey: "slackChannelId", remoteKey: "id" } },
   incident: { updates: { model: "incidentUpdate", kind: "many", localKey: "id", remoteKey: "incidentId" } },
   tokenReview: { demandSignals: { model: "tokenDemandSignal", kind: "many", localKey: "id", remoteKey: "tokenReviewId" } },
@@ -73,6 +76,9 @@ const DEFAULTS: Record<string, () => Row> = {
   dailyCheckItem: () => ({ status: "pending", exceptionWorkItemIds: [], evidence: {}, autoResult: "", notes: "", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null, recordCount: null, dataAsOf: null }),
   dailyCheckDefinition: () => ({ isActive: true, version: 1, kind: "check", requiredFlag: null, restricted: false }),
   iaiDraft: () => ({ jiraKey: null, completedAt: null }),
+  outboundMessageDraft: () => ({ status: "draft", purpose: "client_ticket_link", sentById: null, sentAt: null }),
+  clientUpdate: () => ({ kind: "update", status: "pending_approval", approverId: null, postedAt: null, targetStatus: null }),
+  incidentCategory: () => ({ isActive: true, sortOrder: 0, complianceSensitive: false }),
   ticketLink: () => ({ role: "primary" }),
 };
 

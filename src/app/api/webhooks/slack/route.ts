@@ -1,13 +1,16 @@
 /**
  * POST /api/webhooks/slack — Slack Events API (spec §8.4). Signature verified
  * with the signing secret; events are queued for the worker so Slack gets a
- * fast 200. History polling every 5 minutes remains the fallback.
+ * fast 200. Push is optional, behind flag slack.events_push (default off):
+ * polling every 5 minutes, 24/7, is the required mechanism and the
+ * completeness guarantee.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifySlackWebhook } from "@/lib/webhook-verify";
 import { enqueueJob } from "@/lib/background-jobs";
 import { logger } from "@/lib/logger";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 const envelopeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("url_verification"), challenge: z.string().max(500) }),
@@ -46,6 +49,10 @@ export async function POST(request: NextRequest) {
 
   if (parsed.type === "url_verification") {
     return NextResponse.json({ challenge: parsed.challenge });
+  }
+
+  if (!(await isFeatureEnabled("slack.events_push"))) {
+    return NextResponse.json({ ok: true, ignored: "push disabled; polling covers this message" });
   }
 
   if (parsed.event.type !== "message" || !parsed.event.channel || !parsed.event.ts) {

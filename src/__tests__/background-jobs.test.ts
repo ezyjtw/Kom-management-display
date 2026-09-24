@@ -85,11 +85,11 @@ describe("dispatch", () => {
   it("has a handler for every job type the queue can hold", () => {
     expect(Object.keys(JOB_HANDLERS).sort()).toEqual([
       "alert_digest", "check_confirmations", "check_sla", "check_staking", "classify_thread", "cleanup_sessions", "collect_check_evidence",
-      "draft_client_comms", "evaluate_alerts", "generate_daily_checks", "graph_mail_sync", "graph_teams_sync", "iai_overdue",
+      "draft_client_comms", "evaluate_alerts", "generate_daily_checks", "graph_teams_sync", "iai_overdue",
       "komainu_poll_audit_logs", "komainu_poll_collateral", "komainu_poll_eod_balances",
       "komainu_poll_requests", "komainu_poll_stakes", "komainu_poll_staking", "komainu_poll_transactions", "mtd_autoclose",
-      "poll_risk_signals", "poll_status_pages", "reconcile_tickets", "report_unticketed", "score_vendor_reliability", "slack_event",
-      "sync_jira", "sync_slack_channel", "sync_slack_replies",
+      "poll_client_ticket_comments", "poll_risk_signals", "poll_status_pages", "reconcile_tickets", "report_unticketed", "score_vendor_reliability", "slack_event",
+      "sync_jira", "sync_mail", "sync_slack", "sync_slack_replies",
     ]);
   });
 

@@ -33,6 +33,11 @@ export const ATLASSIAN_ALLOWLIST: ReadonlyArray<{ method: Method; pattern: RegEx
   { method: "GET", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/sla$`), purpose: "request SLAs" },
   { method: "POST", pattern: /^\/rest\/servicedeskapi\/request$/, purpose: "create request" },
   { method: "POST", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/comment$`), purpose: "add request comment" },
+  // Spec §9.7 client incident/risk requests
+  { method: "GET", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/comment$`), purpose: "read request comments (client portal replies)" },
+  { method: "GET", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/transition$`), purpose: "discover client-visible status transitions" },
+  { method: "POST", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/transition$`), purpose: "move a client request through its client-visible statuses" },
+  { method: "GET", pattern: /^\/rest\/servicedeskapi\/organization\/\d+\/user$/, purpose: "portal users of a client organisation" },
 ]);
 
 export class AtlassianForbiddenError extends Error {
@@ -257,6 +262,8 @@ export function createServiceRequest(input: {
   labels: string[];
   organizationFieldId?: string;
   organizationId?: string | null;
+  /** Spec §9.7: JSM customer account ids added as request participants (all in the client's organisation). */
+  requestParticipants?: string[];
 }): Promise<{ issueKey: string; issueId: string; _links?: { web?: string } }> {
   const requestFieldValues: Record<string, unknown> = {
     summary: input.summary.slice(0, 255),
@@ -267,7 +274,12 @@ export function createServiceRequest(input: {
     requestFieldValues[input.organizationFieldId] = [Number(input.organizationId)];
   }
   return atlassianRequest("POST", "/rest/servicedeskapi/request", {
-    body: { serviceDeskId: input.serviceDeskId, requestTypeId: input.requestTypeId, requestFieldValues },
+    body: {
+      serviceDeskId: input.serviceDeskId,
+      requestTypeId: input.requestTypeId,
+      requestFieldValues,
+      ...(input.requestParticipants?.length ? { requestParticipants: input.requestParticipants } : {}),
+    },
   });
 }
 
@@ -277,4 +289,44 @@ export function createServiceRequest(input: {
  */
 export function updateIssueDescription(key: string, text: string): Promise<void> {
   return atlassianRequest("PUT", `/rest/api/3/issue/${key}`, { body: { fields: { description: adf(text) } } });
+}
+
+export interface JsmCustomer {
+  accountId: string;
+  emailAddress?: string;
+  displayName?: string;
+}
+
+/** Customers (portal users) in a JSM organisation. */
+export async function listOrganizationCustomers(organizationId: string): Promise<JsmCustomer[]> {
+  if (!/^\d+$/.test(organizationId)) throw new AtlassianForbiddenError("GET", "organization id must be numeric");
+  const res = await atlassianRequest<{ values?: JsmCustomer[] }>("GET", `/rest/servicedeskapi/organization/${organizationId}/user`);
+  return res.values ?? [];
+}
+
+export interface JsmComment {
+  id: string;
+  body: string;
+  public: boolean;
+  author?: { accountId?: string; emailAddress?: string; displayName?: string };
+  created?: { iso8601?: string };
+}
+
+export async function listRequestComments(key: string): Promise<JsmComment[]> {
+  const res = await atlassianRequest<{ values?: JsmComment[] }>("GET", `/rest/servicedeskapi/request/${key}/comment`);
+  return res.values ?? [];
+}
+
+export interface JsmTransition {
+  id: string;
+  name: string;
+}
+
+export async function listRequestTransitions(key: string): Promise<JsmTransition[]> {
+  const res = await atlassianRequest<{ values?: JsmTransition[] }>("GET", `/rest/servicedeskapi/request/${key}/transition`);
+  return res.values ?? [];
+}
+
+export function performRequestTransition(key: string, transitionId: string): Promise<void> {
+  return atlassianRequest("POST", `/rest/servicedeskapi/request/${key}/transition`, { body: { id: transitionId } });
 }

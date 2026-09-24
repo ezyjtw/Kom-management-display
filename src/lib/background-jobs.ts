@@ -28,7 +28,7 @@ export type JobType =
   | "check_staking"
   | "check_confirmations"
   | "cleanup_sessions"
-  | "sync_slack_channel"
+  | "sync_slack"
   | "sync_slack_replies"
   | "slack_event"
   | "classify_thread"
@@ -42,7 +42,7 @@ export type JobType =
   | "komainu_poll_eod_balances"
   | "komainu_poll_staking"
   | "komainu_poll_stakes"
-  | "graph_mail_sync"
+  | "sync_mail"
   | "graph_teams_sync"
   | "report_unticketed"
   | "reconcile_tickets"
@@ -52,10 +52,15 @@ export type JobType =
   | "poll_risk_signals"
   | "generate_daily_checks"
   | "collect_check_evidence"
-  | "mtd_autoclose";
+  | "mtd_autoclose"
+  | "poll_client_ticket_comments";
 
 /** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
-export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack"] as const;
+/**
+ * Recurring job types that were replaced; their stored rows are removed on registration.
+ * Spec v2 §6.1: sync_slack_channel merged into sync_slack; graph_mail_sync (every 3 min) is now sync_mail (every 5 min).
+ */
+export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack_channel", "graph_mail_sync"] as const;
 
 /**
  * Job priority levels — lower number = higher priority.
@@ -89,7 +94,9 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "check_staking", cronExpression: "0 */6 * * *" },
     { type: "check_confirmations", cronExpression: "*/5 * * * *" },
     { type: "cleanup_sessions", cronExpression: "0 2 * * *" },
-    { type: "sync_slack_channel", cronExpression: "*/5 * * * *" }, // spec §8.4: polling fallback to Events API
+    // Spec §6.1: every registered Slack channel and shared mailbox, every 5 minutes, 24/7. Never paused out of hours.
+    { type: "sync_slack", cronExpression: "*/5 * * * *" },
+    { type: "sync_mail", cronExpression: "*/5 * * * *" },
     { type: "komainu_poll_requests", cronExpression: "*/1 * * * *" },
     { type: "komainu_poll_transactions", cronExpression: "*/2 * * * *" },
     // Every 10 min; the per-window 60-second cadence comes with OesWindow in Phase 6.
@@ -98,7 +105,6 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "komainu_poll_eod_balances", cronExpression: "0 7 * * *" },
     { type: "komainu_poll_staking", cronExpression: "30 7 * * *" },
     { type: "komainu_poll_stakes", cronExpression: "45 7 * * *" },
-    { type: "graph_mail_sync", cronExpression: "*/3 * * * *" },
     { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
     { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
     { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
@@ -110,6 +116,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
     { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
+    { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
   ];
 
   await prisma.backgroundJob.deleteMany({
@@ -120,6 +127,12 @@ export async function registerDefaultJobs(): Promise<void> {
     const existing = await prisma.backgroundJob.findFirst({
       where: { type: job.type, isRecurring: true },
     });
+
+    if (existing && existing.cronExpression !== job.cronExpression) {
+      // A recurring job whose cadence changed (e.g. an older sync_slack row) is brought in line with the code.
+      await prisma.backgroundJob.update({ where: { id: existing.id }, data: { cronExpression: job.cronExpression } });
+      logger.job(job.type, `Recurring job cadence updated: ${job.cronExpression}`);
+    }
 
     if (!existing) {
       await prisma.backgroundJob.create({

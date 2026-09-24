@@ -21,8 +21,13 @@ export class WorkItemStateError extends Error {
   }
 }
 
-/** `loggedById` must be an Employee id (users without one log as "system"). */
-export async function closeWorkItem(workItemId: string, input: CloseInput, loggedById: string): Promise<WorkItem> {
+/**
+ * `loggedById` must be an Employee id (users without one log as "system").
+ * For a client incident/risk with a client request, the resolution message is
+ * published to the client first (and the request moved to Resolved), then the
+ * internal ticket is closed.
+ */
+export async function closeWorkItem(workItemId: string, input: CloseInput, loggedById: string, actor?: { userId: string; employeeId: string | null; role: string }): Promise<WorkItem> {
   const item = await prisma.workItem.findUnique({ where: { id: workItemId } });
   if (!item) throw new TicketWriteError("Work item not found");
   if (item.state === "closed") throw new WorkItemStateError("Work item is already closed.");
@@ -32,8 +37,14 @@ export async function closeWorkItem(workItemId: string, input: CloseInput, logge
     rootCause: input.rootCause,
     riskScore: input.riskScore.trim(),
     timeLogBucketMins: input.timeLogBucketMins,
+    clientResolutionMessage: input.clientResolutionMessage?.trim(),
   };
   await assertClosable(item, { writeUp });
+
+  if ((item.kind === "client_incident" || item.kind === "client_risk") && item.clientTicketKey) {
+    const { publishResolution } = await import("@/modules/client-incidents/service");
+    await publishResolution(item, writeUp.clientResolutionMessage!, actor ?? { userId: loggedById, employeeId: loggedById, role: "employee" });
+  }
 
   await changeState(workItemId, input.target ?? "closed", { transitionName: input.transitionName, closure: { writeUp } });
 

@@ -45,6 +45,8 @@ interface ThreadNote {
 
 export interface ThreadDetailData {
   id: string;
+  /** Message id -> "Raise incident / risk" deep link (spec §9.7). */
+  raiseLinks?: Record<string, string>;
   source: string;
   subject: string;
   clientOrPartnerTag: string;
@@ -188,6 +190,9 @@ export function ThreadDetail({
                 </span>
               </div>
               <p className="text-sm text-foreground whitespace-pre-wrap">{msg.bodySnippet}</p>
+              {thread.raiseLinks?.[msg.id] && (
+                <a href={thread.raiseLinks[msg.id]} className="mt-2 inline-block text-xs text-primary">Raise incident / risk</a>
+              )}
               {msg.bodyLink && (
                 <a
                   href={msg.bodyLink}

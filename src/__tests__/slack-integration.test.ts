@@ -15,6 +15,9 @@ const prismaMock = vi.hoisted(() => ({
   commsMessage: { upsert: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+// Push delivery is behind slack.events_push (default off); these tests cover it switched on.
+const push = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => k === "slack.events_push" && push.on) }));
 
 import { POST } from "@/app/api/webhooks/slack/route";
 import { ingestChannelMessage } from "@/modules/slack/services/slack-ingestion-service";
@@ -57,6 +60,17 @@ describe("Events API endpoint", () => {
     expect(res.status).toBe(200);
     const job = prismaMock.backgroundJob.create.mock.calls[0][0].data;
     expect(job).toMatchObject({ type: "slack_event", deduplicationKey: "slack_event_Ev1" });
+  });
+
+  it("queues nothing while slack.events_push is off (polling covers every message)", async () => {
+    push.on = false;
+    try {
+      const body = JSON.stringify({ type: "event_callback", event_id: "Ev3", event: { type: "message", channel: "C0000000001", ts: "1700000000.0002", text: "hi" } });
+      expect(await (await POST(signedRequest(body))).json()).toMatchObject({ ok: true, ignored: "push disabled; polling covers this message" });
+      expect(prismaMock.backgroundJob.create).not.toHaveBeenCalled();
+    } finally {
+      push.on = true;
+    }
   });
 
   it("ignores non-message events", async () => {

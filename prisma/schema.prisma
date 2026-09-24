@@ -1616,6 +1616,8 @@ model ClientChannel {
 
 enum WorkItemKind {
   client_request
+  client_incident
+  client_risk
   alert
   daily_check_exception
   mtd_break
@@ -1670,6 +1672,9 @@ model WorkItem {
   resolutionNote  String?
   rootCause       String? // controlled list (spec §10.2)
   exposureUsd     Float? // where relevant (OES, FAB)
+  clientTicketKey  String? // client-visible JSM request (spec §9.7), separate from ticketKey
+  clientTicketUrl  String? // portal URL shared with the client
+  sourceMessageRef String? // Slack permalink or Graph message id the entry was raised from
   metadata        Json          @default("{}") // client_request: { threadId }
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -2056,4 +2061,69 @@ model InAppNotification {
   createdAt DateTime  @default(now())
 
   @@index([userId, readAt])
+}
+
+/// Stored polling cursors (spec §6.1, §8.5), e.g. a Graph delta link per mailbox folder.
+model SyncCursor {
+  source    String   @id // "outlook.<label>.<folder>"
+  cursor    String
+  updatedAt DateTime @updatedAt
+}
+
+/// One record per polling cycle, for polling health (spec §13.2) and the 24/7 guarantee.
+model PollCycle {
+  id         String   @id @default(cuid())
+  source     String // "slack" | "outlook.<label>"
+  startedAt  DateTime
+  finishedAt DateTime
+  ok         Boolean
+  count      Int      @default(0)
+  error      String?
+
+  @@index([source, startedAt])
+}
+
+/// Incident and risk categories (spec §9.7), admin-editable. TODO(CONFIRM-CATEGORY-LIST).
+model IncidentCategory {
+  code                String   @id
+  label               String
+  complianceSensitive Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+/// Human-written client-visible update (spec §9.7). Posted as a JSM public comment; P0/P1 need a second approver.
+model ClientUpdate {
+  id           String    @id @default(cuid())
+  workItemId   String
+  body         String
+  kind         String    @default("update") // update | resolution
+  targetStatus String? // Received | Investigating | Update provided | Resolved
+  status       String    @default("pending_approval") // pending_approval | posted | rejected
+  authorId     String // user id of the writer
+  approverId   String? // user id of the second approver
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workItemId])
+}
+
+/// Outbound message drafts (spec §9.7 notify the client; §14.4 first response). Sent only by an explicit operator action.
+model OutboundMessageDraft {
+  id         String    @id @default(cuid())
+  workItemId String
+  channel    String // slack | email
+  target     Json // slack: { channelId, threadTs }; email: { mailbox, messageId }
+  body       String
+  purpose    String    @default("client_ticket_link") // client_ticket_link | first_response
+  status     String    @default("draft") // draft | sent | discarded
+  sentById   String?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([workItemId])
 }

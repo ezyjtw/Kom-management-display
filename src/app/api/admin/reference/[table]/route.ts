@@ -3,6 +3,7 @@
  * - team-config: team -> lead and deputy (teams are fixed, no rotation);
  * - asset-status: known degraded / sunset assets (CF-26) suppress CHK-01 tickets with a reason;
  * - approved-validators: the approved validator set (CF-10, CF-24), shipped empty;
+ * - incident-categories: §9.7 categories and whether each is compliance-sensitive (DELETE deactivates);
  * - otc-break-types: CHK-02 break types from Confluence "2.3 OTC Break Types" (TODO(CONFIRM-OTC-BREAK-TYPES)).
  * GET lists; PUT upserts one row; DELETE removes one (?key=).
  */
@@ -41,8 +42,16 @@ const otcBreakType = z.object({
   sortOrder: z.number().int().min(0).max(1000).default(0),
 });
 
-type TableName = "team-config" | "asset-status" | "approved-validators" | "otc-break-types";
-const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators", "otc-break-types"];
+const incidentCategory = z.object({
+  code: z.string().trim().regex(/^[a-z_]{2,40}$/),
+  label: z.string().trim().min(2).max(100),
+  complianceSensitive: z.boolean(),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(1000).default(0),
+});
+
+type TableName = "team-config" | "asset-status" | "approved-validators" | "otc-break-types" | "incident-categories";
+const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators", "otc-break-types", "incident-categories"];
 
 async function guard(request: NextRequest | null, write: boolean) {
   const auth = await requireAuth();
@@ -59,6 +68,7 @@ async function guard(request: NextRequest | null, write: boolean) {
 function list(table: TableName) {
   if (table === "team-config") return prisma.teamConfig.findMany({ orderBy: { team: "asc" } });
   if (table === "asset-status") return prisma.assetStatus.findMany({ orderBy: { asset: "asc" } });
+  if (table === "incident-categories") return prisma.incidentCategory.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
   if (table === "otc-break-types") return prisma.otcBreakType.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
   return prisma.approvedValidator.findMany({ orderBy: [{ chain: "asc" }, { validator: "asc" }] });
 }
@@ -99,6 +109,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       key = v.data.asset;
       const data = { ...v.data, updatedById: auth.id };
       row = await prisma.assetStatus.upsert({ where: { asset: key }, update: data, create: data });
+    } else if (table === "incident-categories") {
+      // Spec §9.7: compliance-sensitive categories never create a client ticket without a Compliance decision.
+      const v = validateBody(incidentCategory, body);
+      if (!v.success) return apiValidationError(v.error);
+      key = v.data.code;
+      row = await prisma.incidentCategory.upsert({ where: { code: key }, update: v.data, create: v.data });
     } else if (table === "otc-break-types") {
       const v = validateBody(otcBreakType, body);
       if (!v.success) return apiValidationError(v.error);
@@ -132,7 +148,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { count } = table === "asset-status"
       ? await prisma.assetStatus.deleteMany({ where: { asset: key } })
-      : table === "otc-break-types"
+      : table === "incident-categories"
+        ? await prisma.incidentCategory.updateMany({ where: { code: key }, data: { isActive: false } })
+        : table === "otc-break-types"
         ? await prisma.otcBreakType.deleteMany({ where: { code: key } })
         : await prisma.approvedValidator.deleteMany({ where: { id: key } });
     if (!count) return apiNotFoundError("Row");

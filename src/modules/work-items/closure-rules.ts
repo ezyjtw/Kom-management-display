@@ -17,6 +17,8 @@ export interface WriteUp {
   riskScore: string;
   /** Required for client requests unless a time log already exists. */
   timeLogBucketMins?: number;
+  /** Spec §9.7: final client-facing resolution message (human-written) for entries with a client request. */
+  clientResolutionMessage?: string;
 }
 
 /**
@@ -33,7 +35,7 @@ export class ClosureValidationError extends Error {
 }
 
 /** Returns the list of problems (empty when the write-up is complete). */
-export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"] }, basis: ClosureBasis | undefined): Promise<string[]> {
+export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"]; clientTicketKey?: string | null }, basis: ClosureBasis | undefined): Promise<string[]> {
   if (!basis) return ["A closure write-up (resolution note, root cause and risk score) is required."];
   if ("nonActionable" in basis) {
     return item.kind === "client_request" && basis.nonActionable.reason
@@ -74,6 +76,13 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
     }
   }
 
+  // Spec §9.7: a client incident/risk with a client request closes with a human-written resolution message for the client.
+  if ((item.kind === "client_incident" || item.kind === "client_risk") && item.clientTicketKey) {
+    if ((basis.writeUp.clientResolutionMessage ?? "").trim().length < 10) {
+      issues.push("Write the client-facing resolution message (at least 10 characters); it is posted to the client request.");
+    }
+  }
+
   if (item.kind === "client_request") {
     if (timeLogBucketMins !== undefined) {
       if (!(TIME_LOG_BUCKETS as readonly number[]).includes(timeLogBucketMins)) {
@@ -86,7 +95,7 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
   return issues;
 }
 
-export async function assertClosable(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"] }, basis: ClosureBasis | undefined): Promise<void> {
+export async function assertClosable(item: Pick<WorkItem, "id" | "kind"> & { metadata?: WorkItem["metadata"]; clientTicketKey?: string | null }, basis: ClosureBasis | undefined): Promise<void> {
   const issues = await closureIssues(item, basis);
   if (issues.length) throw new ClosureValidationError(issues);
 }

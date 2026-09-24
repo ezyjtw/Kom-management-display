@@ -161,7 +161,26 @@ const fabLog = (data: Row) => add("fabSettlementLog", { id: "log-7", reference: 
 
 const SCENARIOS: Scenario[] = [
   {
-    code: "ALR-CLI-01",
+    code: "ALR-CLI-02",
+    params: { cadenceMins: { P0: 30, P1: 60, P2: 240, P3: 480 } },
+    trigger: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "TOPS-501", ticketSystem: "jira", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -90).toISOString() } }); return "wi-ci"; },
+    below: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "TOPS-501", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -30).toISOString() } }); },
+    clear: async (now) => update("workItem", { id: "wi-ci" }, { metadata: { lastClientUpdateAt: mins(now, 60).toISOString() } }),
+  },
+  {
+    code: "ALR-HB-SLACK",
+    trigger: async (now) => { await add("sourceHeartbeat", { source: "slack.channels", expectedEveryMins: 5, lastSuccessAt: mins(now, -11), lastCount: 0 }); return "slack.channels"; },
+    below: async (now) => { await add("sourceHeartbeat", { source: "slack.channels", expectedEveryMins: 5, lastSuccessAt: mins(now, -6), lastCount: 0 }); },
+    clear: async (now) => update("sourceHeartbeat", { source: "slack.channels" }, { lastSuccessAt: mins(now, 60) }),
+  },
+  {
+    code: "ALR-HB-MAIL",
+    trigger: async (now) => { await add("sourceHeartbeat", { source: "outlook.custody", expectedEveryMins: 5, lastSuccessAt: mins(now, -12), lastCount: 0 }); return "outlook.custody"; },
+    below: async (now) => { await add("sourceHeartbeat", { source: "outlook.custody", expectedEveryMins: 5, lastSuccessAt: mins(now, -9), lastCount: 0 }); },
+    clear: async (now) => update("sourceHeartbeat", { source: "outlook.custody" }, { lastSuccessAt: mins(now, 60) }),
+  },
+  {
+    code: "ALR-CLI-04",
     trigger: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2025-01-10T00:00:00Z") }); return "cl-1"; },
     below: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2026-06-01T00:00:00Z") }); },
     clear: async (now) => update("client", { id: "cl-1" }, { thresholdReviewedAt: now }),

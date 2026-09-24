@@ -171,7 +171,8 @@ export async function evaluateVendorNoUpdate(ctx: EvaluatorContext): Promise<Ale
  */
 export async function evaluateHeartbeats(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const staleLimits = (ctx.params.staleRecordMins && typeof ctx.params.staleRecordMins === "object" ? ctx.params.staleRecordMins : {}) as Record<string, number>;
-  const beats = await prisma.sourceHeartbeat.findMany();
+  // Slack and shared-mailbox polling have their own critical rules (ALR-HB-SLACK / ALR-HB-MAIL).
+  const beats = (await prisma.sourceHeartbeat.findMany()).filter((b) => !isMessagePollingSource(b.source));
   return beats.flatMap((b) => {
     const successAge = b.lastSuccessAt ? minsSince(b.lastSuccessAt, ctx.now) : Infinity;
     const recordLimit = staleLimits[b.source];
@@ -191,7 +192,7 @@ export async function evaluateHeartbeats(ctx: EvaluatorContext): Promise<AlertCa
   });
 }
 
-/** ALR-CLI-01: client-attested inbound threshold not reviewed within N months (spec §12 CHK-05, CF-31; 12 months CONFIRM). */
+/** ALR-CLI-04 (was ALR-CLI-01 before spec v2): client-attested inbound threshold not reviewed within N months (spec §12 CHK-05, CF-31; 12 months CONFIRM). */
 export async function evaluateThresholdReview(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const months = numParam(ctx.params, "reviewMonths", 12);
   const cutoff = new Date(ctx.now);
@@ -209,4 +210,56 @@ export async function evaluateThresholdReview(ctx: EvaluatorContext): Promise<Al
       : "The client-attested inbound threshold has no recorded review date.",
     workItemSeed: { kind: "internal_task" as const, team: "Team 3", taskCode: "CHK-05", clientId: c.id },
   }));
+}
+
+export const isMessagePollingSource = (source: string) => source === "slack.channels" || source.startsWith("outlook.");
+
+/**
+ * ALR-HB-SLACK / ALR-HB-MAIL (spec §6.1, §11.2): message polling has not
+ * succeeded for 10 minutes (two missed 5-minute cycles), at any time of day.
+ */
+export function evaluateMessagePolling(kind: "slack" | "mail") {
+  return async (ctx: EvaluatorContext): Promise<AlertCandidate[]> => {
+    const staleMins = numParam(ctx.params, "staleMins", 10);
+    const where = kind === "slack" ? { source: "slack.channels" } : { source: { startsWith: "outlook." } };
+    const beats = await prisma.sourceHeartbeat.findMany({ where });
+    return beats
+      .filter((b) => !b.lastSuccessAt || minsSince(b.lastSuccessAt, ctx.now) >= staleMins)
+      .map((b) => ({
+        dedupeKey: b.source,
+        severity: "critical" as const,
+        title: kind === "slack" ? "Slack polling stopped" : `Mailbox polling stopped: ${b.source.replace(/^outlook\./, "")}`,
+        detail: b.lastSuccessAt
+          ? `No successful ${kind === "slack" ? "Slack" : "mailbox"} poll for ${Math.round(minsSince(b.lastSuccessAt, ctx.now))} minutes (expected every 5). Client messages may be going unseen.`
+          : "Polling has never succeeded for this source.",
+        workItemSeed: { kind: "internal_task" as const, taskCode: "HB" },
+      }));
+  };
+}
+
+/**
+ * ALR-CLI-02 (spec §9.7): no client-visible update within the CLIENT-INCIDENT-UPDATE
+ * cadence for the item's severity while it is open (TODO(CONFIRM-CLIENT-UPDATE-CADENCE)).
+ */
+export async function evaluateClientUpdateOverdue(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
+  const cadence = (ctx.params.cadenceMins && typeof ctx.params.cadenceMins === "object" ? ctx.params.cadenceMins : {}) as Record<string, number>;
+  const items = await prisma.workItem.findMany({
+    where: { kind: { in: ["client_incident", "client_risk"] }, clientTicketKey: { not: null }, state: { notIn: ["resolved", "closed"] } },
+    select: { id: true, title: true, priority: true, clockStartedAt: true, clientTicketKey: true, metadata: true },
+  });
+  return items.flatMap((i) => {
+    const limit = cadence[i.priority];
+    if (typeof limit !== "number") return [];
+    const meta = (i.metadata ?? {}) as Record<string, unknown>;
+    const last = typeof meta.lastClientUpdateAt === "string" ? new Date(meta.lastClientUpdateAt) : i.clockStartedAt;
+    const age = minsSince(last, ctx.now);
+    if (age <= limit) return [];
+    return [{
+      dedupeKey: i.id,
+      severity: "high" as const,
+      title: `Client update overdue: ${i.clientTicketKey}`,
+      detail: `No client-visible update on ${i.clientTicketKey} for ${Math.round(age)} minutes (${i.priority} cadence ${limit}). Post a client update.`,
+      workItemId: i.id,
+    }];
+  });
 }

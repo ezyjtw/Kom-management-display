@@ -168,8 +168,9 @@ export async function ingestChannelMessage(
   // Client intake (spec §9.2); no-op unless intake.slack.route = "kommand"
   await handleSlackIntake(slackChannel, msg);
 
-  // If message has replies, enqueue reply sync
+  // If message has replies, sync them: inline in the polling cycle, as a job for pushed events.
   if (msg.reply_count && msg.reply_count > 0) {
+    if (opts.fromHistory) return "thread_with_replies";
     await enqueueJob(
       "sync_slack_replies",
       { channelId, threadTs: msg.ts },
@@ -181,6 +182,9 @@ export async function ingestChannelMessage(
 }
 
 /**
+ * @deprecated The 5-minute `sync_slack` cycle (slack-poller.ts) is the polling
+ * path and also pulls replies. Kept for single-channel diagnostics.
+ *
  * Sync channel messages (root messages only).
  *
  * For each root message:

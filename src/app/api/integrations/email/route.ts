@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const jobId = await enqueueJob("graph_mail_sync", {}, { deduplicationKey: "manual_graph_mail_sync" });
+    const jobId = await enqueueJob("sync_mail", {}, { deduplicationKey: "manual_sync_mail" });
     await prisma.auditLog.create({
       data: {
         action: "integration_sync_requested",
