@@ -26,7 +26,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
-    "coverage:matrix": "tsx scripts/coverage-matrix.ts"
+    "coverage:matrix": "tsx scripts/coverage-matrix.ts",
+    "jira:inventory": "tsx scripts/jira-inventory.ts"
   },
   "repository": {
     "type": "git",
