@@ -5,9 +5,10 @@
  * Designed to run as a background job to purge data older than
  * the specified retention period.
  *
- * Retention periods: see DEFAULT_RETENTION_POLICIES below. These are defined
- * but not scheduled until the periods are agreed (TODO(CONFIRM-RETENTION),
- * docs/phase1/data-inventory.md). Audit logs are never deleted here: AuditLog
+ * Retention periods: see DEFAULT_RETENTION_POLICIES below. The daily
+ * data_retention job runs them only when the setting retention.enabled is on
+ * (off until the periods are agreed, TODO(CONFIRM-RETENTION),
+ * docs/phase1/data-inventory.md); every run is recorded in BackgroundJobRun. Audit logs are never deleted here: AuditLog
  * is append-only in the database (migration 0037, docs/phase1/db-roles.sql).
  *
  * All deletions are logged for audit purposes. Deletions are performed

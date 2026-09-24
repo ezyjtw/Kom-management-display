@@ -18,23 +18,23 @@ this file.
 | CONFIRM-SLA-TARGETS | Internal SLA targets per policy (ownership, first response, resolution) | SLA alerts, attainment metrics | `prisma/migrations/0025_seed_sla_policies/migration.sql`, `prisma/schema.prisma`, `src/__tests__/data-model.test.ts`, `src/app/admin/SlaTargetsBanner.tsx` +1 |
 | CONFIRM-RISK-SOURCE | Where GX risk levels can be read (Slack bot posts with samples, or an internal feed) | ALR-RSK-* | `docs/integration-guide.md`, `src/modules/risk/signal-source.ts`, `src/modules/slack/services/slack-ingestion-service.ts` |
 | CONFIRM-RISKCO | Ratified risk tier mapping (Rules 2 and 3 inconsistency; Rules 7–11 Medium) and Control 3.2 wording (one versus two approvals for Medium) | Tier switch in `RiskRuleTier` | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma`, `src/modules/alerting/evaluators/risk.ts` |
-| CONFIRM-RSK-MED-MINS / HIGH-MINS | Clocks for pending medium and high | ALR-RSK-01/02 | `src/__tests__/alerting-engine.test.ts`, `src/modules/alerting/catalogue.ts` |
+| CONFIRM-RSK-MED-MINS, CONFIRM-RSK-HIGH-MINS | Clocks for pending medium and high | ALR-RSK-01/02 | `src/__tests__/alerting-engine.test.ts`, `src/modules/alerting/catalogue.ts` |
 | CONFIRM-API-SCOPE | Whether one read-only API user can see all workspaces | Komainu API aggregation | `.env.example`, `docs/phase1/credentials.md`, `prisma/schema.prisma`, `src/__tests__/komainu-integration.test.ts` +2 |
 | CONFIRM-SETTLEMENT-STATUS | Actual `status` values for settlements, operations and portfolios | ALR-OES-* | `docs/integration-guide.md`, `prisma/schema.prisma`, `src/modules/integrations/komainu/status-map.ts` |
 | CONFIRM-OES-WINDOWS | One reference time per exchange (the OKX UTC versus UK-time conflict) | ALR-OES-* | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma` |
 | CONFIRM-DERIBIT | Deribit OES window and contacts after its move into Coinbase | Deribit windows | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma` |
 | CONFIRM-AUDIT-EVENTS | Audit-log event names for tap rule, whitelist and risk-parameter changes | ALR-CFG-01 | `src/modules/alerting/catalogue.ts`, `src/modules/alerting/evaluators/operations.ts` |
-| CONFIRM-FAB-TEMPLATES / ACK-MINS / VALUE-DATE-CUTOFF / PROJECT / FEE-ALERT-FORMAT / FEE-THRESHOLDS | FAB email formats, clocks, Jira project and fee alerting | `module.fab`, ALR-FAB-* | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `prisma/migrations/0025_seed_sla_policies/migration.sql`, `prisma/schema.prisma` +6 |
+| CONFIRM-FAB-TEMPLATES, CONFIRM-FAB-ACK-MINS, CONFIRM-FAB-VALUE-DATE-CUTOFF, CONFIRM-FAB-PROJECT, CONFIRM-FEE-ALERT-FORMAT, CONFIRM-FEE-THRESHOLDS | FAB email formats, clocks, Jira project and fee alerting | `module.fab`, ALR-FAB-* | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `prisma/migrations/0025_seed_sla_policies/migration.sql`, `prisma/schema.prisma` +6 |
 | CONFIRM-MAILBOXES | Mailbox addresses and purposes; Exchange access policy | Graph mail | `.env.example`, `docs/integration-guide.md`, `src/lib/integrations/graph/client.ts` |
-| CONFIRM-VENDOR-FORMATS | Redacted vendor notification samples | Vendor parsing | `docs/integration-guide.md`, `src/__tests__/graph-integration.test.ts`, `src/modules/integrations/graph/vendor-parsers.ts` |
-| CONFIRM-CHAINALYSIS-EXPORT / MTD-EXTRACT / INBOUND-EXTRACT / TATUM | Export templates | CHK-04, 02, 05, 15 imports | `src/__tests__/imports.test.ts`, `src/modules/daily-checks/definitions.ts`, `src/modules/imports/templates.ts` |
+| CONFIRM-VENDOR-FORMATS | Redacted vendor notification samples | Vendor parsing | `docs/integration-guide.md`, `src/__tests__/fixtures/synthetic/CONFIRM-VENDOR-FORMATS.json`, `src/__tests__/graph-integration.test.ts`, `src/modules/integrations/graph/vendor-parsers.ts` |
+| CONFIRM-CHAINALYSIS-EXPORT, CONFIRM-MTD-EXTRACT, CONFIRM-INBOUND-EXTRACT, CONFIRM-TATUM | Export templates | CHK-04, 02, 05, 15 imports | `src/__tests__/imports.test.ts`, `src/modules/daily-checks/definitions.ts`, `src/modules/imports/templates.ts` |
 | CONFIRM-NFT-SOURCE | Where pending NFTs are listed | CHK-07 automation | `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-PROJECT-ROLES | Purpose of ITR and RCM for this team | Project config | `prisma/migrations/0026_integrations/migration.sql` |
 | CONFIRM-RISK-SCORE-SCALE | The team's ticket risk score scale | Closure validation | `src/modules/daily-checks/mtd.ts`, `src/modules/settings/registry.ts`, `src/modules/work-items/closure-rules.ts` |
-| CONFIRM-IAI-OWNER | IAI log owner agreement to automated drafts | `iai.drafts.enabled` | `prisma/seed.js`, `src/lib/feature-flag-defaults.ts`, `src/modules/iai/drafts.ts` |
+| CONFIRM-IAI-OWNER | IAI log owner agreement to automated drafts | `iai.drafts.enabled` | `src/lib/feature-flag-defaults.ts`, `src/modules/iai/drafts.ts` |
 | CONFIRM-CHECK-GAPS | Whether TOP checks 14 and 18–20 exist | Coverage sign-off | `docs/phase1/coverage-matrix.md`, `scripts/coverage-matrix.ts`, `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-KPS-THRESHOLD | Current RiskCo realisation threshold (was $1m; an increase was tabled in August) | ALR-KPS-01 | not referenced yet |
-| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/lib/data-retention.ts` |
+| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/lib/background-jobs.ts` +3 |
 | CONFIRM-JSM-INCIDENT-REQUEST-TYPE | JSM request type for client incident and risk notifications, and its portal-visible statuses | Section 9.7 client tickets | `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-JSM-PORTAL | Client portal set-up: customer accounts, organisation membership, branding | Clients viewing their tickets | `src/modules/client-incidents/service.ts` |
 | CONFIRM-CLIENT-CONTACTS | Which client contacts become request participants | Section 9.7 | `src/modules/client-incidents/service.ts` |
@@ -47,14 +47,14 @@ this file.
 | CONFIRM-UAT-PROJECT | Jira project and issue type for UAT tickets | Section 16 tickets | `src/modules/settings/registry.ts` |
 | CONFIRM-UAT-LEAD-DAYS | Business days before PROD that UAT must finish | Due dates, ALR-UAT-02 | `src/modules/settings/registry.ts` |
 | CONFIRM-UAT-TEMPLATES | Test outlines per mapping row, written by the team | Ticket content | not referenced yet |
-| CONFIRM-GX-RELEASE-SAMPLE | A redacted real release-notes page for the parser fixture | Parser tests beyond the synthetic template | `src/__tests__/gx-intake.test.ts`, `src/__tests__/gx-parse.test.ts`, `src/modules/gx-sprints/parse.ts` |
+| CONFIRM-GX-RELEASE-SAMPLE | A redacted real release-notes page for the parser fixture | Parser tests beyond the synthetic template | `src/__tests__/fixtures/synthetic/CONFIRM-GX-RELEASE-SAMPLE.md`, `src/__tests__/gx-intake.test.ts`, `src/__tests__/gx-parse.test.ts`, `src/modules/gx-sprints/parse.ts` |
 | CONFIRM-AUDIT-RETENTION | Regulatory retention period for the audit log | Section 17.7 | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md` |
 | CONFIRM-OTC-RULE-REVIEW | Team review of the seeded `SignRule` and `BreakTypeRule` tables | Section 18.4, before any drafting | not referenced yet |
 | CONFIRM-VARIANCE-DEFINITIONS | Confirmation that the recomputed variances match the Power BI definitions | Sections 18.3 and 18.9 | not referenced yet |
 | CONFIRM-OTC-FIELD-MAPPING | Variance Type and Wallet Type field values per break type | Section 18.7 | not referenced yet |
 | CONFIRM-CATEGORY-LIST | Final incident and risk categories, and which are compliance-sensitive (Compliance to confirm) | Section 9.7 form | `prisma/migrations/0034_polling_client_incidents/migration.sql`, `prisma/schema.prisma` |
 
-## Added during the build (48)
+## Added during the build (49)
 
 These came up while building and are not in the spec's section 20. Each should be
 added to the spec's register, or its owner agreed, at the next spec revision.
@@ -65,6 +65,7 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-CHK03-THRESHOLD | `src/modules/daily-checks/collectors.ts` |
 | CONFIRM-CI-IMAGE-PINS | `.github/workflows/ci.yml` |
 | CONFIRM-CLIENT-SCOPING | `prisma/migrations/0041_user_client_scope/migration.sql`, `prisma/schema.prisma`, `src/__tests__/client-scoping-enforced.test.ts`, `src/modules/auth/client-scope.ts` |
+| CONFIRM-CODEOWNERS | `.github/CODEOWNERS`, `src/__tests__/security-docs.test.ts` |
 | CONFIRM-COIN-REVIEW-SLA | `src/modules/daily-checks/collectors.ts` |
 | CONFIRM-CONFLUENCE-URL | `src/__tests__/coverage-all-daily-tasks.test.ts`, `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-COVER-POOL | `src/modules/morning/handover.ts` |

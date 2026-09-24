@@ -33,7 +33,6 @@ import {
   clearKeyCache,
 } from "@/lib/encryption";
 import { metrics, recordApiRequest } from "@/lib/metrics";
-import { getIdempotencyStats } from "@/lib/idempotency";
 import {
   createTransactionConfirmationSchema,
   transactionConfirmationPostSchema,
@@ -354,16 +353,7 @@ describe("Metrics Collection", () => {
   });
 });
 
-// ─── Idempotency ───
-
-describe("Idempotency", () => {
-  it("returns stats about the idempotency cache", () => {
-    const stats = getIdempotencyStats();
-    expect(stats).toHaveProperty("totalEntries");
-    expect(stats).toHaveProperty("processingCount");
-    expect(stats).toHaveProperty("oldestEntryAge");
-  });
-});
+// Idempotency: see idempotency.test.ts (database-backed since Phase 12k).
 
 // ─── Validation Schemas ───
 

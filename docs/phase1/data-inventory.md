@@ -8,7 +8,7 @@ This inventory covers spec §17.5 and the D5 dataset cataloguing.
 
 **Owners:** TODO(CONFIRM-DATA-OWNERS). Each group below needs a named owner. Until then, the service owner owns everything.
 
-**Retention:** the periods that run today are the ones marked **enforced**. Everything else waits on TODO(CONFIRM-RETENTION) and is kept until that is decided. The generic retention jobs in `src/lib/data-retention.ts` are defined but **not scheduled** until the periods are agreed. Audit records are kept for at least the regulatory record-keeping period (TODO(CONFIRM-AUDIT-RETENTION)), and the application cannot delete them.
+**Retention:** the periods that run today are the ones marked **enforced**. Everything else waits on TODO(CONFIRM-RETENTION) and is kept until that is decided. The generic retention policies in `src/lib/data-retention.ts` run daily in the `data_retention` job, but delete nothing until the setting `retention.enabled` is switched on once the periods are agreed; every run, including a skipped one, is recorded in `BackgroundJobRun` as evidence. Audit records are kept for at least the regulatory record-keeping period (TODO(CONFIRM-AUDIT-RETENTION)), and the application cannot delete them.
 
 The test `data-inventory-covers-every-model` fails if a Prisma model is not listed here.
 
@@ -40,7 +40,7 @@ The test `data-inventory-covers-every-model` fails if a Prisma model is not list
 | Model | Contents | Source | Retention |
 |---|---|---|---|
 | WorkItem, TimeLog, TicketLink, SlaPolicy, SlaEvent | Work queue, effort buckets, ticket links, SLA clocks | App, Jira/JSM | CONFIRM-RETENTION |
-| CommsThread, CommsMessage, OwnershipChange, ThreadNote, ThreadParticipant, ThreadLinkedRecord, MessageAttachment | Inbox threads and **message bodies** from Slack and mail | Slack, Graph | Message bodies: 365 days once retention runs (defined, not yet scheduled) |
+| CommsThread, CommsMessage, OwnershipChange, ThreadNote, ThreadParticipant, ThreadLinkedRecord, MessageAttachment | Inbox threads and **message bodies** from Slack and mail | Slack, Graph | Message bodies: 365 days once `retention.enabled` is on |
 | Incident, IncidentUpdate, IncidentCategory, IaiDraft | Incidents, updates, categories, IAI drafts | Staff | CONFIRM-RETENTION |
 | Project, ProjectMember, ProjectUpdate, ProjectTag, DailyTask | Internal projects and tasks | Staff | CONFIRM-RETENTION |
 
@@ -89,6 +89,7 @@ Read from Komainu (GET only), GX, Confluence and imports. Addresses, transaction
 | DataRetentionPolicy | Retention settings per entity type | Admin | Configuration |
 | FeatureFlag, AppSetting, BrandingConfig | Configuration | Admin | Configuration |
 | RateLimitBucket | Rate-limit counters (hashed account key or IP) | App | **Enforced:** idle buckets deleted after 1 day |
+| IdempotencyKey | Hashed idempotency keys and request hashes (no request content) | App | **Enforced:** deleted when expired (10 s duplicate window, 24 h explicit keys) |
 | ArchivedApprovalAuditEntry (`_archived_approval_audit_entry`) | Archived evidence of the removed approvals module (H1) | Legacy | Read-only; kept; never dropped |
 
 ## Encryption, backup and access

@@ -60,6 +60,8 @@ export const SETTINGS = {
   "alerting.oohAckMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Out-of-hours acknowledgement window (minutes, critical)" },
   /** Spec §11.3 quiet rule: the same alert never re-notifies within this window. */
   "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
+  /** Retention job (data_retention, daily). Off until Compliance confirms the periods (TODO(CONFIRM-RETENTION)); each run is recorded either way. */
+  "retention.enabled": { schema: z.boolean(), default: false, label: "Enforce data retention (delete records past their retention period)" },
   /** Spec §17.4: exports and reports per user per UTC day; above it requests are refused and ALR-SEC-03 is raised (TODO(CONFIRM-EXPORT-CAP)). */
   "security.exportDailyCap": { schema: z.number().int().min(1).max(10_000), default: 50, label: "Daily export cap per user" },
   /** Spec §12 CHK-09K: named users (user ids) allowed kps:view, in addition to admins. */

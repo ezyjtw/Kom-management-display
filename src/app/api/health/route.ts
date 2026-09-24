@@ -115,11 +115,12 @@ export async function GET(request: NextRequest) {
     };
 
     // Idempotency cache
-    const idempotencyStats = getIdempotencyStats();
-    components.idempotencyCache = {
-      status: idempotencyStats.processingCount > 50 ? "degraded" : "healthy",
-      details: `${idempotencyStats.totalEntries} entries, ${idempotencyStats.processingCount} processing`,
-    };
+    try {
+      const idempotency = await getIdempotencyStats();
+      components.idempotency = { status: "healthy", details: `${idempotency.activeKeys} active keys` };
+    } catch {
+      components.idempotency = { status: "degraded", details: "Key store unavailable (requests are not deduplicated)" };
+    }
   }
 
   const health: Record<string, unknown> = {

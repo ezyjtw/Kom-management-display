@@ -8,6 +8,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 
 const OUT = "docs/phase1/confirm-register.md";
 const SPEC = "docs/phase1/PHASE1_BUILD_SPEC.md";
@@ -16,7 +17,7 @@ const FILES = ["Dockerfile", ".env.example", "next.config.js"];
 const SKIP = new Set([OUT, SPEC, "scripts/confirm-register.ts"]);
 const ID = /CONFIRM-[A-Z0-9]+(?:-[A-Z0-9]+)*/g;
 
-export interface SpecItem { ids: string[]; label: string; needed: string; blocks: string }
+export interface SpecItem { ids: string[]; groups: string[][]; label: string; needed: string; blocks: string }
 
 /** Rows of the §20 table; "CONFIRM-FAB-TEMPLATES / ACK-MINS" expands to both ids. */
 export function specItems(spec: string): SpecItem[] {
@@ -27,9 +28,11 @@ export function specItems(spec: string): SpecItem[] {
     if (cells.length < 5 || !cells[1].startsWith("CONFIRM-")) continue;
     const parts = cells[1].split("/").map((p) => p.trim());
     const first = parts[0];
-    const prefix = first.split("-").slice(0, 2).join("-"); // e.g. CONFIRM-FAB
+    const prefix = first.split("-").slice(0, 2).join("-"); // the first two segments of the row's first id
     const ids = [first, ...parts.slice(1).flatMap((p) => [`${prefix}-${p}`, `CONFIRM-${p}`])];
-    out.push({ ids: [...new Set(ids)], label: cells[1], needed: cells[2], blocks: cells[3] });
+    // candidates per part, in order (the prefixed form first)
+    const groups = [[first], ...parts.slice(1).map((p) => [`${prefix}-${p}`, `CONFIRM-${p}`])];
+    out.push({ ids: [...new Set(ids)], groups, label: cells[1], needed: cells[2], blocks: cells[3] });
   }
   return out;
 }
@@ -45,15 +48,27 @@ function walk(dir: string, acc: string[]) {
   }
 }
 
+/** Every git-tracked text file (so extension-less files such as CODEOWNERS are included). */
+function trackedFiles(): string[] {
+  try {
+    return execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+  } catch {
+    // Not a git checkout: fall back to walking the known roots.
+    const files: string[] = [];
+    for (const r of ROOTS) walk(r, files);
+    for (const f of FILES) if (fs.existsSync(f)) files.push(f);
+    return files;
+  }
+}
+
+const BINARY = /\.(png|jpe?g|gif|ico|webp|woff2?|pdf|zip|gz)$/i;
+
 /** id → files that mention it (paths only, so the register is stable across edits). */
 export function codeReferences(): Map<string, Set<string>> {
-  const files: string[] = [];
-  for (const r of ROOTS) walk(r, files);
-  for (const f of FILES) if (fs.existsSync(f)) files.push(f);
   const refs = new Map<string, Set<string>>();
-  for (const f of files) {
+  for (const f of trackedFiles()) {
     const rel = f.split(path.sep).join("/");
-    if (SKIP.has(rel)) continue;
+    if (SKIP.has(rel) || BINARY.test(rel) || rel === "package-lock.json" || !fs.existsSync(f)) continue;
     for (const m of fs.readFileSync(f, "utf8").matchAll(ID)) {
       const id = m[0].replace(/-$/, "");
       if (!refs.has(id)) refs.set(id, new Set());
@@ -72,7 +87,9 @@ export function render(): { markdown: string; ids: string[] } {
 
   const specRows = items.map((i) => {
     const files = [...new Set(i.ids.flatMap(where))].sort();
-    return `| ${i.label} | ${i.needed} | ${i.blocks} | ${cell(files)} |`;
+    // Print every id in full (searchable): per part, the candidate the code uses, else the prefixed form.
+    const full = i.groups.map((g) => g.find((id) => refs.has(id)) ?? g[0]).join(", ");
+    return `| ${full} | ${i.needed} | ${i.blocks} | ${cell(files)} |`;
   });
   const added = [...refs.keys()].filter((id) => !inSpec.has(id)).sort();
   const addedRows = added.map((id) => `| ${id} | ${cell(where(id))} |`);

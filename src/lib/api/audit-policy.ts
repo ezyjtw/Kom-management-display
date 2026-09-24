@@ -1,6 +1,13 @@
 /**
  * Audit policy for state-changing API routes (spec §17.7, review remediation).
  *
+ * When fail-open is allowed: only for NORMAL_OPERATIONAL and LOW_VALUE routes,
+ * where losing availability would cost more than losing one audit entry, and
+ * where the failure itself is still recorded (createAuditEntry logs
+ * AUDIT_WRITE_FAILED to the application log, which is shipped to the SIEM).
+ * Anything that changes a control, a permission, configuration, a financial or
+ * client record, or client-visible content is fail-closed.
+ *
  * Every mutation route has a category. Fail-closed categories must write their
  * audit trail through auditedAction (or auditedResponse / workAction /
  * handoverAction, which use it): no audit record, no action. Normal and

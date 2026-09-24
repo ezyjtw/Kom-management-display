@@ -1,199 +1,101 @@
 /**
- * Idempotency layer for critical mutations.
+ * At-most-once mutations (review remediation). Runs in the middleware for every
+ * authenticated POST/PUT/PATCH/DELETE, so every route — including future ones —
+ * is covered without per-route code.
  *
- * Prevents duplicate processing when clients retry requests due to
- * network issues, timeouts, or user double-clicks. Clients include an
- * `Idempotency-Key` header; the server caches the response for that key
- * and returns it verbatim on subsequent requests.
+ * - With an `Idempotency-Key` header (8–128 visible characters), a request is
+ *   accepted at most once per user and key for 24 hours. Reusing the key with a
+ *   different request body is refused (422).
+ * - Without one, an identical request (same user, method, path and body)
+ *   within DUPLICATE_WINDOW_SECONDS is refused as a double submission
+ *   (409 DUPLICATE_REQUEST): double clicks, client retries after a timeout.
  *
- * =====================================================================
- * MULTI-INSTANCE LIMITATION
- * =====================================================================
- * Storage is process-local (in-memory Map with TTL eviction). In
- * multi-instance deployments (e.g. Railway replicas, Kubernetes pods),
- * a retried request may hit a different instance that has no record of
- * the original — resulting in duplicate processing.
+ * A refused duplicate gets 409, not a replay of the first response: the
+ * middleware cannot capture route responses, so the guarantee is that the
+ * effect happens at most once. The caller re-reads the state.
  *
- * For single-instance deployments this is safe. For multi-instance,
- * you MUST migrate to a shared store before scaling horizontally.
- *
- * TODO: Replace with Redis or Postgres-backed store for multi-instance
- * deployments. Migration path:
- *   - Redis: swap the `store` Map for Redis SET with NX + TTL
- *   - Postgres: create an idempotency_keys table with (key PK, response
- *     JSONB, status TEXT, created_at TIMESTAMPTZ, expires_at TIMESTAMPTZ)
- * The public API (checkIdempotency, storeIdempotencyResponse,
- * releaseIdempotencyLock) stays the same.
- * =====================================================================
- *
- * Flow:
- *   1. Client sends POST/PUT with `Idempotency-Key: <uuid>` header
- *   2. Server checks cache for existing response
- *   3a. Cache hit  -> return cached response immediately (no re-processing)
- *   3b. Cache miss -> process request, store response, return it
- *   4. Entry is locked during processing to prevent concurrent duplicates
- *
- * Usage:
- *   const cached = checkIdempotency(request);
- *   if (cached) return cached;
- *   // ... process request ...
- *   storeIdempotencyResponse(key, response);
+ * Keys are claimed atomically in PostgreSQL (IdempotencyKey, migration 0044),
+ * so the guard holds across replicas. If the store cannot be reached the
+ * request continues (logged): the mutation itself needs the same database.
  */
-
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
-interface IdempotencyEntry {
-  /** The cached response body (serialized JSON). */
-  responseBody: string;
-  /** HTTP status code of the cached response. */
-  statusCode: number;
-  /** Timestamp when the entry was created (epoch ms). */
-  createdAt: number;
-  /** Whether the request is still being processed (lock). */
-  processing: boolean;
+export const IDEMPOTENCY_HEADER = "idempotency-key";
+export const DUPLICATE_WINDOW_SECONDS = 10;
+export const EXPLICIT_KEY_TTL_SECONDS = 24 * 3600;
+const MAX_HASHED_BODY_BYTES = 1_000_000;
+const KEY_PATTERN = /^[\x21-\x7e]{8,128}$/;
+
+const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/** Paths with their own replay protection or no user session. */
+export const IDEMPOTENCY_EXEMPT_PATHS = ["/api/auth/", "/api/webhooks/", "/api/alerts/generate"];
+
+export type ClaimResult = "claimed" | "duplicate" | "mismatch";
+
+/**
+ * Atomically claim a key. Returns "claimed" for the first request, "duplicate"
+ * for a repeat inside the window, "mismatch" when an explicit key is reused
+ * for a different request.
+ */
+export async function claimKey(key: string, requestHash: string, ttlSeconds: number, now = new Date()): Promise<ClaimResult> {
+  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+  // Insert, or take over an expired key, in one statement; returns a row only if we own the key now.
+  const claimed = await prisma.$queryRaw<Array<{ key: string }>>`
+    INSERT INTO "IdempotencyKey" ("key", "requestHash", "createdAt", "expiresAt")
+    VALUES (${key}, ${requestHash}, ${now}, ${expiresAt})
+    ON CONFLICT ("key") DO UPDATE SET "requestHash" = EXCLUDED."requestHash", "createdAt" = EXCLUDED."createdAt", "expiresAt" = EXCLUDED."expiresAt"
+      WHERE "IdempotencyKey"."expiresAt" <= ${now}
+    RETURNING "key"`;
+  if (claimed.length) return "claimed";
+  const existing = await prisma.idempotencyKey.findUnique({ where: { key }, select: { requestHash: true } });
+  return existing && existing.requestHash !== requestHash ? "mismatch" : "duplicate";
 }
 
-/** TTL for cached responses: 24 hours. */
-const ENTRY_TTL_MS = 24 * 60 * 60 * 1000;
+function json(status: number, error: string, code: string, retryAfter?: number): NextResponse {
+  const res = NextResponse.json({ success: false, error, code }, { status });
+  if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
+  return res;
+}
 
-/** In-memory idempotency store. */
-const store = new Map<string, IdempotencyEntry>();
-
-// Evict expired entries every 10 minutes to prevent unbounded memory growth
-setInterval(() => {
-  const now = Date.now();
-  let evicted = 0;
-  for (const [key, entry] of store) {
-    if (now - entry.createdAt > ENTRY_TTL_MS) {
-      store.delete(key);
-      evicted++;
+/** Middleware guard. Returns a refusal response, or null to continue. */
+export async function duplicateMutation(req: NextRequest, path: string, userId: string | null): Promise<NextResponse | null> {
+  if (!userId || IDEMPOTENCY_EXEMPT_PATHS.some((p) => path.startsWith(p))) return null;
+  const explicit = req.headers.get(IDEMPOTENCY_HEADER);
+  if (explicit !== null && !KEY_PATTERN.test(explicit)) {
+    return json(400, "Idempotency-Key must be 8-128 visible ASCII characters", "IDEMPOTENCY_KEY_INVALID");
+  }
+  try {
+    const raw = await req.clone().text();
+    const body = raw.length > MAX_HASHED_BODY_BYTES ? raw.slice(0, MAX_HASHED_BODY_BYTES) : raw;
+    const requestHash = sha(`${req.method} ${path}\n${body}`);
+    if (explicit) {
+      const result = await claimKey(`k:${sha(`${userId}\n${explicit}`)}`, requestHash, EXPLICIT_KEY_TTL_SECONDS);
+      if (result === "mismatch") return json(422, "This Idempotency-Key was already used for a different request", "IDEMPOTENCY_KEY_REUSED");
+      if (result === "duplicate") return json(409, "This request was already received (same Idempotency-Key). Reload to see its result.", "DUPLICATE_REQUEST");
+      return null;
     }
-  }
-  if (evicted > 0) {
-    logger.debug(`Idempotency store: evicted ${evicted} expired entries, ${store.size} remaining`);
-  }
-}, 10 * 60 * 1000);
-
-/**
- * Extract the idempotency key from a request.
- * Returns null if no key is provided.
- */
-export function getIdempotencyKey(request: NextRequest): string | null {
-  return request.headers.get("idempotency-key");
-}
-
-/**
- * Check if a request has already been processed.
- *
- * Returns:
- *   - A cached NextResponse if the key was seen before
- *   - A 409 response if the key is currently being processed (concurrent duplicate)
- *   - null if this is a new request (caller should proceed)
- */
-export function checkIdempotency(request: NextRequest): NextResponse | null {
-  const key = getIdempotencyKey(request);
-  if (!key) return null; // No idempotency key — process normally
-
-  const entry = store.get(key);
-
-  if (!entry) {
-    // New key — mark as processing (lock)
-    store.set(key, {
-      responseBody: "",
-      statusCode: 0,
-      createdAt: Date.now(),
-      processing: true,
-    });
-    logger.debug("Idempotency: new entry created", { key, storeSize: store.size });
+    const result = await claimKey(`w:${sha(`${userId}\n${requestHash}`)}`, requestHash, DUPLICATE_WINDOW_SECONDS);
+    if (result !== "claimed") {
+      return json(409, "The same request was just submitted. Reload to see its result, or retry in a few seconds.", "DUPLICATE_REQUEST", DUPLICATE_WINDOW_SECONDS);
+    }
+    return null;
+  } catch (error) {
+    logger.warn("Idempotency store unavailable; request not deduplicated", { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
-
-  if (entry.processing) {
-    // Another request with the same key is still being processed
-    logger.warn("Idempotency: concurrent duplicate request", { key });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "A request with this idempotency key is currently being processed",
-        code: "IDEMPOTENCY_CONFLICT",
-      },
-      { status: 409 },
-    );
-  }
-
-  // Cache hit — return the stored response
-  logger.info("Idempotency: returning cached response", { key });
-  return new NextResponse(entry.responseBody, {
-    status: entry.statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Idempotency-Replayed": "true",
-    },
-  });
 }
 
-/**
- * Store a response for an idempotency key.
- * Call this after successfully processing a request.
- */
-export async function storeIdempotencyResponse(
-  request: NextRequest,
-  response: NextResponse,
-): Promise<void> {
-  const key = getIdempotencyKey(request);
-  if (!key) return;
-
-  try {
-    const body = await response.clone().text();
-    store.set(key, {
-      responseBody: body,
-      statusCode: response.status,
-      createdAt: Date.now(),
-      processing: false,
-    });
-  } catch (error) {
-    // If we can't cache, release the lock
-    store.delete(key);
-    logger.warn("Idempotency: failed to cache response", {
-      key,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+/** Drop expired keys (cleanup job). */
+export async function pruneIdempotencyKeys(now = new Date()): Promise<number> {
+  const { count } = await prisma.idempotencyKey.deleteMany({ where: { expiresAt: { lt: now } } });
+  return count;
 }
 
-/**
- * Release an idempotency lock (call on error to allow retry).
- */
-export function releaseIdempotencyLock(request: NextRequest): void {
-  const key = getIdempotencyKey(request);
-  if (!key) return;
-
-  const entry = store.get(key);
-  if (entry?.processing) {
-    store.delete(key);
-  }
-}
-
-/**
- * Get idempotency store stats (for diagnostics/health checks).
- */
-export function getIdempotencyStats(): {
-  totalEntries: number;
-  processingCount: number;
-  oldestEntryAge: number | null;
-} {
-  let processingCount = 0;
-  let oldestCreatedAt = Infinity;
-
-  for (const entry of store.values()) {
-    if (entry.processing) processingCount++;
-    if (entry.createdAt < oldestCreatedAt) oldestCreatedAt = entry.createdAt;
-  }
-
-  return {
-    totalEntries: store.size,
-    processingCount,
-    oldestEntryAge: store.size > 0 ? Date.now() - oldestCreatedAt : null,
-  };
+/** For the deep health check. */
+export async function getIdempotencyStats(now = new Date()): Promise<{ activeKeys: number }> {
+  return { activeKeys: await prisma.idempotencyKey.count({ where: { expiresAt: { gt: now } } }) };
 }
