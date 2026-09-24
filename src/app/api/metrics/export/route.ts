@@ -13,12 +13,15 @@ import { generateReport } from "@/lib/pdf-report";
 import { monthPeriod } from "@/modules/metrics/service";
 import { buildPack, packRows, toCsv, toHtml } from "@/modules/metrics/export";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { checkSharedRateLimit } from "@/lib/api/shared-rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole("admin", "lead");
   if (auth instanceof NextResponse) return auth;
+  const sharedLimited = await checkSharedRateLimit(request, "export", auth.id);
+  if (sharedLimited) return sharedLimited;
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.expensive);
   if (limited) return limited;
   try {

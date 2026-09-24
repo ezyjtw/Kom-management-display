@@ -36,9 +36,13 @@ export function EmailPreviewPanel({
         {emailName && <> ({emailName})</>}
         {" "}&middot; Subject: <span className="font-medium text-foreground">{previewSubject}</span>
       </p>
-      <div
-        className="border border-border rounded-lg bg-white p-4 max-h-[500px] overflow-y-auto text-black"
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewHtml) }}
+      {/* Spec §17.4: no raw HTML injection into the page. The preview renders in a fully
+          sandboxed iframe (no scripts, no same-origin access, no forms). */}
+      <iframe
+        title="Email preview"
+        sandbox=""
+        srcDoc={sanitizeHtml(previewHtml)}
+        className="w-full h-[500px] border border-border rounded-lg bg-white"
       />
       <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border">
         <button

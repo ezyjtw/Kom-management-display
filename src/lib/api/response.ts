@@ -166,7 +166,8 @@ export function handleApiError(error: unknown, context?: string): NextResponse {
       error.message.includes("column") &&
       error.message.includes("does not exist")
     ) {
-      message = "Database schema out of date — pending migrations need to be applied";
+      // Logged server-side above; the client only gets the generic message (spec §17.4 fail securely).
+      message = "An internal error occurred";
       status = 500;
     } else if (
       error.message.includes("Invalid `") ||

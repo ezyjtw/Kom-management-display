@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { checkLoginRateLimit, resetLoginRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-import { recordSession } from "@/lib/session-revocation";
+import { recordSession, revokeSession } from "@/lib/session-revocation";
 import { env } from "@/lib/env";
-import { SESSION_MAX_AGE_SECONDS } from "@/lib/session-config";
+import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
 import {
   decideSsoLogin,
   emailFromClaims,
@@ -17,6 +17,9 @@ import {
   parseRoleGroupMap,
   type EntraProfileClaims,
 } from "@/lib/sso";
+
+/** Secure (HTTPS) deployments get Secure, __Host- cookies. */
+const SECURE_COOKIES = (env("NEXTAUTH_URL") ?? "").startsWith("https://");
 
 async function logLoginAudit(userId: string, email: string, success: boolean) {
   try {
@@ -229,9 +232,10 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (account) {
-        token.role = user.role;
-        token.employeeId = user.employeeId;
-        token.team = user.team;
+        // Role, employee and team were set above from the provider-specific branch.
+        // (Re-assigning them from `user` here wiped the database role for SSO users,
+        // whose provider `user` object carries no role.)
+        token.authTime = Math.floor(Date.now() / 1000);
 
         // Record session in metadata table for revocation tracking
         const jti = token.jti as string | undefined;
@@ -266,6 +270,22 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: SESSION_MAX_AGE_SECONDS,
+  },
+  cookies: {
+    sessionToken: {
+      name: sessionCookieName(SECURE_COOKIES),
+      options: { httpOnly: true, sameSite: "lax", path: "/", secure: SECURE_COOKIES },
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      // Spec §17.7: sign-out is audit-logged; the session is revoked so the JWT cannot be reused.
+      const jti = (token?.jti as string | undefined) ?? null;
+      if (jti) await revokeSession(jti, "sign_out").catch(() => undefined);
+      await prisma.auditLog.create({
+        data: { action: "logout", entityType: "session", entityId: jti ?? "unknown", userId: (token?.employeeId as string | null) ?? "system", details: JSON.stringify({ summary: "Signed out", metadata: { actorUserId: token?.sub ?? null } }) },
+      }).catch(() => undefined);
+    },
   },
   secret: env("NEXTAUTH_SECRET"),
 };

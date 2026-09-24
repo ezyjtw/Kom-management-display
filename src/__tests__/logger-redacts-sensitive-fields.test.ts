@@ -53,4 +53,14 @@ describe("logger-redacts-sensitive-fields", () => {
     expect(line).not.toContain(EVM);
     expect(line).not.toContain("topsecret");
   });
+
+  it("masks IP addresses (by key and in text) and drops message bodies and location (spec §17.5)", () => {
+    const out = redactValue({ ipAddress: "203.0.113.9", body: "Please move 5 BTC for Synthetic Client", bodySnippet: "hi", geolocation: { lat: 51.5 }, detail: "request from 198.51.100.23 failed" }) as Record<string, unknown>;
+    expect(out.ipAddress).not.toBe("203.0.113.9");
+    expect(out.body).toBe("[redacted]");
+    expect(out.bodySnippet).toBe("[redacted]");
+    expect(out.geolocation).toBe("[redacted]");
+    expect(out.detail).not.toContain("198.51.100.23");
+    expect(redactString("peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334 closed")).not.toContain("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+  });
 });

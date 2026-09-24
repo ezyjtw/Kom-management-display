@@ -78,7 +78,8 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     const { cleanupExpiredSessions } = await import("@/lib/session-revocation");
     const { prunePollCycles } = await import("@/modules/integrations/poll-cycles");
     const { pruneJobRuns } = await import("@/lib/background-jobs");
-    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles(), prunedJobRuns: await pruneJobRuns() };
+    const { pruneRateLimitBuckets } = await import("@/lib/api/shared-rate-limit");
+    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles(), prunedJobRuns: await pruneJobRuns(), prunedRateLimitBuckets: await pruneRateLimitBuckets() };
   },
 
   /** Spec §6.1: every registered channel once per 5-minute cycle, 24/7 (history from the cursor, then replies). */

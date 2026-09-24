@@ -15,11 +15,31 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { SESSION_IDLE_SECONDS } from "@/lib/session-config";
 
 /**
  * Check if a session token has been revoked.
  * Always queries the DB directly for multi-instance consistency.
  */
+/**
+ * Session state for requireAuth: revoked/expired, or idle for longer than
+ * SESSION_IDLE_SECONDS (then it is revoked with reason "idle_timeout").
+ * Throws on database errors (the caller decides fail-open vs fail-closed).
+ */
+export async function sessionState(sessionToken: string, now = new Date()): Promise<"ok" | "revoked" | "idle"> {
+  const session = await prisma.sessionMetadata.findUnique({
+    where: { sessionToken },
+    select: { revokedAt: true, expiresAt: true, lastActiveAt: true },
+  });
+  if (!session) return "ok";
+  if (session.revokedAt || session.expiresAt < now) return "revoked";
+  if (session.lastActiveAt && now.getTime() - session.lastActiveAt.getTime() > SESSION_IDLE_SECONDS * 1000) {
+    await prisma.sessionMetadata.update({ where: { sessionToken }, data: { revokedAt: now, revokeReason: "idle_timeout" } });
+    return "idle";
+  }
+  return "ok";
+}
+
 export async function isSessionRevoked(sessionToken: string): Promise<boolean> {
   try {
     const session = await prisma.sessionMetadata.findUnique({
@@ -54,11 +74,11 @@ export async function isSessionRevoked(sessionToken: string): Promise<boolean> {
  * Only updates if more than 60 seconds since last update to avoid DB spam.
  * Non-critical — failures are swallowed to avoid breaking the request.
  */
-export async function updateLastActive(userId: string): Promise<void> {
+export async function updateLastActive(sessionToken: string): Promise<void> {
   try {
     await prisma.sessionMetadata.updateMany({
       where: {
-        userId,
+        sessionToken,
         revokedAt: null,
         lastActiveAt: { lt: new Date(Date.now() - 60_000) },
       },

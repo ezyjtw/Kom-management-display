@@ -1,14 +1,20 @@
 /**
  * Log redaction (H8). Applied to every log entry before it is written.
  * Key-based: secrets are removed, identifiers are partially masked.
- * Value-based: wallet addresses and tx hashes are masked wherever they appear.
+ * Value-based: wallet addresses, tx hashes and IP addresses are masked wherever they appear.
+ * Message bodies and geolocation are dropped by key (spec §17.5).
  */
 
 const SECRET_KEY = /(pass(word)?|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key|signature)/i;
-const MASK_KEY = /(address|tx[_-]?hash|^hash$|account(no|nos|number|numbers)?$|accountNos?|wallet|client(name)?$|clientName|clientOrPartnerTag|iban|email|phone)/i;
+const MASK_KEY = /(address|tx[_-]?hash|^hash$|account(no|nos|number|numbers)?$|accountNos?|wallet|client(name)?$|clientName|clientOrPartnerTag|iban|email|phone|^ip$|ipAddress|remoteAddr|x-forwarded-for|userAgent)/i;
+/** Content that must never reach logs: message bodies, free text from clients, location. */
+const DROP_KEY = /^(body|bodySnippet|bodyPreview|text|html|message_text|content|note|geo|geolocation|location|lat|lng|latitude|longitude)$/i;
 
 // EVM address / 32-byte hash, bech32 BTC address, and long base58 strings (BTC legacy, Solana, etc.)
 const VALUE_PATTERNS: RegExp[] = [
+  // IPv4 and IPv6 addresses
+  /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
+  /\b(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}\b/g,
   /\b0x[a-fA-F0-9]{64}\b/g,
   /\b0x[a-fA-F0-9]{40}\b/g,
   /\b(bc1|tb1)[a-z0-9]{25,87}\b/g,
@@ -36,6 +42,7 @@ function maskValue(value: unknown): unknown {
 
 export function redactValue(value: unknown, key = "", depth = 0): unknown {
   if (key && SECRET_KEY.test(key)) return value === undefined || value === null || value === "" ? value : "[redacted]";
+  if (key && DROP_KEY.test(key)) return value === undefined || value === null || value === "" ? value : "[redacted]";
   if (key && MASK_KEY.test(key)) return maskValue(value);
   if (typeof value === "string") return redactString(value);
   if (depth > 6 || value === null || typeof value !== "object") return value;

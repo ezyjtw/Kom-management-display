@@ -741,10 +741,42 @@ export const createRcaTicketSchema = z.object({
  * Validate request body against a Zod schema.
  * Returns parsed data on success, or { error, status } on failure.
  */
+/** Generic caps on any request body before schema validation (spec §17.4). */
+export const INPUT_LIMITS = { maxDepth: 10, maxArrayLength: 1000, maxStringLength: 100_000, maxKeys: 500 } as const;
+
+export function inputShapeIssue(value: unknown, depth = 0): string | null {
+  if (depth > INPUT_LIMITS.maxDepth) return `Input nested deeper than ${INPUT_LIMITS.maxDepth} levels`;
+  if (typeof value === "string") return value.length > INPUT_LIMITS.maxStringLength ? `A text value is longer than ${INPUT_LIMITS.maxStringLength} characters` : null;
+  if (Array.isArray(value)) {
+    if (value.length > INPUT_LIMITS.maxArrayLength) return `A list has more than ${INPUT_LIMITS.maxArrayLength} items`;
+    for (const v of value) {
+      const issue = inputShapeIssue(v, depth + 1);
+      if (issue) return issue;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > INPUT_LIMITS.maxKeys) return `An object has more than ${INPUT_LIMITS.maxKeys} fields`;
+    for (const [, v] of entries) {
+      const issue = inputShapeIssue(v, depth + 1);
+      if (issue) return issue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate a request body. Unknown fields are stripped by Zod and never reach
+ * the database (no mass assignment); depth, list, text and field-count caps
+ * apply to every body.
+ */
 export function validateBody<T>(
   schema: z.ZodSchema<T>,
   data: unknown,
 ): { success: true; data: T } | { success: false; error: string; status: 400 } {
+  const shape = inputShapeIssue(data);
+  if (shape) return { success: false, error: shape, status: 400 };
   const result = schema.safeParse(data);
   if (result.success) {
     return { success: true, data: result.data };

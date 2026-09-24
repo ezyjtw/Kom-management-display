@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { globalSearch } from "@/lib/global-search";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { checkSharedRateLimit } from "@/lib/api/shared-rate-limit";
 
 /**
  * GET /api/search?q=query&limit=50&modules=comms,incidents
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest) {
 
   const authz = requireAuthorization(auth, "thread", "view");
   if (authz instanceof NextResponse) return authz;
+  const sharedLimited = await checkSharedRateLimit(request, "search", auth.id);
+  if (sharedLimited) return sharedLimited;
 
   try {
     const { searchParams } = new URL(request.url);

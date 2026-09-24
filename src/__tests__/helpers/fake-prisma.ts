@@ -25,7 +25,7 @@ interface Relation {
 const PK: Record<string, string> = {
   alertRule: "code", appSetting: "key", assetThreshold: "asset", riskRuleTier: "rule", sourceHeartbeat: "source",
   jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key", teamConfig: "team", assetStatus: "asset",
-  otcBreakType: "code", uatTemplate: "code", userNotificationPreference: "userId", incidentCategory: "code", syncCursor: "source",
+  otcBreakType: "code", uatTemplate: "code", rateLimitBucket: "key", userNotificationPreference: "userId", incidentCategory: "code", syncCursor: "source",
 };
 
 const COMPOUND: Record<string, Record<string, string[]>> = {
@@ -253,6 +253,26 @@ export function createFakePrisma() {
   const models = new Map<string, ReturnType<typeof model>>();
   const client = new Proxy({} as Record<string, unknown>, {
     get(_t, prop: string) {
+      if (prop === "$queryRaw") {
+        // Emulates the one raw query the app uses: the shared rate-limit upsert (src/lib/api/shared-rate-limit.ts).
+        return async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          if (!strings.join("?").includes('INSERT INTO "RateLimitBucket"')) throw new Error("fake-prisma: unsupported raw query");
+          const [key, now, , , windowSeconds] = values as [string, Date, Date, Date, number];
+          const rows = table("rateLimitBucket");
+          const row = rows.find((r) => r.key === key);
+          if (!row) {
+            const created = { key, windowStart: now, count: 1, updatedAt: now };
+            rows.push(created);
+            return [{ count: 1, windowStart: now }];
+          }
+          if ((row.windowStart as Date).getTime() <= now.getTime() - windowSeconds * 1000) {
+            row.count = 1;
+            row.windowStart = now;
+          } else row.count = (row.count as number) + 1;
+          row.updatedAt = now;
+          return [{ count: row.count, windowStart: row.windowStart }];
+        };
+      }
       if (prop === "$transaction") return async (ops: unknown) => (typeof ops === "function" ? (ops as (c: unknown) => unknown)(client) : Promise.all(ops as Promise<unknown>[]));
       if (prop === "__tables") return tables;
       if (prop === "__reset") return () => { for (const k of Object.keys(tables)) delete tables[k]; };

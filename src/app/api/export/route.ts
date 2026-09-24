@@ -5,6 +5,7 @@ import { exportService } from "@/modules/export/services/export-service";
 import { apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { Role } from "@/modules/auth/types";
 import { featureGate } from "@/lib/feature-gate";
+import { checkSharedRateLimit } from "@/lib/api/shared-rate-limit";
 
 /**
  * GET /api/export
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   if (gated) return gated;
   const auth = await requireRole("admin", "lead", "auditor");
   if (auth instanceof NextResponse) return auth;
+  const sharedLimited = await checkSharedRateLimit(request, "export", auth.id);
+  if (sharedLimited) return sharedLimited;
 
   const authz = checkAuthorization(auth, "export", "export");
   if (!authz.allowed) return apiForbiddenError("Export access denied");

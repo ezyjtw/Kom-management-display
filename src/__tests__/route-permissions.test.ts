@@ -31,8 +31,10 @@ function makeRequest(path: string, method = "GET", headers?: Record<string, stri
   return new NextRequest(url, {
     method,
     headers: {
-      // Provide origin to avoid CSRF rejection in production-like scenarios
+      // Same-origin browser request carrying the double-submit CSRF token.
       origin: BASE_URL,
+      cookie: "kom.csrf=test-csrf-token",
+      "x-csrf-token": "test-csrf-token",
       ...headers,
     },
   });
@@ -406,33 +408,43 @@ describe("Correlation ID is set on pass-through requests", () => {
 // ─── Session expiry enforcement ───
 
 describe("Session expiry enforcement", () => {
-  it("expired admin session returns 401", async () => {
-    // Admin idle timeout is 2 hours. Set iat to 3 hours ago.
+  // Absolute lifetime (12 h from sign-in) is enforced here; the 1 h idle
+  // timeout needs last-activity time and is enforced in requireAuth().
+  it("session older than 12 h returns 401 SESSION_EXPIRED_ABSOLUTE", async () => {
     const expiredToken = freshToken("admin");
-    expiredToken.iat = Math.floor(Date.now() / 1000) - 3 * 60 * 60;
+    expiredToken.authTime = Math.floor(Date.now() / 1000) - 13 * 60 * 60;
     mockToken(expiredToken);
 
-    const req = makeRequest("/api/employees/test");
-    const res = await middleware(req);
+    const res = await middleware(makeRequest("/api/employees/test"));
     expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body.code).toBe("SESSION_EXPIRED_IDLE");
+    expect((await res.json()).code).toBe("SESSION_EXPIRED_ABSOLUTE");
   });
 
-  it("fresh admin session passes through", async () => {
-    mockToken(freshToken("admin"));
-    const req = makeRequest("/api/employees/test");
-    const res = await middleware(req);
+  it("refreshed iat does not extend the absolute lifetime", async () => {
+    const token = freshToken("employee");
+    token.authTime = Math.floor(Date.now() / 1000) - 13 * 60 * 60;
+    token.iat = Math.floor(Date.now() / 1000); // JWT re-issued on activity
+    mockToken(token);
+
+    const res = await middleware(makeRequest("/api/employees/test"));
+    expect(res.status).toBe(401);
+  });
+
+  it("expired page request redirects to /login", async () => {
+    const token = freshToken("employee");
+    token.authTime = Math.floor(Date.now() / 1000) - 13 * 60 * 60;
+    mockToken(token);
+
+    const res = await middleware(makeRequest("/work"));
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login?reason=session_expired");
+  });
+
+  it("session within 12 h passes through", async () => {
+    const token = freshToken("admin");
+    token.authTime = Math.floor(Date.now() / 1000) - 11 * 60 * 60;
+    mockToken(token);
+    const res = await middleware(makeRequest("/api/employees/test"));
     expect(res.status).toBe(200);
-  });
-
-  it("expired employee session returns 401 (8h timeout)", async () => {
-    const expiredToken = freshToken("employee");
-    expiredToken.iat = Math.floor(Date.now() / 1000) - 9 * 60 * 60;
-    mockToken(expiredToken);
-
-    const req = makeRequest("/api/employees/test");
-    const res = await middleware(req);
-    expect(res.status).toBe(401);
   });
 });

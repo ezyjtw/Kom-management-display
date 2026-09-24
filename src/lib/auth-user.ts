@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth-options";
-import { isSessionRevoked, updateLastActive } from "@/lib/session-revocation";
+import { sessionState, updateLastActive } from "@/lib/session-revocation";
 import { logger } from "@/lib/logger";
 
 /** HTTP methods that change state — these get a fail-closed revocation policy. */
@@ -54,10 +54,16 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
   const jti = session.user.jti;
   if (session.user.id && jti) {
     try {
-      const revoked = await isSessionRevoked(jti);
-      if (revoked) {
+      const state = await sessionState(jti);
+      if (state === "revoked") {
         return NextResponse.json(
           { success: false, error: "Session has been revoked", code: "SESSION_REVOKED" },
+          { status: 401 }
+        );
+      }
+      if (state === "idle") {
+        return NextResponse.json(
+          { success: false, error: "Session expired after an hour without activity. Sign in again.", code: "SESSION_EXPIRED_IDLE" },
           { status: 401 }
         );
       }
@@ -87,9 +93,9 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
     }
   }
 
-  // Update lastActiveAt for idle timeout tracking (non-blocking, fire-and-forget)
-  if (session.user.id) {
-    updateLastActive(session.user.id).catch(() => {});
+  // Update lastActiveAt for the idle timeout (this session only; non-blocking).
+  if (jti) {
+    updateLastActive(jti).catch(() => {});
   }
 
   return {

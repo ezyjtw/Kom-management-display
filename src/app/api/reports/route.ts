@@ -5,6 +5,7 @@ import { generateReport, type ReportType } from "@/lib/pdf-report";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { prisma } from "@/lib/prisma";
+import { checkSharedRateLimit } from "@/lib/api/shared-rate-limit";
 
 const VALID_REPORT_TYPES: ReportType[] = [
   "daily_digest", "weekly_report", "incident_report", "compliance_summary",
@@ -23,6 +24,8 @@ export async function GET(request: NextRequest) {
 
   const authz = requireAuthorization(auth, "report", "view");
   if (authz instanceof NextResponse) return authz;
+  const sharedLimited = await checkSharedRateLimit(request, "export", auth.id);
+  if (sharedLimited) return sharedLimited;
 
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.expensive);
   if (limited) return limited;
