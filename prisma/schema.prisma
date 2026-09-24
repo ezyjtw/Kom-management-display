@@ -235,8 +235,8 @@ model CategoryScore {
   rawIndex      Float // 0-1 raw performance index
   score         Float // 3-8 clamped score
   configVersion String // scoring config version used
-  evidence      Json          @default("[]") // JSON array of evidence links — denormalized for fast reads
-  metadata      Json          @default("{}") // JSON object with detailed metrics
+  evidence      String        @default("[]") // JSON array of evidence links — denormalized for fast reads — stored as TEXT holding JSON (drift reconciliation, 0043)
+  metadata      String        @default("{}") // JSON object with detailed metrics — stored as TEXT holding JSON (drift reconciliation, 0043)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -305,7 +305,7 @@ model EmployeeNote {
   authorId    String
   createdAt   DateTime @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
 }
@@ -316,13 +316,13 @@ model CommsThread {
   id                 String         @id @default(cuid())
   source             CommsSource    @default(email)
   sourceThreadRef    String // gmail thread id / slack channel+ts / jira issue key
-  participants       Json           @default("[]") // JSON array of { name, email, role } objects
+  participants       String         @default("[]") // JSON array of { name, email, role } objects — stored as TEXT holding JSON (drift reconciliation, 0043)
   clientOrPartnerTag String         @default("")
   subject            String
   priority           ThreadPriority @default(P2)
   status             ThreadStatus   @default(Unassigned) // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, PendingHandover, Done, Closed
   ownerUserId        String?
-  secondaryOwnerIds  Json           @default("[]") // JSON array of employee IDs (watchers / collaborators)
+  secondaryOwnerIds  String         @default("[]") // JSON array of employee IDs (watchers / collaborators) — stored as TEXT holding JSON (drift reconciliation, 0043)
   queue              String         @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
   createdAt          DateTime       @default(now())
   lastMessageAt      DateTime       @default(now())
@@ -330,7 +330,7 @@ model CommsThread {
   ttoDeadline        DateTime? // Time-to-Ownership deadline
   ttfaDeadline       DateTime? // Time-to-First-Action deadline
   tslaDeadline       DateTime? // Time-since-last-action deadline
-  linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
+  linkedRecords      String         @default("[]") // JSON: Jira tickets, Confluence, transaction IDs — stored as TEXT holding JSON (drift reconciliation, 0043)
 
   // Stream 2: Slack thread fields
   slackChannelId   String? // FK -> SlackChannel
@@ -375,7 +375,7 @@ model CommsMessage {
   authorType     String // external, internal
   bodySnippet    String
   bodyLink       String    @default("") // link to full content
-  attachments    Json      @default("[]") // JSON: [{name, size, type}]
+  attachments    String    @default("[]") // JSON: [{name, size, type}] — stored as TEXT holding JSON (drift reconciliation, 0043)
   // Stream 2: Slack message fields
   slackTs        String? // Slack message ts — unique within thread
   slackUserId    String? // Slack user ID of author
@@ -384,7 +384,7 @@ model CommsMessage {
   slackReactions Json? // [{name: string, count: number}]
   editedAt       DateTime?
 
-  thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Restrict)
   messageAttachments MessageAttachment[]
 
   @@unique([threadId, slackTs])
@@ -401,7 +401,7 @@ model OwnershipChange {
   reason       String   @default("")
   handoverNote String   @default("")
 
-  thread    CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread    CommsThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
   oldOwner  Employee?   @relation("OldOwner", fields: [oldOwnerId], references: [id])
   newOwner  Employee?   @relation("NewOwner", fields: [newOwnerId], references: [id])
   changedBy Employee    @relation("ChangedBy", fields: [changedById], references: [id])
@@ -417,7 +417,7 @@ model ThreadNote {
   content   String
   createdAt DateTime @default(now())
 
-  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
   author Employee    @relation(fields: [authorId], references: [id])
 
   @@index([threadId])
@@ -589,7 +589,7 @@ model CaseNote {
   content   String
   createdAt DateTime @default(now())
 
-  case   TravelRuleCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case   TravelRuleCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
   author Employee       @relation(fields: [authorId], references: [id])
 
   @@index([caseId])
@@ -705,7 +705,7 @@ model Project {
   targetDate  DateTime?
   completedAt DateTime?
   progress    Int           @default(0) // 0-100 percentage
-  tags        Json          @default("[]") // JSON array of tag strings
+  tags        String        @default("[]") // JSON array of tag strings — stored as TEXT holding JSON (drift reconciliation, 0043)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -777,9 +777,9 @@ model Alert {
   resolvedAt       DateTime?
   createdAt        DateTime      @default(now())
 
-  thread         CommsThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread         CommsThread?    @relation(fields: [threadId], references: [id], onDelete: SetNull)
   employee       Employee?       @relation(fields: [employeeId], references: [id])
-  travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
+  travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: SetNull)
   incident       Incident?       @relation(fields: [incidentId], references: [id])
 
   // Alerting engine (spec §7.4)
@@ -829,15 +829,15 @@ model Incident {
   resolvedAt                  DateTime?
   reportedById                String // employee who raised it
   resolvedById                String?
-  linkedThreadIds             Json             @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds        Json             @default("[]") // JSON array of transaction IDs (custody)
+  linkedThreadIds             String           @default("[]") // JSON array of commsThread IDs — stored as TEXT holding JSON (drift reconciliation, 0043)
+  linkedTransactionIds        String           @default("[]") // JSON array of transaction IDs (custody) — stored as TEXT holding JSON (drift reconciliation, 0043)
   // ─── RCA Tracker Fields ───
   rcaStatus                   String           @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
   rcaDocumentRef              String           @default("") // link to RCA document
   rcaResponsibleId            String? // person responsible for chasing RCA
   rcaSlaDeadline              DateTime? // SLA for receiving RCA
   rcaReceivedAt               DateTime?
-  rcaFollowUpItems            Json             @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaFollowUpItems            String           @default("[]") // JSON array: [{title, status, assigneeId}] — stored as TEXT holding JSON (drift reconciliation, 0043)
   rcaRaisedAt                 DateTime? // when RCA was formally raised
   // ─── External Provider Ticket Tracking ───
   externalTicketRef           String           @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
@@ -878,7 +878,7 @@ model IncidentUpdate {
   type       String   @default("update") // update, escalation, resolution
   createdAt  DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
 
   @@index([incidentId])
 }
@@ -988,7 +988,7 @@ model UsdcRampRequest {
   kycAmlOk           Boolean   @default(false)
   walletWhitelisted  Boolean   @default(false)
   // Evidence & notes
-  evidence           Json      @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
+  evidence           String    @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.) — stored as TEXT holding JSON (drift reconciliation, 0043)
   notes              String    @default("")
   rejectionReason    String    @default("")
   // Dates
@@ -1024,7 +1024,7 @@ model AuditLog {
   entityId      String
   /// Employee of the actor ("system" when the actor has none). Normalised by a database trigger (migration 0037).
   userId        String
-  details       Json     @default("{}") // JSON
+  details       String   @default("{}") // JSON — stored as TEXT holding JSON (drift reconciliation, 0043)
   /// user | system | service. The table is append-only: UPDATE, DELETE and TRUNCATE are rejected by triggers (migration 0037).
   actorType     String   @default("user")
   /// User.id of the signed-in principal (no FK: users may be removed, the audit trail stays).
@@ -1039,6 +1039,7 @@ model AuditLog {
 
   @@index([correlationId])
   @@index([actorUserId, createdAt])
+  @@index([userId, action])
   @@index([phase, createdAt])
   @@index([userId, createdAt])
   @@index([action, createdAt])
@@ -1065,7 +1066,7 @@ model StakingWallet {
   onChainBalance          Decimal?  @db.Decimal(38, 18) // for reconciliation
   platformBalance         Decimal?  @db.Decimal(38, 18) // internal representation
   varianceThreshold       Decimal   @default(0.01) @db.Decimal(38, 18) // absolute, in `asset`: flag if |onChain - platform| > this
-  tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold
+  tags                    String    @default("[]") // JSON: test wallet, known deviations, minimum threshold — stored as TEXT holding JSON (drift reconciliation, 0043)
   notes                   String    @default("")
   status                  String    @default("active") // active, unstaking, inactive
   createdAt               DateTime  @default(now())
@@ -1341,6 +1342,7 @@ model SessionMetadata {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([userId, expiresAt])
 }
 
 // ─── Transaction Confirmation Flow ───
@@ -2298,4 +2300,21 @@ model RateLimitBucket {
   windowStart DateTime
   count       Int
   updatedAt   DateTime @updatedAt
+}
+
+/// Archived evidence of the removed transaction-approval module (H1, migration
+/// 0017). Read-only: no code writes it, and the app role cannot (db-roles.sql).
+/// Declared so the schema matches the database and it is never dropped.
+model ArchivedApprovalAuditEntry {
+  id            String   @id
+  requestId     String
+  action        String
+  performedById String
+  riskLevel     String   @default("medium")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([requestId], map: "_archived_approval_audit_entry_requestId_idx")
+  @@index([performedById], map: "_archived_approval_audit_entry_performedById_idx")
+  @@map("_archived_approval_audit_entry")
 }

@@ -72,7 +72,7 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-CSP-STYLES | `docs/phase1/threat-model.md`, `src/lib/security-policy.ts` |
 | CONFIRM-DATA-OWNERS | `docs/phase1/data-inventory.md` |
 | CONFIRM-DB-IDENTITY | `deploy/azure/README.md`, `docs/phase1/credentials.md`, `docs/phase1/threat-model.md`, `src/lib/secrets.ts` |
-| CONFIRM-DB-ROLES | `docs/compliance-audit-framework.md`, `docs/phase1/credentials.md`, `docs/phase1/db-roles.sql`, `docs/phase1/schema-drift.md` +2 |
+| CONFIRM-DB-ROLES | `docs/compliance-audit-framework.md`, `docs/phase1/credentials.md`, `docs/phase1/db-roles.sql`, `prisma/migrations/0037_control_integrity/migration.sql` +1 |
 | CONFIRM-DETECT-SECRETS-BASELINE | `.github/workflows/ci.yml` |
 | CONFIRM-DUE-TIMES | `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-EVIDENCE-SPEC | `src/modules/daily-checks/enforcement.ts` |

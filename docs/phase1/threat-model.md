@@ -68,7 +68,7 @@ The in-code controls below assume those exist, and do not replace them.
 | Tampering with the audit trail | AuditLog is append-only by trigger: UPDATE, DELETE and TRUNCATE are rejected (migration 0037). The application's database role has SELECT and INSERT only on AuditLog, cannot drop or disable triggers, and cannot alter the trigger functions (`docs/phase1/db-roles.sql`, verified on PostgreSQL 16). BackgroundJobRun gets the same treatment, except that deletion is allowed after the retention period (migration 0042). |
 | Spoofing: a stolen connection string | Production connects with the workload's managed identity (no password in `DATABASE_URL`, TODO(CONFIRM-DB-IDENTITY)); a private endpoint only; TLS enforced. |
 | Injection | Prisma parameterises all queries. The few raw statements use tagged templates (`$queryRaw`), never string concatenation. External content is never used to build a query (§17.4). |
-| Schema drift weakening a control | Migration drift check that blocks CI; the known historical drift is documented in `schema-drift.md` for reconciliation. |
+| Schema drift weakening a control | Migration drift check that blocks CI (baseline empty since migration 0043; `schema-drift.md`). |
 
 ### (3) App to Komainu API
 
@@ -137,13 +137,11 @@ Every mutation route is classified in `src/lib/api/audit-policy.ts`:
 | Middleware runs on the Node.js runtime, not Edge | Needed to read secrets through the file loader. | None needed. | Accepted |
 | Amount inputs still accept JSON numbers | Backward compatibility for existing forms. | Stored as Decimal(38,18) or Decimal(20,2); strings are preferred. | Numbers are refused from **2027-03-31** (enforced by test `amount-number-input-sunset`) |
 | Container image scan uses Trivy, not Wiz | The Wiz CI integration is not wired yet. | Critical and high with a fix available fail the build. | TODO(CONFIRM-WIZ-CI) |
-| Historical schema drift | Needs a reviewed data migration (TEXT to JSONB, the archived approval table). | New drift fails CI. | `schema-drift.md` |
 
 ## 8. Residual risks and future work
 
 - **MFA step-up.** Session freshness is not proof of MFA. Use the Entra authentication context (the `acrs` claim) for role changes, security settings, bulk export and destructive admin actions.
 - **Legacy fail-open routes.** travel-rule, screening, staking, confirmations and settlement notes. See `AUDIT_GAPS`; convert them at the next gate.
-- **Schema reconciliation.** Includes the missing unique constraint and FK on `User.employeeId`.
 - **Signed commits and images, and signature verification at deploy (SLSA 1).** Not wired yet. TODO(CONFIRM-SIGNING).
 - **Log shipping.** Depends on the platform's collector (see `logging.md`).
 - **Competency-based cover.** Cover eligibility is currently the deputy plus the configured team members. Competency is not modelled.

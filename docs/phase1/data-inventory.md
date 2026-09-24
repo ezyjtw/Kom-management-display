@@ -89,7 +89,7 @@ Read from Komainu (GET only), GX, Confluence and imports. Addresses, transaction
 | DataRetentionPolicy | Retention settings per entity type | Admin | Configuration |
 | FeatureFlag, AppSetting, BrandingConfig | Configuration | Admin | Configuration |
 | RateLimitBucket | Rate-limit counters (hashed account key or IP) | App | **Enforced:** idle buckets deleted after 1 day |
-| `_archived_approval_audit_entry` (table, no model) | Archived evidence of the removed approvals module (H1) | Legacy | Read-only; kept |
+| ArchivedApprovalAuditEntry (`_archived_approval_audit_entry`) | Archived evidence of the removed approvals module (H1) | Legacy | Read-only; kept; never dropped |
 
 ## Encryption, backup and access
 

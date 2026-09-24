@@ -202,9 +202,9 @@ jobs:
       - name: Apply migrations to fresh database
         run: npx prisma migrate deploy
 
-      # BLOCKING. New drift between schema.prisma and the migrations fails the build; the known
-      # historical drift is in prisma/drift-baseline.sql (docs/phase1/schema-drift.md) and the
-      # check also fails once an entry is resolved, so the baseline only shrinks.
+      # BLOCKING. Any drift between schema.prisma and the migrations fails the build. The
+      # historical drift was reconciled in migration 0043, so prisma/drift-baseline.sql is empty
+      # (docs/phase1/schema-drift.md); the fix for a failure is a migration, not the baseline.
       - name: Migration drift (blocking, against the reviewed baseline)
         run: |
           PGPASSWORD=test psql -h localhost -U test -d testdb -c 'CREATE DATABASE shadow'
