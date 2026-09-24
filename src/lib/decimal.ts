@@ -4,13 +4,19 @@
  * string in JSON. Never convert an amount to a JS number for arithmetic or
  * comparison: use these helpers.
  *
- * API input: send amounts as decimal strings ("1234.567"). Numbers are still
- * accepted for backward compatibility, but a JSON number may already have lost
- * precision when it was parsed.
+ * API input: send amounts as decimal strings ("1234.567"). JSON numbers are
+ * still accepted for backward compatibility until NUMERIC_AMOUNT_INPUT_UNTIL,
+ * with a deprecation warning in the log, because a JSON number may already have
+ * lost precision when it was parsed. After that date the test
+ * amount-number-input-sunset fails until number support is removed here.
  */
 
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { logger } from "@/lib/logger";
+
+/** Last day JSON numbers are accepted for amounts (review remediation). */
+export const NUMERIC_AMOUNT_INPUT_UNTIL = "2027-03-31";
 
 export type DecimalValue = Prisma.Decimal | string | number;
 
@@ -31,7 +37,11 @@ export function decimalAmount(scale: number, opts: { min?: "positive" | "nonNega
   const pattern = new RegExp(`^-?\\d{1,20}(\\.\\d{1,${scale}})?$`);
   return z
     .union([z.string().trim(), z.number().finite()])
-    .transform((v) => (typeof v === "number" ? new Prisma.Decimal(v).toFixed() : v))
+    .transform((v) => {
+      if (typeof v !== "number") return v;
+      logger.warn("Deprecated: amount sent as a JSON number; send a decimal string", { until: NUMERIC_AMOUNT_INPUT_UNTIL });
+      return new Prisma.Decimal(v).toFixed();
+    })
     .refine((v) => pattern.test(v), { message: `Must be a decimal number with at most ${scale} decimal places` })
     .refine((v) => opts.min !== "positive" || new Prisma.Decimal(v).gt(0), { message: "Must be greater than 0" })
     .refine((v) => opts.min !== "nonNegative" || new Prisma.Decimal(v).gte(0), { message: "Must not be negative" });

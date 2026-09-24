@@ -13,6 +13,14 @@ networking, egress allowlist) is described in [`deploy/azure/README.md`](../depl
 
 ## Environment Variables
 
+> **Production: secrets are files, not environment variables.** Every
+> secret-bearing key below (`NEXTAUTH_SECRET`, `CRON_SECRET`,
+> `ENCRYPTION_SECRET`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`) is read
+> from a file of the same name in `SECRETS_DIR` (Key Vault mounted on tmpfs). The
+> app refuses to start in production if one is set as an environment variable.
+> The `KEY=value` lists below are for **local development** (`.env`, no
+> `SECRETS_DIR`). See `docs/phase1/credentials.md` and `deploy/azure/README.md`.
+
 ### Required
 ```
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
@@ -126,12 +134,15 @@ GIT_COMMIT_SHA=<build-sha>
 # Build
 docker build -t kommand-centre .
 
-# Run
+# Run (production mode: secrets from a mounted directory, never -e)
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://..." \
-  -e NEXTAUTH_SECRET="..." \
   -e NEXTAUTH_URL="https://..." \
+  -e SECRETS_DIR=/mnt/secrets \
+  --mount type=tmpfs,destination=/mnt/secrets \
   kommand-centre
+# (populate /mnt/secrets/NEXTAUTH_SECRET etc. from Key Vault; locally, a
+#  read-only bind mount of a directory of files works for testing)
 ```
 
 ### Docker Compose (full stack)

@@ -1,5 +1,3 @@
-# Legacy Railway config — not for production
+# Legacy deployment notes
 
-`railway.toml` was used for early demos. It is kept here for reference only and is
-**not** part of the deploy path (hard constraint H10). Production runs on the Azure
-runtime described in `deploy/azure/README.md`.
+An early demo used Railway. Its `railway.toml` was removed in Phase 12 (hard constraint H10: no Railway config in the repository). If it is ever needed for reference, it is in the git history. Production runs on the Azure runtime described in `deploy/azure/README.md`.

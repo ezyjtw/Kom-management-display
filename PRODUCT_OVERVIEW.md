@@ -8,7 +8,7 @@
 
 KOMmand Centre is a purpose-built internal operations platform designed for institutional digital asset custody teams. It consolidates operational workflows, communications, compliance monitoring, incident management, and team performance into a single real-time dashboard.
 
-The platform is built on Next.js 14 (TypeScript), backed by PostgreSQL via Prisma ORM, and deployed on Railway with Docker. Authentication uses NextAuth.js with JWT sessions and role-based access control (Admin / Lead / Employee).
+The platform is built on Next.js 15 (TypeScript), backed by PostgreSQL via Prisma ORM, and deployed on Azure with Docker. Authentication uses NextAuth.js with JWT sessions and role-based access control (Admin / Lead / Employee).
 
 **Core value proposition**: Replace fragmented spreadsheets, Slack channels, email threads, and manual checklists with one unified operational view that enforces ownership, tracks SLAs, and creates an immutable audit trail.
 
@@ -22,7 +22,7 @@ The platform is built on Next.js 14 (TypeScript), backed by PostgreSQL via Prism
 | Backend | Next.js API Routes (REST), TypeScript |
 | Database | PostgreSQL via Prisma ORM (38 models) |
 | Auth | NextAuth.js — JWT sessions, bcrypt passwords, role-based guards |
-| Deployment | Docker (multi-stage build), Railway, CI/CD via GitHub Actions |
+| Deployment | Docker (multi-stage build, base image pinned by digest), Azure, CI/CD via GitHub Actions |
 | Security | HSTS, CSP, frame denial, nosniff, referrer policy, permissions policy |
 
 ### Authentication & Access Control
@@ -441,8 +441,8 @@ Three independent clocks per thread, thresholds vary by priority:
 
 ## 23. Deployment & Infrastructure
 
-- **Hosting**: Railway (or any Docker-compatible PaaS)
-- **Database**: Railway PostgreSQL plugin (auto-injected connection string)
+- **Hosting**: Azure (see `deploy/azure/README.md`)
+- **Database**: Azure Database for PostgreSQL (private endpoint, managed identity)
 - **Docker**: Multi-stage build — builder generates Prisma client, runner uses standalone Next.js output
 - **Startup**: `start.sh` runs `prisma migrate deploy` + seed on every container start
 - **Health check**: `/api/health` verifies Prisma connectivity, returns DB status + build version

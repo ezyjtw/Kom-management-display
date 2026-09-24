@@ -29,7 +29,8 @@
     "coverage:matrix": "tsx scripts/coverage-matrix.ts",
     "jira:inventory": "tsx scripts/jira-inventory.ts",
     "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json",
-    "drift:check": "tsx scripts/check-migration-drift.ts"
+    "drift:check": "tsx scripts/check-migration-drift.ts",
+    "confirm:register": "tsx scripts/confirm-register.ts"
   },
   "repository": {
     "type": "git",

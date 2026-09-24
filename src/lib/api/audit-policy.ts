@@ -88,7 +88,7 @@ export const ROUTE_AUDIT_CATEGORY: ReadonlyArray<{ prefix: string; category: Aud
  * next release gate (review remediation), not an exception.
  */
 export const AUDIT_GAPS: Readonly<Record<string, string>> = {
-  "/api/admin/imports": "No write path yet: every upload is refused until its template exists (CONFIRM-IMPORT-*). Convert with the first parser.",
+  "/api/admin/imports": "No write path yet: every upload is refused until its template exists (CONFIRM-IMPORT-FILENAMES). Convert with the first parser.",
   "/api/admin/jira-projects/[key]/discover": "Reads Jira metadata into the discovery cache only; convert with the Jira config review.",
   "/api/incidents": "Legacy incident log (fail-open audit today); superseded by client-incidents, convert or retire.",
   "/api/rca/tickets": "Creates an RCA ticket through the work item module; convert with the incident retirement.",

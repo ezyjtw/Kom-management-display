@@ -11,8 +11,10 @@
  *     via lookupSensitiveAction (single source of truth).
  *   - Dual control (requiresDualControl): enforced at the route level through
  *     the maker/checker flow on settlements and usdc-ramp.
- *   - Reauth (requiresReauth): NOT yet implemented (no credential re-prompt
- *     flow exists). The flag is declarative only — do not assume it is enforced.
+ *   - Reauth: a sensitive action with a stale sign-in gets 401 REAUTH_REQUIRED
+ *     from the middleware, and the browser re-authenticates with Entra
+ *     (prompt=login). This proves a recent sign-in, not a fresh MFA challenge;
+ *     Entra authentication context is future work (threat-model.md §8).
  */
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
