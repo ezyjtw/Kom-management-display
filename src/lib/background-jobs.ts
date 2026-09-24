@@ -54,7 +54,8 @@ export type JobType =
   | "collect_check_evidence"
   | "mtd_autoclose"
   | "poll_client_ticket_comments"
-  | "morning_handover";
+  | "morning_handover"
+  | "gx_sprint_intake";
 
 /**
  * Recurring job types that were replaced; their stored rows are removed on registration.
@@ -117,6 +118,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
     { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
     { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
+    { type: "gx_sprint_intake", cronExpression: "20 * * * *" }, // spec §16.1: hourly check; full intake on gx.sprint_intake.cron or KMNC changes
     { type: "morning_handover", cronExpression: "TZ=Europe/London */15 9-11 * * 1-5" }, // spec §14.3: from 09:00 UK post handovers, retry failed tickets, remind when missing
   ];
 

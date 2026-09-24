@@ -20,6 +20,8 @@ export interface TicketSpec {
   labels?: string[];
   /** Issue type name in JiraProjectConfig.issueTypeIds; falls back to `_default`. */
   issueType?: string;
+  /** Jira due date, YYYY-MM-DD. */
+  dueDate?: string;
 }
 
 export class TicketConfigError extends Error {
@@ -48,6 +50,7 @@ async function createRemote(spec: TicketSpec): Promise<{ key: string; system: "j
     summary: spec.summary,
     description: spec.description,
     labels: ["kommand-centre", ...(spec.labels ?? [])],
+    dueDate: spec.dueDate,
   });
   return { key: created.key, system: project.kind === "jsm" ? "jsm" : "jira", url: browseUrl(created.key) };
 }

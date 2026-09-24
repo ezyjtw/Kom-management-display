@@ -151,19 +151,22 @@ export interface JiraIssue {
     project?: { key: string };
     issuetype?: { name: string };
     labels?: string[];
+    duedate?: string | null;
+    resolutiondate?: string | null;
+    reporter?: { accountId: string; emailAddress?: string; displayName?: string } | null;
   };
 }
 
 export const SEARCH_FIELDS = ["summary", "status", "assignee", "priority", "created", "updated", "project", "issuetype", "labels"];
 
-export async function searchIssues(jql: string, maxPages = 20): Promise<JiraIssue[]> {
+export async function searchIssues(jql: string, maxPages = 20, fields: string[] = SEARCH_FIELDS): Promise<JiraIssue[]> {
   const out: JiraIssue[] = [];
   let nextPageToken: string | undefined;
   for (let i = 0; i < maxPages; i++) {
     const res = await atlassianRequest<{ issues?: JiraIssue[]; nextPageToken?: string; isLast?: boolean }>(
       "POST",
       "/rest/api/3/search/jql",
-      { body: { jql, fields: SEARCH_FIELDS, maxResults: 100, ...(nextPageToken ? { nextPageToken } : {}) } },
+      { body: { jql, fields, maxResults: 100, ...(nextPageToken ? { nextPageToken } : {}) } },
     );
     out.push(...(res.issues ?? []));
     if (res.isLast !== false || !res.nextPageToken) return out;
@@ -224,7 +227,7 @@ export async function updateIssueFields(key: string, fields: Record<string, unkn
   await atlassianRequest("PUT", `/rest/api/3/issue/${key}`, { body: { fields } });
 }
 
-export function createIssue(input: { projectKey: string; issueTypeId: string; summary: string; description?: string; labels?: string[] }): Promise<{ id: string; key: string }> {
+export function createIssue(input: { projectKey: string; issueTypeId: string; summary: string; description?: string; labels?: string[]; dueDate?: string }): Promise<{ id: string; key: string }> {
   return atlassianRequest("POST", "/rest/api/3/issue", {
     body: {
       fields: {
@@ -233,6 +236,7 @@ export function createIssue(input: { projectKey: string; issueTypeId: string; su
         summary: input.summary.slice(0, 255),
         ...(input.description ? { description: adf(input.description) } : {}),
         labels: input.labels ?? ["kommand-centre"],
+        ...(input.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? { duedate: input.dueDate } : {}),
       },
     },
   });

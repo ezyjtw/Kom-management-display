@@ -180,6 +180,25 @@ const SCENARIOS: Scenario[] = [
     clear: async (now) => update("sourceHeartbeat", { source: "outlook.custody" }, { lastSuccessAt: mins(now, 60) }),
   },
   {
+    code: "ALR-UAT-02",
+    trigger: async (now) => {
+      await add("gxSprint", { id: "gx-1", sprint: "9.99", prodPlannedAt: mins(now, 24 * 60) });
+      await add("gxChange", { sprintId: "gx-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
+      return "9.99";
+    },
+    below: async (now) => {
+      await add("gxSprint", { id: "gx-1", sprint: "9.99", prodPlannedAt: mins(now, 14 * 24 * 60) });
+      await add("gxChange", { sprintId: "gx-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
+    },
+    clear: async () => update("gxChange", { sprintId: "gx-1" }, { uatOutcome: "pass" }),
+  },
+  {
+    code: "ALR-HB-GXNOTES",
+    trigger: async (now) => { await add("gxSprint", { sprint: "9.98", kmncKeys: ["KMNC-1"], createdAt: mins(now, -48 * 60) }); return "9.98"; },
+    below: async (now) => { await add("gxSprint", { sprint: "9.98", kmncKeys: ["KMNC-1"], createdAt: mins(now, -60) }); },
+    clear: async () => update("gxSprint", { sprint: "9.98" }, { pageVersion: 3 }),
+  },
+  {
     code: "ALR-AUD-01",
     trigger: async (now) => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "requested", correlationId: "c1", createdAt: mins(now, -15) }); return "audit-outcome-missing"; },
     below: async (now) => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "requested", correlationId: "c1", createdAt: mins(now, -5) }); },

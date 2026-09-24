@@ -17,7 +17,7 @@ export type Block =
 
 export type ItemType =
   | "function_toggle" | "ui_change" | "api_change" | "permission_change" | "staking_change"
-  | "risk_engine_change" | "technical_change" | "highlight" | "deployment_note";
+  | "risk_engine_change" | "technical_change" | "highlight" | "deployment_note" | "verify_fix";
 
 export interface ParsedRow {
   section: string;
@@ -176,7 +176,9 @@ export function sectionType(heading: string): ItemType | "metadata" | null {
 const REDACT_COLUMN = /release engineer|\bengineer\b|developer|deployed by|dev\s*pic|devops/i;
 const JIRA_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d+\b/g;
 const NOT_JIRA = /^(SHA|ISO|UTF|RFC|AES|TLS|SSL|CVE|ERC|BIP|EIP|HTTP|X)-/;
-const SUMMARY_COLUMNS = [/^function/i, /^screen/i, /^api|endpoint/i, /^deliverable/i, /^description/i, /^instruction/i, /^impacted functions/i];
+const SUMMARY_COLUMNS = [/^function/i, /^deliverable/i, /^description/i, /^change$/i, /^screen/i, /^instruction/i, /^impacted functions/i];
+/** First columns that name the subject of the row; prefixed to the summary ("ETH: Unstake queue …"). */
+const SUBJECT_COLUMN = /^(asset|rule|role|component|api|endpoint|file|workstream)$/i;
 
 export function jiraKeysIn(text: string): string[] {
   return [...new Set((text.match(JIRA_KEY) ?? []).filter((k) => !NOT_JIRA.test(k)))];
@@ -205,7 +207,9 @@ function toRow(section: string, itemType: ItemType, cells: Record<string, string
   const text = Object.entries(cells).filter(([h]) => !REDACT_COLUMN.test(h)).map(([h, v]) => `${h}: ${v}`).join("; ");
   const firstCell = values.find((v) => v) ?? "";
   const summaryCol = SUMMARY_COLUMNS.map((re) => Object.keys(cells).find((h) => re.test(h) && cells[h])).find(Boolean);
-  const summary = (summaryCol ? cells[summaryCol] : firstCell).slice(0, 200);
+  const [firstHeader] = Object.keys(cells);
+  const subject = firstHeader && SUBJECT_COLUMN.test(firstHeader) && summaryCol !== firstHeader ? cells[firstHeader] : "";
+  const summary = (summaryCol ? (subject ? `${subject}: ${cells[summaryCol]}` : cells[summaryCol]) : firstCell).slice(0, 200);
   return { section, itemType, cells, text, summary, firstCell, env: envOf(cells), gxJiraKeys: jiraKeysIn(text), rowHash: rowHashOf(section, cells) };
 }
 

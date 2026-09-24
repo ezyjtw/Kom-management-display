@@ -165,6 +165,11 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return syncGraphTeams();
   },
 
+  async gx_sprint_intake() {
+    const { runScheduledIntake } = await import("@/modules/gx-sprints/intake");
+    return runScheduledIntake();
+  },
+
   async morning_handover() {
     const { runMorningHandover } = await import("@/modules/morning/handover");
     return runMorningHandover();

@@ -100,6 +100,30 @@ export const SETTINGS = {
   },
   /** Email replies need the Graph Mail.Send permission (TODO(CONFIRM-GRAPH-MAIL-SEND)). Off: the operator sends from Outlook and marks it sent. */
   "clientIncidents.emailReplyEnabled": { schema: z.boolean(), default: false, label: "Send client email replies through Graph" },
+  /** Spec §16 GX sprint intake. */
+  "gx.releaseNotesSpace": { schema: z.string().regex(/^[A-Z0-9~]{1,50}$/), default: "AMTK", label: "Confluence space holding GX release notes" },
+  /** TODO(CONFIRM-GX-RELEASE-PARENT): page id of the release-notes parent; empty searches the whole space by title. */
+  "gx.releaseNotesParentPageId": { schema: z.string().regex(/^\d*$/), default: "", label: "Release-notes parent page id" },
+  /** TODO(CONFIRM-KMNC-NAMING) */
+  "gx.kmncProject": { schema: z.string().regex(/^[A-Z][A-Z0-9_]+$/), default: "KMNC", label: "Change-ticket project for GX UAT/PROD releases" },
+  /** Daily by default (07:00 UTC); the hourly job runs the full intake when this schedule falls due, or when KMNC tickets change. */
+  "gx.sprint_intake.cron": { schema: z.string().min(9).max(100), default: "0 7 * * *", label: "GX sprint intake schedule (cron, UTC)" },
+  /** TODO(CONFIRM-UAT-PROJECT) */
+  "gx.uat.project": { schema: z.string().regex(/^[A-Z][A-Z0-9_]+$/), default: "TOPS", label: "UAT ticket project" },
+  "gx.uat.issueType": { schema: z.string().min(1).max(50), default: "Task", label: "UAT ticket issue type" },
+  /** TODO(CONFIRM-UAT-LEAD-DAYS) */
+  "gx.uat.leadBusinessDays": { schema: z.number().int().min(0).max(30), default: 3, label: "UAT due this many business days before PROD" },
+  "gx.uat.fallbackBusinessDays": { schema: z.number().int().min(1).max(30), default: 5, label: "UAT due this many business days after UAT landed (no PROD date)" },
+  /** H6: wallet technology items create no UAT ticket unless enabled. */
+  "gx.uat.include_wallet_tech": { schema: z.boolean(), default: false, label: "Create UAT tickets for new wallet technology items" },
+  /** Technical changes qualify only when "Impacted Functions" matches one of these (spec §16.2). TODO(CONFIRM-GX-IMPACT-RULES). */
+  "gx.operationalKeywords": {
+    schema: z.array(z.string().min(2).max(60)).max(100),
+    default: ["staking", "stake", "collateral", "settlement", "withdrawal", "deposit", "transaction", "travel rule", "fee", "risk", "approval", "whitelist", "balance", "report", "analytics", "fab"] as string[],
+    label: "Operational function keywords",
+  },
+  /** Deployment notes qualify when they match one of these (regular expressions). */
+  "gx.dataImpactPatterns": { schema: z.array(z.string().min(1).max(200)).max(50), default: ["analytics\\.", "\\brenamed?\\b", "\\bviews?\\b", "\\bcolumns?\\b"] as string[], label: "Data-impact patterns for deployment notes" },
   /** Spec §14.4 first-response quick action: human-sent; templates allowed, AI is not. {ticket} is replaced with the ticket key. */
   "workItem.firstResponseTemplates": {
     schema: z.array(z.string().min(5).max(1000)).max(20),

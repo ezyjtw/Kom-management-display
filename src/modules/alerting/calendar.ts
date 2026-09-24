@@ -132,3 +132,16 @@ export function addBusinessMinutes(cal: BusinessCalendar, from: Date, mins: numb
   }
   return new Date(from.getTime() + mins * 60_000);
 }
+
+/** London date `n` business days after (n > 0) or before (n < 0) `date` (YYYY-MM-DD). */
+export function addBusinessDays(cal: BusinessCalendar, date: string, n: number): string {
+  let d = date;
+  let left = Math.abs(n);
+  const step = n < 0 ? -1 : 1;
+  for (let guard = 0; left > 0 && guard < 400; guard++) {
+    d = addDays(d, step);
+    const weekday = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (cal.is24x7 || isBusinessDay(cal, d, weekday)) left--;
+  }
+  return d;
+}

@@ -14,6 +14,7 @@ import * as oes from "@/modules/alerting/evaluators/oes";
 import * as risk from "@/modules/alerting/evaluators/risk";
 import * as ops from "@/modules/alerting/evaluators/operations";
 import * as fab from "@/modules/alerting/evaluators/fab";
+import * as gx from "@/modules/alerting/evaluators/gx";
 import { onSlaRaised, slaEvaluator, SLA_RULES } from "@/modules/alerting/evaluators/sla";
 
 export const TEAMS = {
@@ -113,6 +114,17 @@ const defs: Def[] = [
   { code: "ALR-CHK-01", name: "Daily check not done", ownerTeam: TEAMS.txOps, severity: "high", clock: "due time (dueByLocal)", ticketProject: "TOPS", autoResolve: true, cadenceMins: 5,
     params: {}, evaluate: ops.evaluateCheckNotDone },
   // ── Client incidents and risks (spec §9.7) ──
+  // Spec §16.6 GX sprint UAT
+  { code: "ALR-UAT-01", name: "New GX sprint changes need UAT", ownerTeam: TEAMS.txOps, severity: "medium", clock: "immediate", autoResolve: false, params: {} },
+  { code: "ALR-UAT-02", name: "UAT not complete before PROD", ownerTeam: TEAMS.txOps, severity: "high", clock: "2 business days before PROD", autoResolve: true, cadenceMins: 60,
+    params: { businessDaysBeforeProd: 2 }, evaluate: gx.evaluateUatBeforeProd },
+  { code: "ALR-UAT-03", name: "UAT failed", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate", autoResolve: false, params: {} },
+  { code: "ALR-UAT-04", name: "Release notes changed after UAT sign-off", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate", autoResolve: false, params: {} },
+  { code: "ALR-UAT-05", name: "Risk-engine or permission change in sprint", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate", autoResolve: false,
+    // TODO(CONFIRM-COMPLIANCE-ROUTE): notify Compliance (risk engine) or IT (permissions) via the rule's route.
+    params: {} },
+  { code: "ALR-HB-GXNOTES", name: "Release notes not found", ownerTeam: TEAMS.txOps, severity: "medium", clock: "1 day", autoResolve: true, cadenceMins: 60,
+    params: { graceHours: 24 }, evaluate: gx.evaluateReleaseNotesMissing },
   { code: "ALR-CLI-01", name: "Client incident or risk raised", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate (P0/P1 critical)", autoResolve: false,
     params: {} },
   { code: "ALR-CLI-02", name: "Client update overdue", ownerTeam: TEAMS.txOps, severity: "high", clock: "CONFIRM-CLIENT-UPDATE-CADENCE", autoResolve: true, cadenceMins: 5,

@@ -25,7 +25,7 @@ interface Relation {
 const PK: Record<string, string> = {
   alertRule: "code", appSetting: "key", assetThreshold: "asset", riskRuleTier: "rule", sourceHeartbeat: "source",
   jiraProjectConfig: "key", dailyCheckDefinition: "code", featureFlag: "key", teamConfig: "team", assetStatus: "asset",
-  otcBreakType: "code", userNotificationPreference: "userId", incidentCategory: "code", syncCursor: "source",
+  otcBreakType: "code", uatTemplate: "code", userNotificationPreference: "userId", incidentCategory: "code", syncCursor: "source",
 };
 
 const COMPOUND: Record<string, Record<string, string[]>> = {
@@ -38,12 +38,14 @@ const COMPOUND: Record<string, Record<string, string[]>> = {
   ticketLink: { system_key_workItemId: ["system", "key", "workItemId"] },
   approvedValidator: { chain_validator: ["chain", "validator"] },
   leadHandover: { date_team: ["date", "team"] },
+  gxChange: { sprintId_section_rowHash: ["sprintId", "section", "rowHash"] },
 };
 
 /** Single-field unique constraints besides the primary key. */
 const UNIQUE: Record<string, string[]> = {
   fabInstruction: ["reference"],
   employee: ["email"],
+  gxSprint: ["sprint"],
 };
 
 const uniqueError = () => new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "fake" });
@@ -88,6 +90,10 @@ const DEFAULTS: Record<string, () => Row> = {
     absent: true, absenceSource: "manual", coveringEmployeeId: null, note: null, submittedById: null, submittedAt: null,
     postStatus: "pending", postAttempts: 0, lastPostAttemptAt: null, postedAt: null, postResults: [], missingNotifiedAt: null, reminderResults: [],
   }),
+  gxSprint: () => ({ releaseNotesUrl: "", releaseNotesPageId: null, pageVersion: 0, uatLandedAt: null, prodPlannedAt: null, kmncKeys: [], fixVersions: [], parentTicketKey: null, parentWorkItemId: null, lastParsedAt: null }),
+  gxChange: () => ({ gxJiraKeys: [], env: "", firstCell: "", qualifies: false, tags: [], team: "All", priority: "P2", uatTemplate: null, affectedTasks: [], affectedAlerts: [], affectedControls: [], predecessorId: null, workItemId: null, uatTicketKey: null, uatOutcome: null, pageVersion: 0, removedAt: null }),
+  gxImpactRule: () => ({ taskCodes: [], alertCodes: [], controls: [], team: "All", uatTemplate: "", priority: "P2", isActive: true, version: 1 }),
+  uatTemplate: () => ({ steps: "", expectedResults: "", evidenceRequired: "" }),
   ptoRecord: () => ({ type: "annual_leave", status: "approved", notes: "" }),
   teamConfig: () => ({ leadEmployeeId: null, deputyEmployeeId: null, memberEmployeeIds: [] }),
 };
@@ -200,6 +206,11 @@ export function createFakePrisma() {
       findUnique: async (args: { where: Where; include?: Record<string, unknown>; select?: Record<string, unknown> }) => {
         const r = uniqueWhere(name, args.where);
         return r ? shape(name, r, args) : null;
+      },
+      findUniqueOrThrow: async (args: { where: Where; include?: Record<string, unknown>; select?: Record<string, unknown> }) => {
+        const r = uniqueWhere(name, args.where);
+        if (!r) throw new Error(`fake-prisma: ${name} not found`);
+        return shape(name, r, args);
       },
       count: async (args: { where?: Where } = {}) => table(name).filter((r) => matches(name, r, args.where)).length,
       create: async (args: { data: Row }) => {
