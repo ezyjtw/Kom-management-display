@@ -3,11 +3,14 @@
  * across every replica (the in-memory limiter only sees one process). Used for
  * authentication-adjacent, search and export routes, per user and per IP.
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { apiError } from "@/lib/api/response";
 import { clientIp } from "@/lib/api/client-ip";
+import { getSetting } from "@/modules/settings/settings";
+import { recordExportCapExceeded } from "@/modules/security/events";
 
 export interface SharedLimit {
   limit: number;
@@ -52,6 +55,18 @@ export async function checkSharedRateLimit(request: NextRequest, name: keyof typ
         return res;
       }
     }
+    if (name === "export") {
+      // Daily volume cap per user (spec §17.4); the key carries the UTC day.
+      const day = now.toISOString().slice(0, 10);
+      const cap = await getSetting("security.exportDailyCap");
+      const { count } = await hit(`d:${userId}:export:${day}`, 2 * 86_400, now);
+      if (count > cap) {
+        // Alert once, on the first refused request of the day.
+        if (count === cap + 1) await recordExportCapExceeded({ userId, day, count, cap, path });
+        logger.security("Daily export cap exceeded", { path, count, cap });
+        return apiError(`Daily export limit of ${cap} reached. Ask a lead if you need more today.`, 429, "EXPORT_DAILY_CAP");
+      }
+    }
     return null;
   } catch (error) {
     logger.error("Shared rate limit unavailable; refusing the request", { limiter: name, error: error instanceof Error ? error.message : String(error) });
@@ -63,4 +78,34 @@ export async function checkSharedRateLimit(request: NextRequest, name: keyof typ
 export async function pruneRateLimitBuckets(now = new Date()): Promise<number> {
   const { count } = await prisma.rateLimitBucket.deleteMany({ where: { updatedAt: { lt: new Date(now.getTime() - 86_400_000) } } });
   return count;
+}
+
+/** Sign-in attempts per account across every replica (spec §17.4): 5 per 15 minutes. */
+export const LOGIN_LIMIT = { limit: 5, windowSeconds: 15 * 60 };
+
+function loginKey(identifier: string): string {
+  // Hash the account identifier: no email addresses in the bucket table.
+  return `login:${createHash("sha256").update(identifier.trim().toLowerCase()).digest("hex").slice(0, 32)}`;
+}
+
+/**
+ * Count one sign-in attempt for this account. Fails closed: if the counter
+ * cannot be written, the attempt is refused.
+ */
+export async function checkSharedLoginLimit(identifier: string, now = new Date()): Promise<{ allowed: boolean; retryAfterSeconds?: number; remainingAttempts?: number }> {
+  try {
+    const { count, windowStart } = await hit(loginKey(identifier), LOGIN_LIMIT.windowSeconds, now);
+    if (count > LOGIN_LIMIT.limit) {
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((windowStart.getTime() + LOGIN_LIMIT.windowSeconds * 1000 - now.getTime()) / 1000)) };
+    }
+    return { allowed: true, remainingAttempts: LOGIN_LIMIT.limit - count };
+  } catch (error) {
+    logger.error("Shared login limiter unavailable; refusing the attempt", { error: error instanceof Error ? error.message : String(error) });
+    return { allowed: false };
+  }
+}
+
+/** After a successful sign-in. */
+export async function resetSharedLoginLimit(identifier: string): Promise<void> {
+  await prisma.rateLimitBucket.deleteMany({ where: { key: loginKey(identifier) } }).catch(() => undefined);
 }

@@ -5,6 +5,8 @@ import { employeeService } from "@/modules/employees/services/employee-service";
 import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { validateBody, createEmployeeSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -44,25 +46,32 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createEmployeeSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { name, email, role, team, region } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "employee_create_requested", entityType: "employee", entityId: "new", userId: auditActorInfo.userId, summary: "Create an employee record", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createEmployeeSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { name, email, role, team, region } = body;
 
-    if (!name || !email || !role || !team) {
-      return apiValidationError("Missing required fields: name, email, role, team");
-    }
+        if (!name || !email || !role || !team) {
+          return apiValidationError("Missing required fields: name, email, role, team");
+        }
 
-    const employee = await employeeService.createEmployee(
-      { name, email, role, team, region },
-      {
-        userRole: auth.role,
-        userTeam: auth.team ?? undefined,
-        userEmployeeId: auth.employeeId ?? undefined,
+        const employee = await employeeService.createEmployee(
+          { name, email, role, team, region },
+          {
+            userRole: auth.role,
+            userTeam: auth.team ?? undefined,
+            userEmployeeId: auth.employeeId ?? undefined,
+          },
+        );
+
+        return apiSuccess(employee, undefined, 201);
       },
     );
-
-    return apiSuccess(employee, undefined, 201);
   } catch (error) {
     return handleApiError(error, "POST /api/employees");
   }

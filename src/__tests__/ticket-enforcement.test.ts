@@ -25,7 +25,7 @@ const p = vi.hoisted(() => {
   return {
     appSetting: model(), workItem: model(), timeLog: model(), alert: model(), alertRule: model(), jiraProjectConfig: model(),
     ticketLink: model(), dailyCheckItem: model(), dailyCheckRun: model(), sourceRecord: model(), commsThread: model(),
-    iaiDraft: model(), auditLog: model(), slackChannel: model(), employee: model(),
+    iaiDraft: model(), auditLog: model(), slackChannel: model(), employee: model(), userClientScope: model(),
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
   };
 });

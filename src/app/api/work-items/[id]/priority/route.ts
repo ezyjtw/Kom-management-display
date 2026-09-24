@@ -11,6 +11,7 @@ import { apiNotFoundError, apiSuccess, apiValidationError, apiForbiddenError, ha
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { changePrioritySchema, validateBody } from "@/lib/validation";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -25,6 +26,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const parsed = validateBody(changePrioritySchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const item = await prisma.workItem.findUnique({ where: { id } });
     if (!item) return apiNotFoundError("Work item");
 

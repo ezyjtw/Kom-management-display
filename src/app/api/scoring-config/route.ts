@@ -11,10 +11,11 @@ import { prisma } from "@/lib/prisma";
 import { getDefaultScoringConfig } from "@/lib/scoring";
 import { requireRole } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiForbiddenError, apiValidationError, handleApiError } from "@/lib/api/response";
 import { validateBody, createScoringConfigSchema } from "@/lib/validation";
 import { featureGate } from "@/lib/feature-gate";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function GET() {
   const gated = await featureGate("people.scoring");
@@ -77,25 +78,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Create as draft — activation requires review and approval
-    const newConfig = await prisma.scoringConfig.create({
-      data: {
-        version,
-        config: typeof config === "string" ? JSON.parse(config) : config,
-        active: false,
-        status: "draft",
-        createdById: auth.id,
-        notes: notes || `Draft created by ${auth.name}`,
+    const actor = auditActor(auth);
+    // Fail-closed: a configuration change without an audit record does not happen.
+    const newConfig = await auditedAction(
+      {
+        action: "config_draft_created",
+        entityType: "scoring_config",
+        entityId: "new",
+        userId: actor.userId,
+        summary: `New scoring config draft '${version}' created`,
+        after: { version, status: "draft" },
+        metadata: actor.metadata,
       },
-    });
-
-    await createAuditEntry({
-      action: "config_draft_created",
-      entityType: "scoring_config",
-      entityId: newConfig.id,
-      userId: auth.employeeId || auth.id,
-      summary: `New scoring config draft '${version}' created`,
-      after: { version, status: "draft" },
-    });
+      () => prisma.scoringConfig.create({
+        data: {
+          version,
+          config: typeof config === "string" ? JSON.parse(config) : config,
+          active: false,
+          status: "draft",
+          createdById: auth.id,
+          notes: notes || `Draft created by ${auth.name}`,
+        },
+      }),
+      undefined,
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(newConfig, undefined, 201);
   } catch (error) {

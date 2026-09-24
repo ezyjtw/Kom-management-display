@@ -11,6 +11,7 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 import { WorkActionError, type Actor } from "@/modules/work-items/actions";
 import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 
@@ -38,6 +39,8 @@ export async function workAction<T, R>(
     const parsed = validateBody(schema, await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error);
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const actor = auditActor(auth);
     // Fail-closed: no audit entry, no action (control-relevant work item change).
     const result = await auditedAction(

@@ -74,6 +74,7 @@ const DEFAULTS: Record<string, () => Row> = {
     autoResolvedAt: null, lastNotifiedAt: null, digestedAt: null, workItemId: null, exposureUsd: null, destination: "in_app",
   }),
   alertRule: () => ({ enabled: false, version: 1, lastEvaluatedAt: null, params: {}, route: {} }),
+  auditLog: () => ({ phase: "recorded", actorType: "user", actorUserId: null, correlationId: null, details: "{}" }),
   workItem: () => ({
     state: "open", priority: "P2", team: "All", metadata: {}, ticketKey: null, ticketSystem: null, ticketUrl: null, ownedAt: null,
     firstResponseAt: null, resolvedAt: null, slaPolicyId: null, exposureUsd: null, clientId: null, riskScore: null, rootCause: null, resolutionNote: null,

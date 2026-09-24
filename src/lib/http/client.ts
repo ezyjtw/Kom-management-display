@@ -4,6 +4,7 @@
 
 import { getAllowedHosts } from "@/lib/http/allowed-hosts";
 import { logger } from "@/lib/logger";
+import { recordIntegrationAuthFailure } from "@/modules/security/record";
 
 export class EgressDeniedError extends Error {
   constructor(readonly host: string) {
@@ -28,10 +29,17 @@ export function assertEgressAllowed(input: string | URL | Request, allowed = get
   return url;
 }
 
-/** Drop-in replacement for fetch() that enforces the egress allowlist. */
-export const httpFetch: typeof fetch = (input, init) => {
-  assertEgressAllowed(input);
-  return fetch(input, init);
+/**
+ * Drop-in replacement for fetch() that enforces the egress allowlist. A 401 or
+ * 403 from a connector is audit-logged (repeats raise ALR-SEC-05, spec §17.7).
+ */
+export const httpFetch: typeof fetch = async (input, init) => {
+  const url = assertEgressAllowed(input);
+  const res = await fetch(input, init);
+  if (res.status === 401 || res.status === 403) {
+    void recordIntegrationAuthFailure({ host: url.hostname.toLowerCase(), status: res.status });
+  }
+  return res;
 };
 
 export interface RetryOptions {

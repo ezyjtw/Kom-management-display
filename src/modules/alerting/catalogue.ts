@@ -15,6 +15,7 @@ import * as risk from "@/modules/alerting/evaluators/risk";
 import * as ops from "@/modules/alerting/evaluators/operations";
 import * as fab from "@/modules/alerting/evaluators/fab";
 import * as gx from "@/modules/alerting/evaluators/gx";
+import * as sec from "@/modules/alerting/evaluators/security";
 import { onSlaRaised, slaEvaluator, SLA_RULES } from "@/modules/alerting/evaluators/sla";
 
 export const TEAMS = {
@@ -142,6 +143,17 @@ const defs: Def[] = [
     params: { businessHours: null }, confirm: { businessHours: "CONFIRM-VND-HOURS" }, evaluate: ops.evaluateVendorNoUpdate },
   { code: "ALR-AUD-01", name: "Audit outcome missing", ownerTeam: TEAMS.txOps, severity: "high", clock: "10 min grace", autoResolve: true,
     params: { graceMins: 10, lookbackHours: 72 }, evaluate: ops.evaluateAuditOutcomeMissing },
+  // Internal security alerts (spec §17.7). TODO(CONFIRM-SEC-ROUTE): route to SecOps / the service owner once named.
+  { code: "ALR-SEC-01", name: "Repeated authorisation failures", ownerTeam: TEAMS.txOps, severity: "high", clock: "N denials in window", autoResolve: true, cadenceMins: 5,
+    params: { threshold: 10, windowMins: 15 }, evaluate: sec.evaluateRepeatedDenials },
+  { code: "ALR-SEC-02", name: "Privileged configuration change", ownerTeam: TEAMS.txOps, severity: "medium", clock: "immediate (informational, ticketed)", autoResolve: false, cadenceMins: 5,
+    params: { lookbackMins: 60 }, evaluate: sec.evaluatePrivilegedChange },
+  { code: "ALR-SEC-03", name: "Export threshold exceeded", ownerTeam: TEAMS.txOps, severity: "high", clock: "immediate", autoResolve: false,
+    params: {} },
+  { code: "ALR-SEC-04", name: "Break-glass or non-SSO access used", ownerTeam: TEAMS.txOps, severity: "critical", clock: "immediate", autoResolve: false,
+    params: {} },
+  { code: "ALR-SEC-05", name: "Integration credential failure", ownerTeam: TEAMS.txOps, severity: "high", clock: "N failures in window", autoResolve: true, cadenceMins: 5,
+    params: { threshold: 3, windowMins: 30 }, evaluate: sec.evaluateCredentialFailures },
   { code: "ALR-HB-SLACK", name: "Slack polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,
     params: { staleMins: 10 }, evaluate: ops.evaluateMessagePolling("slack") },
   { code: "ALR-HB-MAIL", name: "Mailbox polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,

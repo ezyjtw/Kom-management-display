@@ -15,6 +15,7 @@ import { notAQuestionSchema } from "@/lib/validation";
 import { changeState, TicketWriteError } from "@/modules/work-items/ticket-writeback";
 import { getSetting } from "@/modules/settings/settings";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -34,6 +35,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const item = await prisma.workItem.findUnique({ where: { id } });
     if (!item) return apiNotFoundError("Work item");
     if (item.kind !== "client_request") {

@@ -8,10 +8,22 @@ import { prisma } from "@/lib/prisma";
 import { getActiveScoringConfig } from "@/lib/scoring";
 import { requireAuth, requireRole } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, handleApiError, apiForbiddenError, apiValidationError, apiNotFoundError } from "@/lib/api/response";
 import { z } from "zod";
 import { featureGate } from "@/lib/feature-gate";
+import { auditActor } from "@/modules/core-data/audit-actor";
+
+const createConfigSchema = z.object({
+  version: z.string().min(1).max(50),
+  config: z.union([z.string().max(100_000), z.record(z.string(), z.unknown())]),
+  notes: z.string().max(2000).optional(),
+});
+const transitionConfigSchema = z.object({
+  configId: z.string().min(1).max(100),
+  action: z.enum(["submit_review", "approve", "activate", "archive", "send_back"]),
+  notes: z.string().max(2000).optional(),
+});
 
 export async function GET(request: NextRequest) {
   const gated = await featureGate("people.scoring");
@@ -62,9 +74,9 @@ export async function POST(request: NextRequest) {
   if (!authz.allowed) return apiForbiddenError();
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = createConfigSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { version, config, notes } = body;
 
     if (!version || !config) {
@@ -77,25 +89,30 @@ export async function POST(request: NextRequest) {
       return apiValidationError(`Config version '${version}' already exists`);
     }
 
-    const newConfig = await prisma.scoringConfig.create({
-      data: {
-        version,
-        config: typeof config === "string" ? JSON.parse(config) : config,
-        active: false,
-        status: "draft",
-        createdById: auth.id,
-        notes: notes || `Draft config created by ${auth.name}`,
+    const actor = auditActor(auth);
+    const newConfig = await auditedAction(
+      {
+        action: "config_change",
+        entityType: "scoring_config",
+        entityId: "new",
+        userId: actor.userId,
+        summary: `New scoring config draft '${version}' created`,
+        after: { version, notes },
+        metadata: actor.metadata,
       },
-    });
-
-    await createAuditEntry({
-      action: "config_change",
-      entityType: "scoring_config",
-      entityId: newConfig.id,
-      userId: auth.employeeId || auth.id,
-      summary: `New scoring config draft '${version}' created`,
-      after: { version, notes },
-    });
+      () => prisma.scoringConfig.create({
+        data: {
+          version,
+          config: typeof config === "string" ? JSON.parse(config) : config,
+          active: false,
+          status: "draft",
+          createdById: auth.id,
+          notes: notes || `Draft config created by ${auth.name}`,
+        },
+      }),
+      undefined,
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(newConfig);
   } catch (error) {
@@ -121,9 +138,9 @@ export async function PUT(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = transitionConfigSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { configId, action: configAction, notes } = body;
 
     if (!configId || !configAction) {
@@ -219,21 +236,23 @@ export async function PUT(request: NextRequest) {
       updateData.activatedAt = new Date();
     }
 
-    const updated = await prisma.scoringConfig.update({
-      where: { id: configId },
-      data: updateData,
-    });
-
-    await createAuditEntry({
-      action: `config_${configAction}`,
-      entityType: "scoring_config",
-      entityId: configId,
-      userId: auth.employeeId || auth.id,
-      summary: `Scoring config '${config.version}' transitioned: ${currentStatus} → ${targetStatus}`,
-      before: { status: currentStatus, active: config.active },
-      after: { status: targetStatus, active: targetStatus === "active" },
-      metadata: { notes, performedBy: auth.name },
-    });
+    const transitionActor = auditActor(auth);
+    const updated = await auditedAction(
+      {
+        action: `config_${configAction}`,
+        entityType: "scoring_config",
+        entityId: configId,
+        userId: transitionActor.userId,
+        summary: `Scoring config '${config.version}' transitioned: ${currentStatus} → ${targetStatus}`,
+        before: { status: currentStatus, active: config.active },
+        after: { status: targetStatus, active: targetStatus === "active" },
+        metadata: { ...transitionActor.metadata, notes, performedBy: auth.name },
+      },
+      () => prisma.scoringConfig.update({
+        where: { id: configId },
+        data: updateData,
+      }),
+    );
 
     return apiSuccess(updated);
   } catch (error) {

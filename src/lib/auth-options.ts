@@ -4,9 +4,10 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { checkLoginRateLimit, resetLoginRateLimit } from "@/lib/rate-limit";
+import { checkSharedLoginLimit, resetSharedLoginLimit } from "@/lib/api/shared-rate-limit";
 import { logger } from "@/lib/logger";
 import { recordSession, revokeSession } from "@/lib/session-revocation";
+import { recordNonSsoLogin, recordRoleChange } from "@/modules/security/events";
 import { env } from "@/lib/env";
 import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
 import {
@@ -60,12 +61,12 @@ const credentialsProvider = () =>
         return null;
       }
 
-      // Rate limiting: prevent brute-force attacks
-      const rateCheck = checkLoginRateLimit(credentials.email);
+      // Rate limiting across every replica (spec §17.4); fails closed.
+      const rateCheck = await checkSharedLoginLimit(credentials.email);
       if (!rateCheck.allowed) {
         logger.security("Login rate limited", {
           email: credentials.email,
-          retryAfterMs: rateCheck.retryAfterMs,
+          retryAfterSeconds: rateCheck.retryAfterSeconds,
         });
         throw new Error("Too many login attempts. Please try again later.");
       }
@@ -87,7 +88,7 @@ const credentialsProvider = () =>
       }
 
       // Successful login — reset rate limit counter
-      resetLoginRateLimit(credentials.email);
+      await resetSharedLoginLimit(credentials.email);
       logger.info("Login successful", { email: credentials.email, role: user.role });
       await logLoginAudit(user.id, credentials.email, true);
 
@@ -165,11 +166,16 @@ async function upsertSsoUser(email: string, name: string, role: "admin" | "lead"
     where: { email: { equals: email, mode: "insensitive" } },
     select: { id: true, team: true },
   });
+  const previous = await prisma.user.findUnique({ where: { email }, select: { role: true } });
   const user = await prisma.user.upsert({
     where: { email },
     update: { role, name, employeeId: employee?.id ?? null },
     create: { email, name, role, password: SSO_ONLY_PASSWORD, employeeId: employee?.id ?? null },
   });
+  // Spec §17.7: a role change through Entra group membership is audited (and raises ALR-SEC-02).
+  if (previous?.role !== role) {
+    await recordRoleChange({ targetUserId: user.id, from: previous?.role ?? null, to: role, source: "sso_group", actorUserId: null });
+  }
   return { user, team: employee?.team ?? null };
 }
 
@@ -182,8 +188,15 @@ export const authOptions: NextAuthOptions = {
     AZURE_AD_CLIENT_SECRET: env("AZURE_AD_CLIENT_SECRET"),
   }),
   callbacks: {
-    async signIn({ account, profile }) {
-      if (account?.provider !== "azure-ad") return true;
+    async signIn({ account, profile, user }) {
+      if (account?.provider !== "azure-ad") {
+        // Spec §17.3/§17.7: any production sign-in not through Entra is break-glass or a
+        // misconfiguration (production never registers the credentials provider). ALR-SEC-04.
+        if (env("NODE_ENV") === "production") {
+          await recordNonSsoLogin({ userId: (user?.id as string | undefined) ?? null, provider: account?.provider ?? "unknown" });
+        }
+        return true;
+      }
 
       const decision = await decideSsoLogin(
         (profile ?? {}) as EntraProfileClaims,

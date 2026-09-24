@@ -6,6 +6,25 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
 
+const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
+const createDailyTaskSchema = z.object({
+  date: z.string().min(1).max(40),
+  team: z.string().min(1).max(100),
+  assigneeId: z.string().max(100).nullish(),
+  title: z.string().min(1).max(300),
+  description: z.string().max(5000).optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  category: z.enum(["operational", "compliance", "client", "administrative"]).optional(),
+});
+const updateDailyTaskSchema = z.object({
+  id: z.string().min(1).max(100),
+  status: z.enum(["pending", "in_progress", "completed", "skipped"]).optional(),
+  assigneeId: z.string().max(100).nullish(),
+  priority: z.enum(PRIORITIES).optional(),
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional(),
+});
+
 /**
  * GET /api/schedule/daily-tasks
  * Get daily tasks. Filters: ?date, ?team, ?status, ?assigneeId
@@ -82,9 +101,9 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = createDailyTaskSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { date, team, assigneeId, title, description, priority, category } = body;
 
     if (!date || !team || !title) {
@@ -148,9 +167,9 @@ export async function PATCH(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = updateDailyTaskSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { id, status, assigneeId, priority, title, description } = body;
 
     if (!id) {

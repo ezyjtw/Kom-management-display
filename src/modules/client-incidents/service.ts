@@ -25,6 +25,7 @@ import { commentInternal } from "@/modules/work-items/ticket-writeback";
 import { createIaiDraft } from "@/modules/iai/drafts";
 import { raiseAlert } from "@/modules/alerting/raise";
 import { assertClientVisible } from "@/modules/client-incidents/guards";
+import { canSeeClient, clientScopeFor } from "@/modules/auth/client-scope";
 import { resolveSource, sourceSchema, type ReplyTarget } from "@/modules/client-incidents/resolve";
 
 export const CLIENT_STATUSES = ["Received", "Investigating", "Update provided", "Resolved"] as const;
@@ -175,6 +176,10 @@ export async function raiseClientEntry(input: RaiseInput, actor: Actor): Promise
   if (!category?.isActive) throw new ClientIncidentError("Unknown or inactive category.");
   const sensitive = category.complianceSensitive;
   const resolved = await resolveSource(input.source);
+  // Client isolation (spec §17.5): a user may only raise for a client in their scope.
+  if (!canSeeClient(await clientScopeFor({ id: actor.userId, role: actor.role }), resolved.client.id)) {
+    throw new ClientIncidentError("Source not found.", 404);
+  }
 
   // Client-visible text is checked before anything is created (H12).
   await assertClientVisible(input.clientFacingSummary, resolved.client.id, input.internalDescription);

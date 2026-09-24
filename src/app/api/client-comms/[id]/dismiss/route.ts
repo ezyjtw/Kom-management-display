@@ -11,7 +11,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const dismissSchema = z.object({
   reason: z.string().max(1000).optional(),
@@ -44,25 +45,27 @@ export async function POST(
       return apiNotFoundError("Client comms draft");
     }
 
-    // Dismiss
-    const updated = await prisma.clientCommsDraft.update({
-      where: { id },
-      data: { status: "dismissed" },
-    });
-
-    // Audit
-    await createAuditEntry({
-      action: "client_comms_dismissed",
-      entityType: "client_comms_draft",
-      entityId: id,
-      userId: authResult.id,
-      summary: `Dismissed client comms draft for ${draft.clientName}`,
-      metadata: {
-        reason: validation.data.reason,
-        incidentId: draft.incidentId,
-        clientName: draft.clientName,
+    // Dismiss (fail-closed audit: a client comms decision is control evidence)
+    const actor = auditActor(authResult);
+    const updated = await auditedAction(
+      {
+        action: "client_comms_dismissed",
+        entityType: "client_comms_draft",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Dismissed client comms draft for ${draft.clientName}`,
+        metadata: {
+          ...actor.metadata,
+          reason: validation.data.reason,
+          incidentId: draft.incidentId,
+          clientName: draft.clientName,
+        },
       },
-    });
+      () => prisma.clientCommsDraft.update({
+        where: { id },
+        data: { status: "dismissed" },
+      }),
+    );
 
     return apiSuccess(updated);
   } catch (error) {

@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const envVars = vi.hoisted(() => ({} as Record<string, string | undefined>));
-vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
+vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k], secret: (k: string) => process.env[k] }));
 vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["api-demo.komainu.io"]) }));
 
 const prismaMock = vi.hoisted(() => ({

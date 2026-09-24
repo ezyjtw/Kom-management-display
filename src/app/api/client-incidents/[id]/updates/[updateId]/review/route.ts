@@ -12,6 +12,7 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { approveClientUpdate } from "@/modules/client-incidents/service";
 import { clientIncidentError } from "@/modules/client-incidents/http";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string; updateId: string }> }) {
   const auth = await requireAuth();
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
   try {
     const { id, updateId } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const actor = auditActor(auth);
     const update = await auditedAction(
       { action: "client_update_second_approver", entityType: "work_item", entityId: id, userId: actor.userId, summary: "Second team member reviews and posts client update", metadata: { ...actor.metadata, updateId } },

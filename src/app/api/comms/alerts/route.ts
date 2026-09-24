@@ -7,6 +7,7 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { validateBody, updateCommsAlertSchema } from "@/lib/validation";
 import { acknowledgeBlocker } from "@/modules/alerting/acknowledge";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { auditedResponse } from "@/lib/api/audit";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -53,46 +54,53 @@ export async function PATCH(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateCommsAlertSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { alertId, action } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "comms_alert_updated", entityType: "alert", entityId: "comms", userId: auditActorInfo.userId, summary: "Acknowledge or update a comms alert", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateCommsAlertSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { alertId, action } = parsed.data;
 
-    if (action === "acknowledge") {
-      const blocker = await acknowledgeBlocker(alertId);
-      if (blocker) return NextResponse.json({ success: false, error: blocker }, { status: 422 });
-    }
+        if (action === "acknowledge") {
+          const blocker = await acknowledgeBlocker(alertId);
+          if (blocker) return NextResponse.json({ success: false, error: blocker }, { status: 422 });
+        }
 
-    const data: Record<string, unknown> = {};
-    if (action === "acknowledge") {
-      data.status = "acknowledged";
-      data.acknowledgedAt = new Date();
-    } else if (action === "resolve") {
-      data.status = "resolved";
-      data.resolvedAt = new Date();
-    }
+        const data: Record<string, unknown> = {};
+        if (action === "acknowledge") {
+          data.status = "acknowledged";
+          data.acknowledgedAt = new Date();
+        } else if (action === "resolve") {
+          data.status = "resolved";
+          data.resolvedAt = new Date();
+        }
 
-    const alert = await prisma.alert.update({
-      where: { id: alertId },
-      data,
-    });
+        const alert = await prisma.alert.update({
+          where: { id: alertId },
+          data,
+        });
 
-    await prisma.auditLog.create({
-      data: {
-        action: `alert_${action}`,
-        entityType: "alert",
-        entityId: alertId,
-        userId: auditActor(auth).userId,
-        details: JSON.stringify({
-          ...auditActor(auth).metadata,
-          alertType: alert.type,
-          alertMessage: alert.message,
-          threadId: alert.threadId,
-        }),
+        await prisma.auditLog.create({
+          data: {
+            action: `alert_${action}`,
+            entityType: "alert",
+            entityId: alertId,
+            userId: auditActor(auth).userId,
+            details: JSON.stringify({
+              ...auditActor(auth).metadata,
+              alertType: alert.type,
+              alertMessage: alert.message,
+              threadId: alert.threadId,
+            }),
+          },
+        });
+
+        return apiSuccess(alert);
       },
-    });
-
-    return apiSuccess(alert);
+    );
   } catch (error) {
     return handleApiError(error, "PATCH /api/comms/alerts");
   }

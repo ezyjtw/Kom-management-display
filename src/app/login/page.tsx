@@ -5,6 +5,7 @@ import { getProviders, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Zap, Loader2 } from "lucide-react";
 import { useBranding } from "@/lib/use-branding";
+import { safeCallback } from "@/lib/safe-callback";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,12 +15,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { branding } = useBranding();
   const [providerIds, setProviderIds] = useState<string[] | null>(null);
+  const [callbackUrl, setCallbackUrl] = useState("/dashboard");
+  const [reauth, setReauth] = useState(false);
 
   useEffect(() => {
     getProviders()
       .then((p) => setProviderIds(p ? Object.keys(p) : []))
       .catch(() => setProviderIds([]));
-    const code = new URLSearchParams(window.location.search).get("error");
+    const query = new URLSearchParams(window.location.search);
+    setCallbackUrl(safeCallback(query.get("callbackUrl")));
+    setReauth(query.get("reauth") === "1");
+    if (query.get("reason") === "session_expired") setError("Your session has expired. Please sign in again.");
+    const code = query.get("error");
     if (code === "AccessDenied") {
       setError("Access denied. Your account is not mapped to a KOMmand Centre role or employee record. Contact your administrator.");
     } else if (code) {
@@ -29,6 +36,12 @@ export default function LoginPage() {
 
   const ssoEnabled = providerIds?.includes("azure-ad") ?? false;
   const localEnabled = providerIds?.includes("credentials") ?? false;
+
+  // Step-up re-authentication (spec §17.3): a sensitive action needs a recent
+  // sign-in, so ask Entra to prompt for credentials again, then come back.
+  useEffect(() => {
+    if (reauth && ssoEnabled) void signIn("azure-ad", { callbackUrl }, { prompt: "login" });
+  }, [reauth, ssoEnabled, callbackUrl]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +59,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Invalid email or password");
     } else {
-      router.push("/dashboard");
+      router.push(callbackUrl);
       router.refresh();
     }
   }
@@ -65,7 +78,7 @@ export default function LoginPage() {
             </div>
           )}
           <h1 className="text-2xl font-bold text-foreground">{branding.appName}</h1>
-          <p className="text-sm text-muted-foreground mt-1">Sign in to your ops dashboard</p>
+          <p className="text-sm text-muted-foreground mt-1">{reauth ? "Sign in again to confirm it is you" : "Sign in to your ops dashboard"}</p>
         </div>
 
         {error && (
@@ -77,7 +90,7 @@ export default function LoginPage() {
         {ssoEnabled && (
           <button
             type="button"
-            onClick={() => signIn("azure-ad", { callbackUrl: "/dashboard" })}
+            onClick={() => signIn("azure-ad", { callbackUrl }, reauth ? { prompt: "login" } : undefined)}
             className="w-full h-10 mb-4 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
           >
             Sign in with Microsoft

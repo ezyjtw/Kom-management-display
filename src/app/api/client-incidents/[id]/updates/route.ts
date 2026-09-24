@@ -14,6 +14,7 @@ import { validateBody } from "@/lib/validation";
 import { postClientUpdate, updateSchema } from "@/modules/client-incidents/service";
 import { clientIncidentError } from "@/modules/client-incidents/http";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const parsed = validateBody(updateSchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
     const actor = auditActor(auth);

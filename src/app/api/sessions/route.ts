@@ -9,6 +9,8 @@ import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } fro
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, revokeSessionSchema } from "@/lib/validation";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/sessions
@@ -81,7 +83,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const revoked = await revokeSession(sessionToken, reason || "user_revocation");
+        const actor = auditActor(auth);
+        const revoked = await auditedAction(
+          { action: "session_revoked", entityType: "session", entityId: String(sessionToken).slice(0, 12), userId: actor.userId, summary: "Revoke a session", metadata: { ...actor.metadata, reason: reason || "user_revocation" } },
+          () => revokeSession(sessionToken, reason || "user_revocation"),
+          (r) => ({ revoked: r }),
+        );
         return apiSuccess({ revoked });
       }
 
@@ -93,7 +100,12 @@ export async function POST(request: NextRequest) {
           return apiForbiddenError();
         }
 
-        const count = await revokeAllUserSessions(targetUserId, reason || "all_sessions_revoked");
+        const actor = auditActor(auth);
+        const count = await auditedAction(
+          { action: "sessions_revoked_all", entityType: "user", entityId: targetUserId, userId: actor.userId, summary: "Revoke all sessions of a user", metadata: { ...actor.metadata, reason: reason || "all_sessions_revoked" } },
+          () => revokeAllUserSessions(targetUserId, reason || "all_sessions_revoked"),
+          (r) => ({ revokedCount: r }),
+        );
         return apiSuccess({ revokedCount: count });
       }
 

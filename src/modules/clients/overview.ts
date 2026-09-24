@@ -6,11 +6,12 @@
 import { prisma } from "@/lib/prisma";
 import { loadCalendar, type BusinessCalendar } from "@/modules/alerting/calendar";
 import { OPEN_STATES, slaStatus } from "@/modules/work-items/queue";
+import { clientTableWhere, type ClientScope } from "@/modules/auth/client-scope";
 
-export async function clientsOverview(now = new Date()) {
+export async function clientsOverview(now = new Date(), scope: ClientScope = { all: true }) {
   const since = new Date(now.getTime() - 30 * 86_400_000);
   const [clients, items, logs, channels, slackChannels] = await Promise.all([
-    prisma.client.findMany({ where: { isActive: true }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
+    prisma.client.findMany({ where: { isActive: true, ...clientTableWhere(scope) }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
     prisma.workItem.findMany({ where: { clientId: { not: null }, state: { in: [...OPEN_STATES] } }, include: { slaPolicy: true } }),
     prisma.timeLog.findMany({ where: { clientId: { not: null }, loggedAt: { gte: since } }, select: { clientId: true, bucketMins: true } }),
     prisma.clientChannel.findMany({ select: { clientId: true, kind: true, ref: true } }),

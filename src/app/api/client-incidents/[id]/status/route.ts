@@ -10,6 +10,7 @@ import { setClientStatus } from "@/modules/client-incidents/service";
 import { auditedAction } from "@/lib/api/audit";
 import { auditActor } from "@/modules/core-data/audit-actor";
 import { clientIncidentError } from "@/modules/client-incidents/http";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 const bodySchema = z.object({ status: z.string().min(1).max(40) });
 
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const parsed = validateBody(bodySchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
     const actor = auditActor(auth);

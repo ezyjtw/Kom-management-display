@@ -6,6 +6,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { CLIENT_STATUSES, clientEntryMeta, WITHHELD_BANNER } from "@/modules/client-incidents/service";
 import { getSetting } from "@/modules/settings/settings";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -14,6 +15,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (authz instanceof NextResponse) return authz;
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const item = await prisma.workItem.findUnique({ where: { id }, include: { client: { select: { displayName: true } } } });
     if (!item || (item.kind !== "client_incident" && item.kind !== "client_risk")) return apiNotFoundError("Client incident or risk");
     const meta = clientEntryMeta(item);

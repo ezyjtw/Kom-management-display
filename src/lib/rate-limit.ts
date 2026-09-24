@@ -15,10 +15,9 @@
  * persisted to the database so that admins can observe lockout events
  * across all instances from the Admin Panel.
  *
- * TODO: Replace with Redis-backed rate limiting for true multi-instance
- * enforcement. Migration path: swap the `store` Map for a Redis hash
- * with TTL-based expiry. The public API (checkLoginRateLimit,
- * resetLoginRateLimit) stays the same.
+ * Sign-in no longer uses this store: the credentials provider uses the
+ * shared, database-backed limiter (checkSharedLoginLimit in
+ * src/lib/api/shared-rate-limit.ts), which holds across replicas.
  * =====================================================================
  */
 

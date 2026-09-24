@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { environmentSecret, loadSecrets, nonSecretEnv, type SecretSource } from "@/lib/secrets";
 
 const envSchema = z.object({
   // ─── Required ───
@@ -24,6 +25,8 @@ const envSchema = z.object({
 
   // ─── Optional with defaults ───
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  // Directory of mounted secret files (spec §17.3); see src/lib/secrets.ts
+  SECRETS_DIR: z.string().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // ─── Optional integrations (only validated if present) ───
@@ -96,6 +99,8 @@ const envSchema = z.object({
 
   // Build metadata
   GIT_COMMIT_SHA: z.string().optional(),
+  // Which workload this process is (web | worker), recorded with credential use (spec §17.7)
+  KOM_WORKLOAD: z.enum(["web", "worker"]).optional(),
 
   // Single sign-on (Entra ID)
   AZURE_AD_TENANT_ID: z.string().optional(),
@@ -124,6 +129,7 @@ export type Env = z.infer<typeof envSchema>;
  */
 let _env: Env | null = null;
 let _validated = false;
+let _secrets: SecretSource | null = null;
 
 export function getEnv(): Env {
   if (_env) return _env;
@@ -137,11 +143,19 @@ export function getEnv(): Env {
     return _env;
   }
 
-  const result = envSchema.safeParse(process.env);
+  // Secrets come from the mounted directory (production) or, in development
+  // and test without SECRETS_DIR, from the environment. See src/lib/secrets.ts.
+  _secrets = loadSecrets(process.env);
+  const source = { ...nonSecretEnv(process.env), ..._secrets.values };
+  const result = envSchema.safeParse(source);
+  const leaked = _secrets.leakedEnvKeys.map((k) => ({
+    path: [k],
+    message: "secret-bearing environment variable is not allowed when secrets are read from SECRETS_DIR",
+  }));
 
-  if (!result.success) {
-    const formatted = result.error.issues
-      .map((i: z.ZodIssue) => `  - ${i.path.join(".")}: ${i.message}`)
+  if (!result.success || leaked.length) {
+    const formatted = [...(result.success ? [] : result.error.issues), ...leaked]
+      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
 
     console.error(
@@ -152,7 +166,9 @@ export function getEnv(): Env {
     // In development/test, warn but don't crash to allow partial setup
     if (process.env.NODE_ENV !== "production") {
       console.warn("⚠️  Continuing with invalid env in development mode.\n");
-      _env = process.env as unknown as Env;
+      // Environment mode keeps the live process.env view, as before; a secrets
+      // directory keeps the merged copy so secrets never enter process.env.
+      _env = (_secrets.source === "environment" ? process.env : source) as unknown as Env;
       return _env;
     }
 
@@ -162,6 +178,29 @@ export function getEnv(): Env {
   _env = result.data;
   _validated = true;
   return _env;
+}
+
+/**
+ * A secret by name, for keys not in the schema (per-user Komainu secrets named
+ * by KOMAINU_API_CREDENTIALS[].secretRef). Reads through the secret loader.
+ */
+export function secret(name: string): string | undefined {
+  getEnv();
+  if (_secrets?.source === "environment") return environmentSecret(name);
+  return _secrets?.values[name];
+}
+
+/** Where secrets were loaded from, for the readiness probe (never the values). */
+export function secretSourceInfo(): { source: SecretSource["source"]; dir: string | null; keys: string[] } | null {
+  getEnv();
+  return _secrets ? { source: _secrets.source, dir: _secrets.dir, keys: Object.keys(_secrets.values).sort() } : null;
+}
+
+/** Test hook: re-read the environment and secrets. */
+export function __resetEnvForTests(): void {
+  _env = null;
+  _validated = false;
+  _secrets = null;
 }
 
 /**

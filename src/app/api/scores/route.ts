@@ -6,11 +6,12 @@ import { createScoreSchema, validateBody } from "@/lib/validation";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
 import { scoringService } from "@/modules/scoring/services/scoring-service";
 import { scoreRepository } from "@/modules/scoring/repositories/score-repository";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import type { Category } from "@/types";
 import { featureGate } from "@/lib/feature-gate";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function GET(request: NextRequest) {
   const gated = await featureGate("people.scoring");
@@ -229,25 +230,29 @@ export async function POST(request: NextRequest) {
     const config = await scoringService.getActiveScoringConfig();
     const score = scoringService.rawIndexToScore(rawIndex);
 
-    const categoryScore = await scoreRepository.upsertScore({
-      employeeId,
-      periodId,
-      category,
-      rawIndex,
-      score,
-      configVersion: config.version,
-      evidence: (evidence || []) as Prisma.InputJsonValue,
-      metadata: (metadata || {}) as Prisma.InputJsonValue,
-    });
-
-    await createAuditEntry({
-      action: "score_updated",
-      entityType: "score",
-      entityId: categoryScore.id,
-      userId: auth.id,
-      summary: `Score updated for employee ${employeeId}, category ${category}`,
-      after: { employeeId, periodId, category, rawIndex, score },
-    });
+    const actor = auditActor(auth);
+    const categoryScore = await auditedAction(
+      {
+        action: "score_updated",
+        entityType: "score",
+        entityId: `${employeeId}:${periodId}:${category}`,
+        userId: actor.userId,
+        summary: `Score updated for employee ${employeeId}, category ${category}`,
+        after: { employeeId, periodId, category, rawIndex, score },
+        metadata: actor.metadata,
+      },
+      () => scoreRepository.upsertScore({
+        employeeId,
+        periodId,
+        category,
+        rawIndex,
+        score,
+        configVersion: config.version,
+        evidence: (evidence || []) as Prisma.InputJsonValue,
+        metadata: (metadata || {}) as Prisma.InputJsonValue,
+      }),
+      (r) => ({ scoreId: r.id }),
+    );
 
     return apiSuccess(categoryScore);
   } catch (error) {

@@ -10,7 +10,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "worker": "tsx src/worker/index.ts",
+    "worker": "KOM_WORKLOAD=worker tsx src/worker/index.ts",
     "worker:prod": "node worker.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

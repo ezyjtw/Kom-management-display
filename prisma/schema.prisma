@@ -202,12 +202,13 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee               Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  workflowEvents         WorkflowEvent[]  @relation("WorkflowPerformedBy")
-  createdScoringConfigs  ScoringConfig[]  @relation("ScoringConfigCreatedBy")
-  reviewedScoringConfigs ScoringConfig[]  @relation("ScoringConfigReviewedBy")
-  approvedScoringConfigs ScoringConfig[]  @relation("ScoringConfigApprovedBy")
-  scoredKnowledgeScores  KnowledgeScore[] @relation("KnowledgeScoreScorer")
+  employee               Employee?         @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  workflowEvents         WorkflowEvent[]   @relation("WorkflowPerformedBy")
+  createdScoringConfigs  ScoringConfig[]   @relation("ScoringConfigCreatedBy")
+  reviewedScoringConfigs ScoringConfig[]   @relation("ScoringConfigReviewedBy")
+  approvedScoringConfigs ScoringConfig[]   @relation("ScoringConfigApprovedBy")
+  scoredKnowledgeScores  KnowledgeScore[]  @relation("KnowledgeScoreScorer")
+  clientScopes           UserClientScope[]
 }
 
 // ─── Scoring System ───
@@ -1627,8 +1628,27 @@ model Client {
   workItems     WorkItem[]
   timeLogs      TimeLog[]
   slackChannels SlackChannel[]
+  userScopes    UserClientScope[]
 
   @@index([isActive])
+}
+
+/// Spec §17.5 client isolation. A user with no rows sees every client
+/// (TODO(CONFIRM-CLIENT-SCOPING): whether ops staff are restricted at all);
+/// a user with rows sees only those clients (plus work with no client).
+/// Enforced in one place: src/modules/auth/client-scope.ts.
+model UserClientScope {
+  userId    String
+  clientId  String
+  createdAt DateTime @default(now())
+  /// User.id of the admin who granted it.
+  grantedBy String?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([userId, clientId])
+  @@index([clientId])
 }
 
 model ClientChannel {

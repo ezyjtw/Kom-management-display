@@ -59,6 +59,8 @@ export const SETTINGS = {
   "alerting.oohAckMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Out-of-hours acknowledgement window (minutes, critical)" },
   /** Spec §11.3 quiet rule: the same alert never re-notifies within this window. */
   "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
+  /** Spec §17.4: exports and reports per user per UTC day; above it requests are refused and ALR-SEC-03 is raised (TODO(CONFIRM-EXPORT-CAP)). */
+  "security.exportDailyCap": { schema: z.number().int().min(1).max(10_000), default: 50, label: "Daily export cap per user" },
   /** Spec §12 CHK-09K: named users (user ids) allowed kps:view, in addition to admins. */
   "kps.viewerUserIds": { schema: z.array(z.string().min(1).max(100)).max(50), default: [] as string[], label: "KPS viewers (user ids)" },
   /** Incident severities that open an IAI draft (spec §12 CHK-11, TODO(CONFIRM-IAI-INCIDENT-CRITERIA)). Empty = none. */

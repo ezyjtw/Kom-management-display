@@ -2,6 +2,8 @@ import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { lookupSensitiveAction } from "@/modules/auth/sensitive-actions-registry";
 import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
+import { env } from "@/lib/env";
+import { recordPermissionDenied } from "@/modules/security/record";
 import { CSRF_HEADER, CSRF_EXEMPT_PATHS, buildCsp, csrfCookieName, SECURITY_HEADERS, isPublicPath } from "@/lib/security-policy";
 
 /**
@@ -39,7 +41,7 @@ function randomToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Constant-time string comparison (Edge runtime has no timingSafeEqual). */
+/** Constant-time string comparison. */
 function sameToken(a: string, b: string): boolean {
   if (a.length !== b.length || !a.length) return false;
   let diff = 0;
@@ -97,11 +99,15 @@ export async function middleware(req: NextRequest) {
   const nonce = btoa(randomToken().slice(0, 32));
   const correlationId = crypto.randomUUID().substring(0, 8);
 
-  const pass = () => {
+  const pass = (userId?: string | null) => {
     const headers = new Headers(req.headers);
+    // Server-set only: never trust a client-supplied value.
+    headers.delete("x-user-id");
+    if (userId) headers.set("x-user-id", userId);
     headers.set("x-nonce", nonce);
     headers.set("x-correlation-id", correlationId);
     headers.set("x-http-method", req.method);
+    headers.set("x-pathname", path);
     // Next.js reads the nonce from the request CSP header and applies it to its own scripts.
     headers.set("Content-Security-Policy", buildCsp(nonce, process.env.NODE_ENV !== "production"));
     const res = NextResponse.next({ request: { headers } });
@@ -110,11 +116,17 @@ export async function middleware(req: NextRequest) {
     return finish(res, req, nonce, !!secure);
   };
   const deny = (res: NextResponse) => finish(res, req, nonce, !!secure);
+  /** Role-gate denial: audited (spec §17.7), counted by ALR-SEC-01. Not awaited: never delays the response. */
+  const forbid = (res: NextResponse, userId: string | null, role: string | null, reason: string) => {
+    void recordPermissionDenied({ userId, role, method: req.method, path, reason });
+    return deny(res);
+  };
 
   // Cron trigger with its own bearer secret.
   if (path === "/api/alerts/generate") {
     const auth = req.headers.get("authorization");
-    if (auth && process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) return pass();
+    const cronSecret = env("CRON_SECRET");
+    if (auth && cronSecret && sameToken(auth, `Bearer ${cronSecret}`)) return pass();
   }
   // Signed webhooks verify their own signature in the route.
   if ((path.startsWith("/api/webhooks/slack") || path.startsWith("/api/webhooks/jira")) && req.method === "POST") return pass();
@@ -124,7 +136,7 @@ export async function middleware(req: NextRequest) {
     return csrf ? deny(csrf) : pass();
   }
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET, cookieName: sessionCookieName(!!secure) });
+  const token = await getToken({ req, secret: env("NEXTAUTH_SECRET"), cookieName: sessionCookieName(!!secure) });
   if (!token) {
     if (isApi) return deny(json(401, "Authentication required", "AUTH_REQUIRED"));
     return deny(NextResponse.redirect(new URL("/login", req.url)));
@@ -153,24 +165,28 @@ export async function middleware(req: NextRequest) {
   }
 
   // Role gates (the route handlers enforce authorisation again).
+  const sub = (token.sub as string | undefined) ?? null;
   if ((path.startsWith("/admin") || path.startsWith("/api/users")) && role !== "admin") {
-    if (isApi) return deny(json(403, "Admin access required", "FORBIDDEN"));
-    return deny(NextResponse.redirect(new URL("/work", req.url)));
+    if (isApi) return forbid(json(403, "Admin access required", "FORBIDDEN"), sub, role, "admin_only");
+    return forbid(NextResponse.redirect(new URL("/work", req.url)), sub, role, "admin_only");
   }
   if ((path.startsWith("/api/scoring-config") || path.startsWith("/api/export")) && !["admin", "lead"].includes(role)) {
-    if (isApi) return deny(json(403, "Insufficient permissions", "FORBIDDEN"));
-    return deny(NextResponse.redirect(new URL("/work", req.url)));
+    if (isApi) return forbid(json(403, "Insufficient permissions", "FORBIDDEN"), sub, role, "admin_or_lead_only");
+    return forbid(NextResponse.redirect(new URL("/work", req.url)), sub, role, "admin_or_lead_only");
   }
   if (role === "auditor" && isApi && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    return deny(json(403, "Auditors have read-only access", "FORBIDDEN"));
+    return forbid(json(403, "Auditors have read-only access", "FORBIDDEN"), sub, role, "auditor_read_only");
   }
 
   const csrf = csrfViolation(req, path);
   if (csrf) return deny(csrf);
-  return pass();
+  return pass(sub);
 }
 
 export const config = {
+  // Node.js runtime (stable since Next 15.5) so the middleware reads secrets
+  // through the same file loader as the rest of the app (spec §17.3).
+  runtime: "nodejs",
   // Everything except Next.js static assets and image files.
   matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)"],
 };

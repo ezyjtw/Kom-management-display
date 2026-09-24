@@ -5,6 +5,8 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, createPtoSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/schedule/pto
@@ -70,50 +72,57 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createPtoSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { employeeId, startDate, endDate, type, status, notes } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "pto_changed", entityType: "pto_record", entityId: "pto", userId: auditActorInfo.userId, summary: "Record or change PTO (drives cover)", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createPtoSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { employeeId, startDate, endDate, type, status, notes } = body;
 
-    if (!employeeId || !startDate || !endDate) {
-      return apiValidationError("Missing required fields: employeeId, startDate, endDate");
-    }
+        if (!employeeId || !startDate || !endDate) {
+          return apiValidationError("Missing required fields: employeeId, startDate, endDate");
+        }
 
-    const validTypes = ["annual_leave", "sick", "wfh", "other"];
-    if (type && !validTypes.includes(type)) {
-      return apiValidationError(`Invalid type. Must be one of: ${validTypes.join(", ")}`);
-    }
+        const validTypes = ["annual_leave", "sick", "wfh", "other"];
+        if (type && !validTypes.includes(type)) {
+          return apiValidationError(`Invalid type. Must be one of: ${validTypes.join(", ")}`);
+        }
 
-    const validStatuses = ["pending", "approved", "rejected"];
-    if (status && !validStatuses.includes(status)) {
-      return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
-    }
+        const validStatuses = ["pending", "approved", "rejected"];
+        if (status && !validStatuses.includes(status)) {
+          return apiValidationError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
+        }
 
-    const record = await prisma.ptoRecord.create({
-      data: {
-        employeeId,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        type: type || "annual_leave",
-        status: status || "approved",
-        notes: notes || "",
+        const record = await prisma.ptoRecord.create({
+          data: {
+            employeeId,
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            type: type || "annual_leave",
+            status: status || "approved",
+            notes: notes || "",
+          },
+          include: {
+            employee: { select: { id: true, name: true } },
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "pto_created",
+            entityType: "pto_record",
+            entityId: record.id,
+            userId: auth.employeeId || auth.id,
+            details: JSON.stringify({ employeeId, startDate, endDate, type }),
+          },
+        });
+
+        return apiSuccess(record, undefined, 201);
       },
-      include: {
-        employee: { select: { id: true, name: true } },
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "pto_created",
-        entityType: "pto_record",
-        entityId: record.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ employeeId, startDate, endDate, type }),
-      },
-    });
-
-    return apiSuccess(record, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "pto POST");
   }

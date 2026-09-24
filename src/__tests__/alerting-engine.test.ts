@@ -205,6 +205,30 @@ const SCENARIOS: Scenario[] = [
     clear: async () => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "completed", correlationId: "c1" }); },
   },
   {
+    code: "ALR-SEC-01",
+    params: { threshold: 2, windowMins: 15 },
+    trigger: async (now) => { for (let i = 0; i < 3; i++) await add("auditLog", { action: "permission_denied", entityType: "route", entityId: `GET /api/users/${i}`, userId: "system", actorUserId: "u-x", createdAt: mins(now, -1) }); return "u-x"; },
+    below: async (now) => { for (let i = 0; i < 2; i++) await add("auditLog", { action: "permission_denied", entityType: "route", entityId: "GET /api/users", userId: "system", actorUserId: "u-x", createdAt: mins(now, -1) }); },
+    clear: async (now) => update("auditLog", { action: "permission_denied" }, { createdAt: mins(now, -120) }),
+  },
+  {
+    code: "ALR-SEC-02",
+    params: { lookbackMins: 60 },
+    trigger: async (now) => { await add("auditLog", { id: "al-rule-1", action: "alert_rule_updated", entityType: "alert_rule", entityId: "ALR-OES-01", userId: "system", phase: "completed", createdAt: mins(now, -1) }); return "al-rule-1"; },
+    below: async (now) => {
+      await add("auditLog", { action: "alert_rule_updated", entityType: "alert_rule", entityId: "ALR-OES-01", userId: "system", phase: "requested", createdAt: mins(now, -1) });
+      await add("auditLog", { action: "work_item_claimed", entityType: "work_item", entityId: "w", userId: "system", phase: "recorded", createdAt: mins(now, -1) });
+    },
+    clear: async () => undefined, // informational: stays open until someone acknowledges it
+  },
+  {
+    code: "ALR-SEC-05",
+    params: { threshold: 2, windowMins: 30 },
+    trigger: async (now) => { for (let i = 0; i < 2; i++) await add("auditLog", { action: "integration_auth_failure", entityType: "integration_host", entityId: "slack.com", userId: "system", createdAt: mins(now, -1) }); return "slack.com"; },
+    below: async (now) => { await add("auditLog", { action: "integration_auth_failure", entityType: "integration_host", entityId: "slack.com", userId: "system", createdAt: mins(now, -1) }); },
+    clear: async (now) => update("auditLog", { action: "integration_auth_failure" }, { createdAt: mins(now, -120) }),
+  },
+  {
     code: "ALR-CLI-04",
     trigger: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2025-01-10T00:00:00Z") }); return "cl-1"; },
     below: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2026-06-01T00:00:00Z") }); },

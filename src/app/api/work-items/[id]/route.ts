@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { workItemDetail } from "@/modules/work-items/detail";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (limited) return limited;
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const detail = await workItemDetail(id);
     return detail ? apiSuccess(detail) : apiNotFoundError("Work item");
   } catch (error) {

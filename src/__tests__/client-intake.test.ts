@@ -31,6 +31,7 @@ const metaOf = (r: Row) => (r.metadata ?? {}) as Record<string, unknown>;
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    userClientScope: { findMany: vi.fn(async () => []) },
     appSetting: { findUnique: vi.fn(async ({ where }: { where: { key: string } }) => (db.settings.has(where.key) ? { key: where.key, value: db.settings.get(where.key) } : null)) },
     sourceRecord: {
       create: vi.fn(async ({ data }: { data: { externalId: string } }) => {

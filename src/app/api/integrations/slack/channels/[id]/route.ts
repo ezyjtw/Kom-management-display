@@ -4,9 +4,10 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-repository";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 // ─── Validation Schema ───
 
@@ -60,24 +61,22 @@ export async function PATCH(
       clientId: existing.clientId,
     };
 
-    const updated = await slackChannelRepo.updateChannel(id, validation.data);
-
-    await createAuditEntry({
-      action: "slack_channel_update",
-      entityType: "slack_channel",
-      entityId: id,
-      userId: auth.employeeId ?? "system",
-      summary: `Updated Slack channel #${existing.channelName}`,
-      before,
-      after: {
-        channelType: updated.channelType,
-        linkedEntityId: updated.linkedEntityId,
-        isActive: updated.isActive,
-        purpose: updated.purpose,
-        clientId: updated.clientId,
+    // Channel-to-client mapping is privileged configuration: fail-closed audit (spec §17.7).
+    const actor = auditActor(auth);
+    const updated = await auditedAction(
+      {
+        action: "slack_channel_update",
+        entityType: "slack_channel",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Update Slack channel #${existing.channelName}`,
+        before,
+        after: validation.data as Record<string, unknown>,
+        metadata: actor.metadata,
       },
-      metadata: { actorUserId: auth.id },
-    });
+      () => slackChannelRepo.updateChannel(id, validation.data),
+      (r) => ({ channelType: r.channelType, linkedEntityId: r.linkedEntityId, isActive: r.isActive, purpose: r.purpose, clientId: r.clientId }),
+    );
 
     return apiSuccess(updated);
   } catch (error) {

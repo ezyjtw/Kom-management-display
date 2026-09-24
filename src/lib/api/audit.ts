@@ -125,6 +125,15 @@ export async function auditedAction<T>(
 }
 
 /**
+ * auditedAction for a route handler body with several outcomes: the whole
+ * branch runs inside the audited action and the HTTP status is the recorded
+ * outcome (a 4xx answer is recorded as completed with that status).
+ */
+export async function auditedResponse<R extends { status: number }>(entry: AuditEntry, run: () => Promise<R>): Promise<R> {
+  return auditedAction(entry, run, (r) => ({ status: r.status }));
+}
+
+/**
  * Convenience: audit a state transition (before/after).
  */
 export async function auditStateChange(

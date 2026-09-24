@@ -7,6 +7,11 @@ import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
 
+const previewEmailSchema = z.object({
+  recipientEmail: z.string().email().max(320),
+  recipientName: z.string().max(200).optional(),
+});
+
 /**
  * POST /api/travel-rule/cases/:id/preview-email
  *
@@ -30,9 +35,9 @@ export async function POST(
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = previewEmailSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { recipientEmail, recipientName } = body;
 
     if (!recipientEmail) {

@@ -13,6 +13,7 @@ import { validateBody } from "@/lib/validation";
 import { auditActor } from "@/modules/core-data/audit-actor";
 import { clientIncidentError } from "@/modules/client-incidents/http";
 import { firstResponseSchema, sendFirstResponse } from "@/modules/work-items/first-response";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const parsed = validateBody(firstResponseSchema, await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error);
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const actor = auditActor(auth);
     const result = await auditedAction(
       {

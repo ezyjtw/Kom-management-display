@@ -18,6 +18,7 @@ import { validateBody } from "@/lib/validation";
 import { getSetting } from "@/modules/settings/settings";
 import { ensureTicketedWorkItem } from "@/modules/work-items/tickets";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 const bodySchema = z.object({
   clientAdvisory: z.string().trim().min(3).max(2000).optional(),
@@ -35,6 +36,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const parsed = validateBody(bodySchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
     const item = await prisma.workItem.findUnique({ where: { id } });

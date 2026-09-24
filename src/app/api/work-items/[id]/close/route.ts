@@ -15,6 +15,7 @@ import { ClosureValidationError } from "@/modules/work-items/closure-rules";
 import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 import { auditActor } from "@/modules/core-data/audit-actor";
 import { ClientContentError } from "@/modules/client-incidents/guards";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -29,6 +30,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const actor = auditActor(auth);
     const updated = await auditedAction(
       {

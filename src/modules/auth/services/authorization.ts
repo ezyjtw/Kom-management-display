@@ -6,6 +6,7 @@
  */
 import { NextResponse } from "next/server";
 import type { AuthUser } from "@/lib/auth-user";
+import { recordDeniedForCurrentRequest } from "@/modules/security/record";
 import {
   AUTHORIZATION_MATRIX,
   SENSITIVE_FIELDS,
@@ -53,6 +54,7 @@ export function requireAuthorization(
 ): AuthzResult | NextResponse {
   const result = checkAuthorization(user, resource, action);
   if (!result.allowed) {
+    void recordDeniedForCurrentRequest(user, `${resource}:${action}`);
     return NextResponse.json(
       { success: false, error: "Insufficient permissions", detail: result.reason },
       { status: 403 },
@@ -160,6 +162,7 @@ export function requireRecordAccess(
   record: { ownerId?: string | null; ownerIds?: Array<string | null>; team?: string | null },
 ): NextResponse | null {
   if (isRecordInScope(user, scope, record)) return null;
+  void recordDeniedForCurrentRequest(user, "record_out_of_scope");
   return NextResponse.json(
     { success: false, error: "You do not have access to this record", code: "RECORD_FORBIDDEN" },
     { status: 403 },

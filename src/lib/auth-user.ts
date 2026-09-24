@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth-options";
 import { sessionState, updateLastActive } from "@/lib/session-revocation";
 import { logger } from "@/lib/logger";
+import { recordDeniedForCurrentRequest } from "@/modules/security/record";
 
 /** HTTP methods that change state — these get a fail-closed revocation policy. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -117,6 +118,7 @@ export async function requireRole(...roles: string[]): Promise<AuthUser | NextRe
   if (result instanceof NextResponse) return result;
 
   if (!roles.includes(result.role)) {
+    void recordDeniedForCurrentRequest(result, `requires ${roles.join("|")}`);
     return NextResponse.json(
       { success: false, error: "Insufficient permissions" },
       { status: 403 }

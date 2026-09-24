@@ -5,6 +5,8 @@ import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, createOnCallSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/schedule/on-call
@@ -69,60 +71,67 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createOnCallSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { employeeId, date, team, shiftType } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "on_call_assigned", entityType: "on_call_schedule", entityId: "new", userId: auditActorInfo.userId, summary: "Assign on-call (drives alert routing)", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createOnCallSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { employeeId, date, team, shiftType } = body;
 
-    if (!employeeId || !date || !team) {
-      return apiValidationError("Missing required fields: employeeId, date, team");
-    }
+        if (!employeeId || !date || !team) {
+          return apiValidationError("Missing required fields: employeeId, date, team");
+        }
 
-    // Check if employee has PTO on that date
-    const ptoConflict = await prisma.ptoRecord.findFirst({
-      where: {
-        employeeId,
-        status: "approved",
-        startDate: { lte: new Date(date) },
-        endDate: { gte: new Date(date) },
+        // Check if employee has PTO on that date
+        const ptoConflict = await prisma.ptoRecord.findFirst({
+          where: {
+            employeeId,
+            status: "approved",
+            startDate: { lte: new Date(date) },
+            endDate: { gte: new Date(date) },
+          },
+        });
+
+        if (ptoConflict) {
+          return apiConflictError("Employee has approved PTO on this date");
+        }
+
+        const schedule = await prisma.onCallSchedule.upsert({
+          where: {
+            date_team_shiftType: {
+              date: new Date(date),
+              team,
+              shiftType: shiftType || "primary",
+            },
+          },
+          update: { employeeId },
+          create: {
+            employeeId,
+            date: new Date(date),
+            team,
+            shiftType: shiftType || "primary",
+          },
+          include: {
+            employee: { select: { id: true, name: true } },
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "on_call_assigned",
+            entityType: "on_call_schedule",
+            entityId: schedule.id,
+            userId: auth.employeeId || auth.id,
+            details: JSON.stringify({ employeeId, date, team, shiftType }),
+          },
+        });
+
+        return apiSuccess(schedule, undefined, 201);
       },
-    });
-
-    if (ptoConflict) {
-      return apiConflictError("Employee has approved PTO on this date");
-    }
-
-    const schedule = await prisma.onCallSchedule.upsert({
-      where: {
-        date_team_shiftType: {
-          date: new Date(date),
-          team,
-          shiftType: shiftType || "primary",
-        },
-      },
-      update: { employeeId },
-      create: {
-        employeeId,
-        date: new Date(date),
-        team,
-        shiftType: shiftType || "primary",
-      },
-      include: {
-        employee: { select: { id: true, name: true } },
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "on_call_assigned",
-        entityType: "on_call_schedule",
-        entityId: schedule.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ employeeId, date, team, shiftType }),
-      },
-    });
-
-    return apiSuccess(schedule, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "on-call POST");
   }

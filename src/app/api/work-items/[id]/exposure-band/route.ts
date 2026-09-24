@@ -16,6 +16,7 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { getSetting } from "@/modules/settings/settings";
 import { commentInternal, TicketWriteError } from "@/modules/work-items/ticket-writeback";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 const bodySchema = z.object({ band: z.string().trim().min(1).max(60) });
 
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
+    const outOfScope = await workItemScopeGuard(auth, id);
+    if (outOfScope) return outOfScope;
     const item = await prisma.workItem.findUnique({ where: { id } });
     if (!item) return apiNotFoundError("Work item");
     const bands = await getSetting("oes.exposureBands");

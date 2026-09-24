@@ -9,6 +9,7 @@ import type { Prisma, SlaPolicy, WorkItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { addBusinessMinutes, isBusinessTimeWith, loadCalendar, type BusinessCalendar } from "@/modules/alerting/calendar";
 import { clockProgress, type SlaClock } from "@/modules/alerting/evaluators/sla";
+import { clientWhere, type ClientScope } from "@/modules/auth/client-scope";
 
 export const OPEN_STATES = ["open", "owned", "waiting_client", "waiting_vendor", "waiting_internal"] as const;
 export const WORK_TEAMS = ["Team 1", "Team 2", "Team 3"] as const;
@@ -112,8 +113,9 @@ export function compareRows(a: QueueRow, b: QueueRow): number {
   return a.priority.localeCompare(b.priority) || a.lastActivityAt.localeCompare(b.lastActivityAt);
 }
 
-export async function listQueue(filter: QueueFilter, actor: { employeeId: string | null }, now = new Date()): Promise<{ team: string | null; rows: QueueRow[] }> {
-  const where: Prisma.WorkItemWhereInput = {};
+export async function listQueue(filter: QueueFilter, actor: { employeeId: string | null; scope?: ClientScope }, now = new Date()): Promise<{ team: string | null; rows: QueueRow[] }> {
+  // Client isolation (spec §17.5): never list items of clients outside the user's scope.
+  const where: Prisma.WorkItemWhereInput = { AND: [clientWhere(actor.scope ?? { all: true }) as Prisma.WorkItemWhereInput] };
   let team: string | null = null;
   if (filter.team === "mine") team = await myTeam(actor.employeeId);
   else if (filter.team !== "all") team = filter.team;

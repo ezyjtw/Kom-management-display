@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { logger } from "@/lib/logger";
+import { recordDeniedForCurrentRequest } from "@/modules/security/record";
 
 export interface ApiSuccessResponse<T> {
   success: true;
@@ -100,6 +101,8 @@ export function apiAuthError(message = "Authentication required"): NextResponse 
  * Return a forbidden error (403).
  */
 export function apiForbiddenError(message = "Insufficient permissions"): NextResponse {
+  // Every 403 is a security event (spec §17.7), counted by ALR-SEC-01.
+  void recordDeniedForCurrentRequest(null, message);
   return apiError(message, 403, "FORBIDDEN");
 }
 

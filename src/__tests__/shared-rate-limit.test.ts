@@ -38,3 +38,19 @@ describe("shared rate limit", () => {
     expect(clientIp({ headers: new Headers() }, 1)).toBe("unknown");
   });
 });
+
+describe("shared login limit", () => {
+  it("locks an account after 5 attempts across instances, case-insensitively, and resets on success", async () => {
+    const { checkSharedLoginLimit, resetSharedLoginLimit } = await import("@/lib/api/shared-rate-limit");
+    const t0 = new Date("2026-09-24T10:00:00Z");
+    for (let i = 0; i < 5; i++) expect((await checkSharedLoginLimit(i % 2 ? "Ann@K.com" : "ann@k.com", t0)).allowed).toBe(true);
+    const locked = await checkSharedLoginLimit("ann@k.com", t0);
+    expect(locked).toEqual({ allowed: false, retryAfterSeconds: 900 });
+    expect((await checkSharedLoginLimit("bob@k.com", t0)).allowed).toBe(true);
+    // No email address is stored in the bucket key.
+    const keys = (await db.client.rateLimitBucket.findMany({})).map((b) => String(b.key));
+    expect(keys.some((k) => k.includes("@"))).toBe(false);
+    await resetSharedLoginLimit("ann@k.com");
+    expect((await checkSharedLoginLimit("ann@k.com", t0)).allowed).toBe(true);
+  });
+});

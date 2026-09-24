@@ -7,6 +7,8 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { validateBody, updateDailyCheckPatchSchema } from "@/lib/validation";
 import { DailyCheckRuleError, passItem, requestSkip } from "@/modules/daily-checks/enforcement";
 import { isRestrictedItemFor } from "@/modules/kps/access";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const DEFAULT_CHECK_ITEMS = [
   { name: "Stuck Transactions", category: "stuck_tx", autoCheckKey: "stuck_tx_count" },
@@ -88,34 +90,41 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const actorId = auth.employeeId || auth.id;
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "daily_check_run_created", entityType: "daily_check_run", entityId: new Date().toISOString().slice(0, 10), userId: auditActorInfo.userId, summary: "Start today's daily check run", metadata: auditActorInfo.metadata },
+      async () => {
+        const actorId = auth.employeeId || auth.id;
+        const today = new Date();
+        const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    // Check if a run already exists for today
-    const existing = await prisma.dailyCheckRun.findFirst({
-      where: { date: start },
-    });
-    if (existing) {
-      return apiConflictError("A check run already exists for today");
-    }
+        // Check if a run already exists for today
+        const existing = await prisma.dailyCheckRun.findFirst({
+          where: { date: start },
+        });
+        if (existing) {
+          return apiConflictError("A check run already exists for today");
+        }
 
-    const run = await prisma.dailyCheckRun.create({
-      data: {
-        date: start,
-        operatorId: actorId,
-        items: {
-          create: DEFAULT_CHECK_ITEMS.map((item) => ({
-            name: item.name,
-            category: item.category,
-            autoCheckKey: item.autoCheckKey,
-          })),
-        },
+        const run = await prisma.dailyCheckRun.create({
+          data: {
+            date: start,
+            operatorId: actorId,
+            items: {
+              create: DEFAULT_CHECK_ITEMS.map((item) => ({
+                name: item.name,
+                category: item.category,
+                autoCheckKey: item.autoCheckKey,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+
+        return apiSuccess(run, undefined, 201);
       },
-      include: { items: true },
-    });
-
-    return apiSuccess(run, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "daily-checks POST");
   }
@@ -142,47 +151,54 @@ export async function PATCH(request: NextRequest) {
     const parsed = validateBody(updateDailyCheckPatchSchema, body);
     if (!parsed.success) return apiValidationError(parsed.error);
     const validatedData = parsed.data;
-    const actorId = auth.employeeId || auth.id;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "daily_check_updated", entityType: "daily_check", entityId: "itemId" in validatedData ? String(validatedData.itemId) : String((validatedData as { runId?: string }).runId ?? "run"), userId: auditActorInfo.userId, summary: "Update a daily check", metadata: auditActorInfo.metadata },
+      async () => {
+        const actorId = auth.employeeId || auth.id;
 
-    if ("itemId" in validatedData) {
-      const { itemId, status, notes, evidence, skippedReason } = validatedData;
-      if (await isRestrictedItemFor(itemId, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
-      if (notes !== undefined) await prisma.dailyCheckItem.update({ where: { id: itemId }, data: { notes } });
+        if ("itemId" in validatedData) {
+          const { itemId, status, notes, evidence, skippedReason } = validatedData;
+          if (await isRestrictedItemFor(itemId, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
+          if (notes !== undefined) await prisma.dailyCheckItem.update({ where: { id: itemId }, data: { notes } });
 
-      // Spec §10.2: every status change goes through the daily-check rules.
-      let item;
-      if (status === "pass") {
-        item = await passItem(itemId, evidence, actorId);
-      } else if (status === "skipped") {
-        item = await requestSkip(itemId, skippedReason, auth.id);
-      } else if (status === "issues_found") {
-        return NextResponse.json(
-          { success: false, error: "Record the exceptions with POST /api/daily-checks/items/:id/exceptions; each one gets a ticket." },
-          { status: 422 },
-        );
-      } else if (status === "pending") {
-        if (auth.role !== "lead" && auth.role !== "admin") return apiForbiddenError("Only leads and admins can reopen a check item");
-        item = await prisma.dailyCheckItem.update({
-          where: { id: itemId },
-          data: { status: "pending", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null },
-        });
-        await prisma.dailyCheckRun.update({ where: { id: item.runId }, data: { completedAt: null } });
-      } else {
-        item = await prisma.dailyCheckItem.findUnique({ where: { id: itemId } });
-      }
-      return apiSuccess(item);
-    }
+          // Spec §10.2: every status change goes through the daily-check rules.
+          let item;
+          if (status === "pass") {
+            item = await passItem(itemId, evidence, actorId);
+          } else if (status === "skipped") {
+            item = await requestSkip(itemId, skippedReason, auth.id);
+          } else if (status === "issues_found") {
+            return NextResponse.json(
+              { success: false, error: "Record the exceptions with POST /api/daily-checks/items/:id/exceptions; each one gets a ticket." },
+              { status: 422 },
+            );
+          } else if (status === "pending") {
+            if (auth.role !== "lead" && auth.role !== "admin") return apiForbiddenError("Only leads and admins can reopen a check item");
+            item = await prisma.dailyCheckItem.update({
+              where: { id: itemId },
+              data: { status: "pending", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null },
+            });
+            await prisma.dailyCheckRun.update({ where: { id: item.runId }, data: { completedAt: null } });
+          } else {
+            item = await prisma.dailyCheckItem.findUnique({ where: { id: itemId } });
+          }
+          return apiSuccess(item);
+        }
 
-    if ("runId" in validatedData) {
-      const { runId, jiraSummary } = validatedData;
-      const run = await prisma.dailyCheckRun.update({
-        where: { id: runId },
-        data: { jiraSummary: jiraSummary || "" },
-      });
-      return apiSuccess(run);
-    }
+        if ("runId" in validatedData) {
+          const { runId, jiraSummary } = validatedData;
+          const run = await prisma.dailyCheckRun.update({
+            where: { id: runId },
+            data: { jiraSummary: jiraSummary || "" },
+          });
+          return apiSuccess(run);
+        }
 
-    return apiValidationError("itemId or runId required");
+        return apiValidationError("itemId or runId required");
+      },
+    );
   } catch (error) {
     if (error instanceof DailyCheckRuleError) {
       return NextResponse.json({ success: false, error: error.message, issues: error.issues }, { status: error.status });

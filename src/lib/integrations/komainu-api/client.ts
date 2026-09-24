@@ -11,10 +11,11 @@
  */
 
 import { z } from "zod";
-import { env } from "@/lib/env";
+import { env, secret } from "@/lib/env";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { httpFetch, httpFetchWithRetry } from "@/lib/http/client";
 import { logger } from "@/lib/logger";
+import { recordCredentialUse } from "@/modules/security/record";
 import { AUTH_TOKEN_PATH, isAllowedEndpoint } from "./endpoints";
 import type { KomainuPagedResponse, KomainuRequest, KomainuTransaction } from "./types";
 
@@ -91,7 +92,7 @@ export function getCredentials(): KomainuCredential[] {
     KOMAINU_API_CREDENTIALS: env("KOMAINU_API_CREDENTIALS"),
     KOMAINU_API_USER: env("KOMAINU_API_USER"),
     KOMAINU_API_SECRET: env("KOMAINU_API_SECRET"),
-    lookupSecret: (name) => process.env[name],
+    lookupSecret: (name) => secret(name),
   });
 }
 
@@ -115,6 +116,8 @@ async function getAccessToken(baseUrl: string, cred: KomainuCredential): Promise
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_user: cred.user, api_secret: cred.secret }),
   });
+  // Spec §17.7: every use of a Komainu API credential is audit-logged (label only, never the user or secret).
+  void recordCredentialUse({ connector: "komainu_api", credentialLabel: cred.label, workload: env("KOM_WORKLOAD") });
   if (!res.ok) throw new Error(`Komainu auth failed for ${cred.label}: ${res.status}`);
 
   const data = await res.json();

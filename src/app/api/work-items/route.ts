@@ -11,6 +11,7 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
 import { listQueue, queueFilterSchema } from "@/modules/work-items/queue";
+import { clientScopeFor, clientTableWhere } from "@/modules/auth/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +26,10 @@ export async function GET(request: NextRequest) {
     const raw = Object.fromEntries([...new URL(request.url).searchParams.entries()].filter(([, v]) => v !== ""));
     const parsed = validateBody(queueFilterSchema, raw);
     if (!parsed.success) return apiValidationError(parsed.error);
+    const scope = await clientScopeFor(auth);
     const [result, clients] = await Promise.all([
-      listQueue(parsed.data, { employeeId: auth.employeeId ?? null }),
-      prisma.client.findMany({ where: { isActive: true }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
+      listQueue(parsed.data, { employeeId: auth.employeeId ?? null, scope }),
+      prisma.client.findMany({ where: { isActive: true, ...clientTableWhere(scope) }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
     ]);
     return apiSuccess({ ...result, filter: parsed.data, clientOptions: clients.map((c) => ({ id: c.id, name: c.displayName })), asOf: new Date().toISOString() });
   } catch (error) {

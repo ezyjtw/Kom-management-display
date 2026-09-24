@@ -5,6 +5,8 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, createHolidaySchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/schedule/holidays
@@ -63,31 +65,38 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createHolidaySchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { date, name, region } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "holiday_changed", entityType: "holiday", entityId: "calendar", userId: auditActorInfo.userId, summary: "Change the holiday calendar (drives SLA business hours)", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createHolidaySchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { date, name, region } = body;
 
-    if (!date || !name) {
-      return apiValidationError("Missing required fields: date, name");
-    }
+        if (!date || !name) {
+          return apiValidationError("Missing required fields: date, name");
+        }
 
-    const holiday = await prisma.publicHoliday.upsert({
-      where: {
-        date_region: {
-          date: new Date(date),
-          region: region || "Global",
-        },
+        const holiday = await prisma.publicHoliday.upsert({
+          where: {
+            date_region: {
+              date: new Date(date),
+              region: region || "Global",
+            },
+          },
+          update: { name },
+          create: {
+            date: new Date(date),
+            name,
+            region: region || "Global",
+          },
+        });
+
+        return apiSuccess(holiday, undefined, 201);
       },
-      update: { name },
-      create: {
-        date: new Date(date),
-        name,
-        region: region || "Global",
-      },
-    });
-
-    return apiSuccess(holiday, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "holidays POST");
   }

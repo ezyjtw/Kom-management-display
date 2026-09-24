@@ -16,6 +16,7 @@ import { validateBody } from "@/lib/validation";
 import { sendDraft } from "@/modules/client-incidents/service";
 import { clientIncidentError } from "@/modules/client-incidents/http";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { workItemScopeGuard } from "@/modules/auth/client-scope";
 
 const bodySchema = z.object({ body: z.string().min(1).max(4000), markSentManually: z.boolean().optional() });
 
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!parsed.success) return apiValidationError(parsed.error);
     const draft = await prisma.outboundMessageDraft.findUnique({ where: { id: draftId }, select: { workItemId: true, channel: true, status: true } });
     if (!draft || draft.status !== "draft") return NextResponse.json({ success: false, error: "Draft not found or already handled." }, { status: 404 });
+    const outOfScope = await workItemScopeGuard(auth, draft.workItemId);
+    if (outOfScope) return outOfScope;
     const actor = auditActor(auth);
     const sent = await auditedAction(
       {

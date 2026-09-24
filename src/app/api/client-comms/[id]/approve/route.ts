@@ -11,7 +11,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
 import { dispatchClientComms } from "@/lib/comms-dispatcher";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const approveSchema = z.object({
   finalMessage: z.string().min(1).max(5000),
@@ -46,26 +47,25 @@ export async function POST(
 
     const { finalMessage, recipients } = validation.data;
 
-    // Dispatch
-    const result = await dispatchClientComms(
-      id,
-      authResult.employeeId || authResult.id,
-      finalMessage,
-      recipients,
-    );
-
-    // Audit
-    await createAuditEntry({
-      action: "client_comms_approved",
-      entityType: "client_comms_draft",
-      entityId: id,
-      userId: authResult.id,
-      summary: `Approved and dispatched client comms draft ${id}`,
-      metadata: {
-        recipientCount: recipients.length,
-        failedCount: result.failedCount,
+    // Client-visible content (H12): fail-closed, no audit record means no dispatch.
+    const actor = auditActor(authResult);
+    const result = await auditedAction(
+      {
+        action: "client_comms_approved",
+        entityType: "client_comms_draft",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Approved and dispatched client comms draft ${id}`,
+        metadata: { ...actor.metadata, recipientCount: recipients.length },
       },
-    });
+      () => dispatchClientComms(
+        id,
+        authResult.employeeId || authResult.id,
+        finalMessage,
+        recipients,
+      ),
+      (r) => ({ failedCount: r.failedCount }),
+    );
 
     return apiSuccess(result);
   } catch (error) {
