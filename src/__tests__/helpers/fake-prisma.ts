@@ -37,6 +37,7 @@ const COMPOUND: Record<string, Record<string, string[]>> = {
   jiraIssueEvent: { system_key_updated: ["system", "key", "updated"] },
   ticketLink: { system_key_workItemId: ["system", "key", "workItemId"] },
   approvedValidator: { chain_validator: ["chain", "validator"] },
+  leadHandover: { date_team: ["date", "team"] },
 };
 
 /** Single-field unique constraints besides the primary key. */
@@ -83,6 +84,8 @@ const DEFAULTS: Record<string, () => Row> = {
   clientUpdate: () => ({ kind: "update", status: "pending_approval", approverId: null, postedAt: null, targetStatus: null }),
   incidentCategory: () => ({ isActive: true, sortOrder: 0, complianceSensitive: false }),
   ticketLink: () => ({ role: "primary" }),
+  leadHandover: () => ({ absent: true, absenceSource: "manual", coveringEmployeeId: null, note: null, submittedById: null, submittedAt: null, postedAt: null, postResults: [], missingNotifiedAt: null }),
+  ptoRecord: () => ({ type: "annual_leave", status: "approved", notes: "" }),
   teamConfig: () => ({ leadEmployeeId: null, deputyEmployeeId: null, memberEmployeeIds: [] }),
 };
 

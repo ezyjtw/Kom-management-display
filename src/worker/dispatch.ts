@@ -164,6 +164,11 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return syncGraphTeams();
   },
 
+  async morning_handover() {
+    const { runMorningHandover } = await import("@/modules/morning/handover");
+    return runMorningHandover();
+  },
+
   async report_unticketed() {
     const { runUnticketedReport } = await import("@/modules/work-items/ticket-jobs");
     return runUnticketedReport();

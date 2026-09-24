@@ -7,6 +7,7 @@
 
 import { Prisma, type WorkItem, type WorkItemKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { emitWorkItemUpdate } from "@/lib/sse";
 import { logger } from "@/lib/logger";
 import { browseUrl, createIssue } from "@/lib/integrations/atlassian/client";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
@@ -112,6 +113,7 @@ export interface NewTicketedWorkItem {
 /** Upsert the WorkItem for (sourceSystem, sourceId), then make sure it has a ticket. */
 export async function ensureTicketedWorkItem(input: NewTicketedWorkItem): Promise<WorkItem> {
   const sla = input.slaPolicyCode ? await prisma.slaPolicy.findUnique({ where: { code: input.slaPolicyCode }, select: { id: true } }) : null;
+  const existed = await prisma.workItem.findUnique({ where: { sourceSystem_sourceId: { sourceSystem: input.sourceSystem, sourceId: input.sourceId } }, select: { id: true } });
   const item = await prisma.workItem.upsert({
     where: { sourceSystem_sourceId: { sourceSystem: input.sourceSystem, sourceId: input.sourceId } },
     update: {},
@@ -129,6 +131,8 @@ export async function ensureTicketedWorkItem(input: NewTicketedWorkItem): Promis
       metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
+  // Spec §14.4: queues refresh; browsers that opted in notify on new P1 client requests.
+  if (!existed) emitWorkItemUpdate({ workItemId: item.id, team: item.team, change: "created", priority: item.priority, kind: item.kind });
   if (item.ticketKey) return item;
   if (!input.ticket) {
     await recordError(item.id, new TicketConfigError("No ticket project is configured for this work item."));

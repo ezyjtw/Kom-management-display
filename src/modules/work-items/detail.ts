@@ -12,6 +12,7 @@ import { loadCalendar } from "@/modules/alerting/calendar";
 import { slaStatus, type SlaStatus } from "@/modules/work-items/queue";
 import { getSettings } from "@/modules/settings/settings";
 import { TIME_LOG_BUCKETS } from "@/modules/work-items/closure-rules";
+import { firstResponseTemplates, replyTargetFor } from "@/modules/work-items/first-response";
 
 export type TimelineKind = "message" | "ticket_comment" | "alert" | "sla" | "client_update" | "change";
 
@@ -132,9 +133,11 @@ export async function workItemDetail(id: string, now = new Date()) {
   ].sort((a, b) => a.at.localeCompare(b.at));
 
   const meta = (item.metadata ?? {}) as Record<string, unknown>;
-  const [cfg, assignees] = await Promise.all([
+  const replyTarget = item.kind === "client_request" ? await replyTargetFor(item) : null;
+  const [cfg, assignees, templates] = await Promise.all([
     getSettings(["workItem.rootCauses", "workItem.riskScoreScale"] as const),
     prisma.employee.findMany({ where: { active: true, id: { not: "system" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    replyTarget ? firstResponseTemplates(item) : Promise.resolve([] as string[]),
   ]);
   return {
     item: {
@@ -166,6 +169,7 @@ export async function workItemDetail(id: string, now = new Date()) {
     raiseLink: `/client-incidents/new?kind=work_item&workItemId=${encodeURIComponent(item.id)}`,
     closeOptions: { rootCauses: cfg["workItem.rootCauses"], riskScale: cfg["workItem.riskScoreScale"], timeBuckets: [...TIME_LOG_BUCKETS] },
     assignees,
+    firstResponse: replyTarget ? { channel: replyTarget.channel, templates, clientMapped: !!item.clientId, alreadyResponded: !!item.firstResponseAt } : null,
     canPostClientUpdate: (item.kind === "client_incident" || item.kind === "client_risk") && !!item.clientTicketKey,
   };
 }

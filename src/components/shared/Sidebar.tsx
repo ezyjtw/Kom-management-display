@@ -19,11 +19,8 @@ import {
   ArrowUpDown,
   CalendarClock,
   FolderKanban,
-  Activity,
   AlertTriangle,
-  Sparkles,
   ArrowDownUp,
-  DollarSign,
   Layers,
   ClipboardCheck, ClipboardList,
   ScanSearch,
@@ -37,62 +34,90 @@ import {
   Monitor,
   Send,
   Upload,
+  Inbox,
+  Sunrise,
+  Building2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
 import { useState, useEffect } from "react";
 import type { SafetyFlagKey } from "@/lib/feature-flags";
+import { DesktopAlertsToggle } from "@/components/shared/DesktopAlerts";
 
-const navSections = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof Zap;
+  flag?: SafetyFlagKey;
+  adminOnly?: true;
+  /** Shown only when /api/me/capabilities grants it (e.g. kps:view). */
+  capability?: "kps";
+}
+
+/**
+ * Spec §14.1 navigation. Removed: approvals (deleted); USDC ramp, AI briefing
+ * and compliance bot (flags off); scoring and activity (flags off). GX sprints
+ * arrive with Phase 11. Pages the spec does not list stay reachable under
+ * "Other tools".
+ */
+const navSections: Array<{ label: string; items: NavItem[]; collapsible?: true }> = [
   {
-    label: "Core",
+    label: "Work",
     items: [
-      { href: "/", label: "Command Centre", icon: Zap },
-      { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard },
-      { href: "/comms", label: "Communications", icon: MessageSquare },
-      { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
-      { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
-      { href: "/activity", label: "Activity Tracker", icon: Activity, flag: "people.activity_tracking" as SafetyFlagKey },
+      { href: "/work", label: "Work", icon: Inbox },
+      { href: "/boards", label: "Team Boards", icon: ClipboardList },
+      { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
+      { href: "/admin/alerts", label: "Alerts", icon: Bell },
+      { href: "/clients/overview", label: "Clients", icon: Users },
+      { href: "/morning", label: "Morning Board", icon: Sunrise },
     ],
   },
   {
     label: "Operations",
     items: [
-      { href: "/staking", label: "Staking Ops", icon: Layers },
-      { href: "/boards", label: "Team Boards", icon: ClipboardList },
-      { href: "/metrics", label: "Metrics", icon: BarChart3 },
-      { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
-{ href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
-      { href: "/screening", label: "Screening", icon: ScanSearch },
-      { href: "/tokens", label: "Token Review", icon: Coins },
+      { href: "/settlements", label: "Settlements (OES)", icon: ArrowDownUp },
       { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
-      { href: "/settlements", label: "OES Settlements", icon: ArrowDownUp },
-      { href: "/usdc-ramp", label: "USDC Ramp", icon: DollarSign, flag: "module.usdc_ramp" as SafetyFlagKey },
+      { href: "/staking", label: "Staking", icon: Layers },
+      { href: "/kps", label: "KPS", icon: Scale, capability: "kps" },
+      { href: "/fab", label: "FAB", icon: Building2, flag: "module.fab" as SafetyFlagKey },
+      { href: "/tokens", label: "Coin Reviews", icon: Coins },
+      { href: "/incidents", label: "Incidents", icon: AlertTriangle },
+      { href: "/rca", label: "RCA", icon: FileSearch },
     ],
   },
   {
-    label: "Tracking",
+    label: "Insight",
     items: [
-      { href: "/incidents", label: "Incidents", icon: AlertTriangle },
-      { href: "/rca", label: "RCA Tracker", icon: FileSearch },
-      { href: "/clients", label: "Client Issues", icon: Users },
-      { href: "/client-comms", label: "Client Comms", icon: Send },
-      { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
-      { href: "/projects", label: "Projects", icon: FolderKanban },
-      { href: "/briefing", label: "AI Briefing", icon: Sparkles, flag: "ai.enabled" as SafetyFlagKey },
-      { href: "/compliance-bot", label: "Compliance Bot", icon: Scale, flag: "ai.compliance_bot" as SafetyFlagKey },
+      { href: "/metrics", label: "Metrics", icon: BarChart3 },
     ],
   },
   {
     label: "Admin",
     items: [
       { href: "/admin", label: "Admin Panel", icon: Settings, adminOnly: true },
-      { href: "/admin/alerts", label: "Alerts", icon: Bell },
-      { href: "/admin/audit", label: "Audit Log", icon: Shield, adminOnly: true },
-      { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-      { href: "/admin/jobs", label: "Background Jobs", icon: Cog, adminOnly: true },
-      { href: "/admin/feature-flags", label: "Feature Flags", icon: Flag, adminOnly: true },
       { href: "/admin/imports", label: "Imports", icon: Upload, adminOnly: true },
+      { href: "/admin/feature-flags", label: "Feature Flags", icon: Flag, adminOnly: true },
+      { href: "/admin/audit", label: "Audit Log", icon: Shield, adminOnly: true },
+      { href: "/admin/jobs", label: "Jobs & Health", icon: Cog, adminOnly: true },
+    ],
+  },
+  {
+    label: "Other tools",
+    collapsible: true,
+    items: [
+      { href: "/", label: "Command Centre", icon: Zap },
+      { href: "/comms", label: "Communications", icon: MessageSquare },
+      { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
+      { href: "/transaction-confirmations", label: "TX Confirmations", icon: ShieldCheck },
+      { href: "/screening", label: "Screening", icon: ScanSearch },
+      { href: "/schedule", label: "Schedule & Tasks", icon: CalendarClock },
+      { href: "/client-comms", label: "Client Comms", icon: Send },
+      { href: "/client-preferences", label: "Client Comms Prefs", icon: BookUser },
+      { href: "/projects", label: "Projects", icon: FolderKanban },
+      { href: "/dashboard", label: "Team Overview", icon: LayoutDashboard, flag: "people.scoring" as SafetyFlagKey },
+      { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/admin/sessions", label: "Sessions", icon: Monitor, adminOnly: true },
     ],
   },
@@ -114,9 +139,18 @@ export function Sidebar({ user }: SidebarProps) {
   const [clientCommsDraftCount, setClientCommsDraftCount] = useState(0);
   // Flag-gated items stay hidden until the server says the flag is on.
   const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
+  const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
+  const [openOther, setOpenOther] = useState(false);
 
   useEffect(() => {
-    const keys = navSections.flatMap((s) => s.items).flatMap((i) => ("flag" in i && i.flag ? [i.flag] : []));
+    fetch("/api/me/capabilities")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setCapabilities(json.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const keys = navSections.flatMap((s) => s.items).flatMap((i) => (i.flag ? [i.flag] : []));
     fetch(`/api/feature-flags?keys=${encodeURIComponent(keys.join(","))}`)
       .then((r) => r.json())
       .then((json) => { if (json.success) setEnabledFlags(json.data.flags); })
@@ -205,17 +239,26 @@ export function Sidebar({ user }: SidebarProps) {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navSections.map((section, sIdx) => (
             <div key={section.label} className={sIdx > 0 ? "pt-4" : ""}>
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                {section.label}
-              </p>
-              {section.items
-                .filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin)
-                .filter((item) => !("flag" in item && item.flag) || enabledFlags[item.flag] === true)
+              {section.collapsible ? (
+                <button onClick={() => setOpenOther((o) => !o)} aria-expanded={openOther} className="w-full flex items-center gap-1 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  {openOther ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {section.label}
+                </button>
+              ) : (
+                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  {section.label}
+                </p>
+              )}
+              {(!section.collapsible || openOther) && section.items
+                .filter((item) => !item.adminOnly || isAdmin)
+                .filter((item) => !item.flag || enabledFlags[item.flag] === true)
+                .filter((item) => !item.capability || capabilities[item.capability] === true)
                 .map((item) => {
                   const Icon = item.icon;
                   const isActive = item.href === "/"
                     ? pathname === "/"
-                    : pathname?.startsWith(item.href);
+                    : item.href === "/admin" || item.href === "/clients"
+                      ? pathname === item.href
+                      : pathname?.startsWith(item.href);
                   return (
                     <Link
                       key={item.href}
@@ -242,7 +285,8 @@ export function Sidebar({ user }: SidebarProps) {
         </nav>
 
         {/* User / Footer */}
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-3">
+          <DesktopAlertsToggle />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">

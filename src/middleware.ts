@@ -372,5 +372,8 @@ export const config = {
     "/client-incidents/:path*",
     "/api/client-incidents/:path*",
     "/work/:path*",
+    "/morning/:path*",
+    "/api/morning/:path*",
+    "/api/me/:path*",
   ],
 };

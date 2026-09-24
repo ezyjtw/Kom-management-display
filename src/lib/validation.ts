@@ -351,7 +351,7 @@ const jobTypeSchema = z.enum([
   "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking", "komainu_poll_stakes",
   "sync_mail", "graph_teams_sync",
   "report_unticketed", "reconcile_tickets", "iai_overdue", "evaluate_alerts", "alert_digest", "poll_risk_signals",
-  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments",
+  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments", "morning_handover",
 ]);
 
 export const enqueueJobSchema = z.object({

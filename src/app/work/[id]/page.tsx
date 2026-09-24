@@ -26,7 +26,8 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [panel, setPanel] = useState<"state" | "note" | "time" | "link" | "reassign" | "update" | "close" | null>(null);
+  const [panel, setPanel] = useState<"state" | "note" | "time" | "link" | "reassign" | "update" | "close" | "reply" | null>(null);
+  const [reply, setReply] = useState("");
   const now = useNow();
   const { lastEvent } = useSSE({ filter: ["work_item_update", "sla_breach"] });
 
@@ -96,6 +97,7 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
 
       <section aria-label="Actions" className="flex flex-wrap gap-2">
         {!closed && <button disabled={busy} className={button} onClick={() => act(`work-items/${id}/ownership`, { employeeId: "me" }, "You own this item.")}>Take ownership</button>}
+        {d.firstResponse && !closed && <button className={button} onClick={() => setPanel(panel === "reply" ? null : "reply")}>First response{d.firstResponse.alreadyResponded ? " (sent)" : ""}</button>}
         {!closed && <button className={button} onClick={() => setPanel(panel === "reassign" ? null : "reassign")}>Reassign</button>}
         {!closed && <button className={button} onClick={() => setPanel(panel === "state" ? null : "state")}>Change state</button>}
         <button className={button} disabled={!item.ticketKey} title={item.ticketKey ? "" : "No ticket"} onClick={() => setPanel(panel === "note" ? null : "note")}>Internal note</button>
@@ -106,6 +108,21 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
         {!closed && <button className={`${button} border-primary text-primary`} onClick={() => setPanel(panel === "close" ? null : "close")}>Close</button>}
       </section>
 
+      {panel === "reply" && d.firstResponse && (
+        <form className="space-y-2" onSubmit={form((f) => act(`work-items/${id}/first-response`, { body: reply, markSentManually: f.get("manual") === "on" }, "Reply sent. The first-response clock has stopped."))}>
+          <p className="text-xs text-muted-foreground">
+            Replies in the client&apos;s {d.firstResponse.channel === "slack" ? "Slack thread" : "email thread"}. You write it; you may start from a template. It is checked for other clients&apos; names before sending.
+            {!d.firstResponse.clientMapped && " This channel or sender is not mapped to a client yet, so the reply cannot be sent."}
+          </p>
+          <select aria-label="Template" className={input} value="" onChange={(e) => e.target.value && setReply(e.target.value)}>
+            <option value="">Start from a template…</option>
+            {d.firstResponse.templates.map((t, i) => <option key={i} value={t}>{t.slice(0, 80)}</option>)}
+          </select>
+          <textarea aria-label="Reply" required minLength={5} maxLength={4000} rows={4} value={reply} onChange={(e) => setReply(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm" />
+          {d.firstResponse.channel === "email" && <label className="text-xs flex items-center gap-1"><input type="checkbox" name="manual" /> I sent this from Outlook; mark it as sent</label>}
+          <button disabled={busy || !d.firstResponse.clientMapped} className={button}>Send reply</button>
+        </form>
+      )}
       {panel === "reassign" && (
         <form className="flex gap-2 items-center flex-wrap" onSubmit={form((f) => act(`work-items/${id}/ownership`, { employeeId: String(f.get("employeeId")) || null }, "Reassigned."))}>
           <select name="employeeId" aria-label="Assignee" className={input} defaultValue={item.owner?.id ?? ""}>

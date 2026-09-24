@@ -100,6 +100,15 @@ export const SETTINGS = {
   },
   /** Email replies need the Graph Mail.Send permission (TODO(CONFIRM-GRAPH-MAIL-SEND)). Off: the operator sends from Outlook and marks it sent. */
   "clientIncidents.emailReplyEnabled": { schema: z.boolean(), default: false, label: "Send client email replies through Graph" },
+  /** Spec §14.4 first-response quick action: human-sent; templates allowed, AI is not. {ticket} is replaced with the ticket key. */
+  "workItem.firstResponseTemplates": {
+    schema: z.array(z.string().min(5).max(1000)).max(20),
+    default: [
+      "Thanks, we have received your request and are looking into it. Our reference is {ticket}.",
+      "Thanks for flagging this. We are checking now and will update you shortly. Reference: {ticket}.",
+    ] as string[],
+    label: "First-response templates",
+  },
   /** Transition used for the one-click "not a question" close. */
   "intake.jsm.nonQuestionTransition": { schema: z.string().max(100), default: "", label: "JSM transition name for 'not a question'" },
 } satisfies Record<string, { schema: z.ZodTypeAny; default: unknown; label: string }>;

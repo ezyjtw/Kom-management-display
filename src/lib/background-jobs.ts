@@ -53,9 +53,9 @@ export type JobType =
   | "generate_daily_checks"
   | "collect_check_evidence"
   | "mtd_autoclose"
-  | "poll_client_ticket_comments";
+  | "poll_client_ticket_comments"
+  | "morning_handover";
 
-/** Recurring job types replaced in Phase 3; their stored rows are removed on registration. */
 /**
  * Recurring job types that were replaced; their stored rows are removed on registration.
  * Spec v2 §6.1: sync_slack_channel merged into sync_slack; graph_mail_sync (every 3 min) is now sync_mail (every 5 min).
@@ -117,6 +117,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
     { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
     { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
+    { type: "morning_handover", cronExpression: "TZ=Europe/London 0 9 * * 1-5" }, // spec §14.3: post handovers / flag missing ones at 09:00 UK
   ];
 
   await prisma.backgroundJob.deleteMany({

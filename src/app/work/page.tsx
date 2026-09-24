@@ -60,6 +60,12 @@ export default function WorkPage() {
     setLoading(false);
   }, [filters]);
 
+  // Deep links such as /work?team=all&clientId=… (from the Clients view).
+  useEffect(() => {
+    const params = Object.fromEntries(new URLSearchParams(window.location.search).entries());
+    const known = Object.fromEntries(Object.entries(params).filter(([k]) => k in DEFAULT));
+    if (Object.keys(known).length) setFilters((f) => ({ ...f, ...known }));
+  }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (lastEvent) void load(); }, [lastEvent, load]);
   useEffect(() => {

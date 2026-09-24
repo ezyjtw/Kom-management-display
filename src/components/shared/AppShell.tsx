@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Sidebar } from "@/components/shared/Sidebar";
 import GlobalSearch from "@/components/GlobalSearch";
 import { NotificationToast } from "@/components/NotificationToast";
+import { DesktopAlertsListener } from "@/components/shared/DesktopAlerts";
 import { WorkerStatusBanner } from "@/components/shared/WorkerStatusBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="p-4 pt-16 md:pt-4 md:p-6">{children}</div>
       </main>
       <NotificationToast />
+      <DesktopAlertsListener />
     </div>
   );
 }
