@@ -20,6 +20,30 @@ p.\$connect().then(() => { p.\$disconnect(); process.exit(0); }).catch(() => pro
   sleep 2
 done
 
+# Deployment tier (src/lib/deployment-tier.ts): a production build is the
+# production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly.
+TIER="development"
+if [ "${KOM_ENVIRONMENT}" = "demo" ]; then
+  TIER="demo"
+elif [ "${KOM_ENVIRONMENT}" = "production" ] || [ "${NODE_ENV}" = "production" ]; then
+  TIER="production"
+fi
+echo "Deployment tier: ${TIER}"
+
+# Demo tier only: a demo database built before the Phase 12l baseline is rebuilt
+# and reseeded with the same synthetic data (prisma/demo-legacy-reset.cjs).
+FORCE_SEED="false"
+if [ "${TIER}" = "demo" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then
+  node prisma/demo-legacy-reset.cjs
+  RESET_CODE=$?
+  if [ "${RESET_CODE}" = "10" ]; then
+    FORCE_SEED="true"
+  elif [ "${RESET_CODE}" != "0" ]; then
+    echo "Aborting startup."
+    exit 1
+  fi
+fi
+
 # Run migrations unless explicitly skipped (e.g. SKIP_MIGRATIONS=true)
 if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then  # production builds (production and demo tiers): fail fast
   echo "Running database migrations (production — fail-fast)..."
@@ -54,15 +78,6 @@ else
   echo "Skipping migrations (SKIP_MIGRATIONS=true)"
 fi
 
-# Deployment tier (src/lib/deployment-tier.ts): a production build is the
-# production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly.
-TIER="development"
-if [ "${KOM_ENVIRONMENT}" = "demo" ]; then
-  TIER="demo"
-elif [ "${KOM_ENVIRONMENT}" = "production" ] || [ "${NODE_ENV}" = "production" ]; then
-  TIER="production"
-fi
-echo "Deployment tier: ${TIER}"
 
 if [ "${TIER}" = "production" ]; then
   # Never seed production, and never go live on a database that holds demo data:
@@ -83,7 +98,7 @@ if [ "${TIER}" = "production" ]; then
   case "${DEMO_MARKER}" in
     error:*) echo "FATAL: could not check the database for demo data (${DEMO_MARKER#error:}). Aborting startup."; exit 1 ;;
   esac
-elif [ "${ALLOW_SEED}" = "true" ]; then
+elif [ "${ALLOW_SEED}" = "true" ] || [ "${FORCE_SEED}" = "true" ]; then
   echo "Seeding database with synthetic demo data (idempotent - safe to re-run)..."
   if node prisma/seed.js 2>&1; then
     echo "Seed completed successfully."
