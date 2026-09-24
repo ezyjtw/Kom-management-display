@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { approveSkip, DailyCheckRuleError } from "@/modules/daily-checks/enforcement";
@@ -23,17 +23,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params;
     if (await isRestrictedItemFor(id, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
-    const item = await approveSkip(id, { id: auth.id, role: auth.role });
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "daily_check_skip_approved",
-      entityType: "daily_check",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Skip approved: ${item.skippedReason ?? ""}`,
-      after: { status: "skipped", requestedBy: item.skipRequestedBy },
-      metadata: actor.metadata,
-    });
+    const item = await auditedAction(
+      {
+        action: "daily_check_skip_approved",
+        entityType: "daily_check",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Approve skip of daily check item ${id}`,
+        metadata: actor.metadata,
+      },
+      async () => approveSkip(id, { id: auth.id, role: auth.role }),
+      (r) => ({ status: "skipped", requestedBy: r.skipRequestedBy, skippedReason: r.skippedReason ?? null }),
+    );
     return apiSuccess(item);
   } catch (error) {
     if (error instanceof DailyCheckRuleError) {

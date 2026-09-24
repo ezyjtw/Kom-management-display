@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateAlertRuleSchema } from "@/lib/validation";
@@ -44,27 +44,28 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    const rule = await prisma.alertRule.update({
-      where: { code },
-      data: {
-        ...rest,
-        ...(ruleParams ? { params: nextParams as Prisma.InputJsonValue } : {}),
-        ...(route ? { route: route as Prisma.InputJsonValue } : {}),
-        version: { increment: 1 },
-      },
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "alert_rule_updated",
-      entityType: "alert_rule",
-      entityId: code,
-      userId: actor.userId,
-      summary: `Alert rule ${code} updated to v${rule.version}`,
-      before: { enabled: before.enabled, severity: before.severity, params: before.params, route: before.route },
-      after: { enabled: rule.enabled, severity: rule.severity, params: rule.params, route: rule.route },
-      metadata: actor.metadata,
-    });
+    const rule = await auditedAction(
+      {
+        action: "alert_rule_updated",
+        entityType: "alert_rule",
+        entityId: code,
+        userId: actor.userId,
+        summary: `Update alert rule ${code} from v${before.version}`,
+        before: { enabled: before.enabled, severity: before.severity, params: before.params, route: before.route },
+        metadata: actor.metadata,
+      },
+      async () => prisma.alertRule.update({
+        where: { code },
+        data: {
+          ...rest,
+          ...(ruleParams ? { params: nextParams as Prisma.InputJsonValue } : {}),
+          ...(route ? { route: route as Prisma.InputJsonValue } : {}),
+          version: { increment: 1 },
+        },
+      }),
+      (r) => ({ version: r.version, enabled: r.enabled, severity: r.severity, params: r.params, route: r.route }),
+    );
 
     return apiSuccess(rule);
   } catch (error) {

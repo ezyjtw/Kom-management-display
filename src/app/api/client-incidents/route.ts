@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -24,17 +24,21 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = validateBody(raiseSchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
-    const result = await raiseClientEntry(parsed.data, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: `client_${parsed.data.type}_raised`,
-      entityType: "work_item",
-      entityId: result.workItem.id,
-      userId: actor.userId,
-      summary: `Client ${parsed.data.type} raised (${parsed.data.severity}, ${parsed.data.category})${result.withheld ? "; client ticket withheld (compliance-sensitive)" : ""}`,
-      after: { internalTicket: result.workItem.ticketKey, clientTicket: result.clientTicket?.key ?? null, withheld: result.withheld },
-      metadata: actor.metadata,
-    });
+    // The WorkItem id is not known until it is created: it is in the outcome.
+    const result = await auditedAction(
+      {
+        action: `client_${parsed.data.type}_raised`,
+        entityType: "work_item",
+        entityId: "new",
+        userId: actor.userId,
+        summary: `Raise client ${parsed.data.type} (${parsed.data.severity}, ${parsed.data.category})`,
+        metadata: actor.metadata,
+      },
+      async () => raiseClientEntry(parsed.data, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }),
+      (r) => ({ workItemId: r.workItem.id, internalTicket: r.workItem.ticketKey, clientTicket: r.clientTicket?.key ?? null, withheld: r.withheld }),
+      { entityId: (r) => r.workItem.id },
+    );
     return apiSuccess({
       id: result.workItem.id,
       ticketKey: result.workItem.ticketKey,

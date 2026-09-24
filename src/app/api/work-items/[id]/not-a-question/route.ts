@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { notAQuestionSchema } from "@/lib/validation";
@@ -43,32 +43,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { reason, text } = parsed.data;
     const transitionName = (await getSetting("intake.jsm.nonQuestionTransition")) || undefined;
-    await changeState(id, "closed", { transitionName, closure: { nonActionable: { reason } } });
-
     const metadata = (item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata) ? item.metadata : {}) as Record<string, unknown>;
-    const updated = await prisma.workItem.update({
-      where: { id },
-      data: {
-        rootCause: "no_action_required",
-        resolutionNote: `Not a question: ${reason}${text ? ` (${text})` : ""}`,
-        metadata: {
-          ...metadata,
-          closure: { nonActionable: true, reason, text: text ?? null, byUserId: auth.id, at: new Date().toISOString() },
-        } as Prisma.InputJsonValue,
-      },
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "work_item_closed_non_actionable",
-      entityType: "work_item",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Client request ${item.ticketKey ?? id} closed as not a question (${reason})`,
-      before: { state: item.state },
-      after: { state: "closed", reason, text: text ?? null },
-      metadata: actor.metadata,
-    });
+    const updated = await auditedAction(
+      {
+        action: "work_item_closed_non_actionable",
+        entityType: "work_item",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Close client request ${item.ticketKey ?? id} as not a question (${reason})`,
+        before: { state: item.state },
+        after: { state: "closed", reason, text: text ?? null },
+        metadata: actor.metadata,
+      },
+      async () => {
+        await changeState(id, "closed", { transitionName, closure: { nonActionable: { reason } } });
+        return prisma.workItem.update({
+          where: { id },
+          data: {
+            rootCause: "no_action_required",
+            resolutionNote: `Not a question: ${reason}${text ? ` (${text})` : ""}`,
+            metadata: {
+              ...metadata,
+              closure: { nonActionable: true, reason, text: text ?? null, byUserId: auth.id, at: new Date().toISOString() },
+            } as Prisma.InputJsonValue,
+          },
+        });
+      },
+      (r) => ({ state: r.state, rootCause: r.rootCause }),
+    );
     return apiSuccess(updated);
   } catch (error) {
     if (error instanceof TicketWriteError) {

@@ -97,8 +97,17 @@ export async function createAuditEntryStrict(entry: AuditEntry, phase: AuditPhas
  * If the outcome entry itself cannot be written, the action has already
  * happened: that is logged as AUDIT_OUTCOME_MISSING and the unmatched
  * "requested" entry is raised by ALR-AUD-01.
+ *
+ * For creates, the requested entry cannot know the new id: pass opts.entityId
+ * and the completed entry is recorded against the real id (the requested one
+ * uses entry.entityId, e.g. "new"); both share the correlationId.
  */
-export async function auditedAction<T>(entry: AuditEntry, run: (correlationId: string) => Promise<T>, outcome?: (result: T) => Record<string, unknown>): Promise<T> {
+export async function auditedAction<T>(
+  entry: AuditEntry,
+  run: (correlationId: string) => Promise<T>,
+  outcome?: (result: T) => Record<string, unknown>,
+  opts: { entityId?: (result: T) => string } = {},
+): Promise<T> {
   const correlationId = randomUUID();
   await createAuditEntryStrict(entry, "requested", correlationId);
   let result: T;
@@ -109,7 +118,8 @@ export async function auditedAction<T>(entry: AuditEntry, run: (correlationId: s
       .catch(() => logger.error("AUDIT_OUTCOME_MISSING", { action: entry.action, correlationId, phase: "failed" }));
     throw error;
   }
-  await createAuditEntryStrict(entry, "completed", correlationId, outcome ? { outcome: outcome(result) } : undefined)
+  const completedEntry = opts.entityId ? { ...entry, entityId: opts.entityId(result) } : entry;
+  await createAuditEntryStrict(completedEntry, "completed", correlationId, outcome ? { outcome: outcome(result) } : undefined)
     .catch(() => logger.error("AUDIT_OUTCOME_MISSING", { action: entry.action, correlationId, phase: "completed" }));
   return result;
 }

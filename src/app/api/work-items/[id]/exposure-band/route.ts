@@ -10,7 +10,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { getSetting } from "@/modules/settings/settings";
@@ -39,16 +39,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (bands.length && !bands.includes(parsed.data.band)) {
       return NextResponse.json({ success: false, error: `Exposure band must be one of: ${bands.join(", ")}.` }, { status: 422 });
     }
-    if (item.ticketKey) {
-      await commentInternal(id, `Client exposure band chosen: ${parsed.data.band}${item.exposureUsd != null ? ` (exposure USD ${item.exposureUsd})` : ""}. See findings register CF-39.`);
-    }
     const meta = (item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata) ? item.metadata : {}) as Record<string, unknown>;
-    const updated = await prisma.workItem.update({
-      where: { id },
-      data: { metadata: { ...meta, exposureBand: parsed.data.band, exposureBandAt: new Date().toISOString() } as Prisma.InputJsonValue },
-    });
     const actor = auditActor(auth);
-    await createAuditEntry({ action: "oes_exposure_band_chosen", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Exposure band ${parsed.data.band}`, after: { band: parsed.data.band }, metadata: actor.metadata });
+    const updated = await auditedAction(
+      { action: "oes_exposure_band_chosen", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Exposure band ${parsed.data.band}`, after: { band: parsed.data.band }, metadata: actor.metadata },
+      async () => {
+        if (item.ticketKey) {
+          await commentInternal(id, `Client exposure band chosen: ${parsed.data.band}${item.exposureUsd != null ? ` (exposure USD ${item.exposureUsd})` : ""}. See findings register CF-39.`);
+        }
+        return prisma.workItem.update({
+          where: { id },
+          data: { metadata: { ...meta, exposureBand: parsed.data.band, exposureBandAt: new Date().toISOString() } as Prisma.InputJsonValue },
+        });
+      },
+    );
     return apiSuccess(updated);
   } catch (error) {
     if (error instanceof TicketWriteError) return NextResponse.json({ success: false, error: error.message }, { status: 409 });

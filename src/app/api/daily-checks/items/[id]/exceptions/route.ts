@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { dailyCheckExceptionsSchema } from "@/lib/validation";
@@ -33,17 +33,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params;
     if (await isRestrictedItemFor(id, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
-    const result = await recordExceptions(id, parsed.data.exceptions, auth.employeeId || auth.id);
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "daily_check_exceptions_recorded",
-      entityType: "daily_check",
-      entityId: id,
-      userId: actor.userId,
-      summary: `${result.workItemIds.length} exception(s) recorded; ${result.unticketed} could not be ticketed yet`,
-      after: { workItemIds: result.workItemIds },
-      metadata: actor.metadata,
-    });
+    const result = await auditedAction(
+      {
+        action: "daily_check_exceptions_recorded",
+        entityType: "daily_check",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Record ${parsed.data.exceptions.length} exception(s)`,
+        metadata: actor.metadata,
+      },
+      async () => recordExceptions(id, parsed.data.exceptions, auth.employeeId || auth.id),
+      (r) => ({ workItemIds: r.workItemIds, unticketed: r.unticketed }),
+    );
     return apiSuccess(result);
   } catch (error) {
     if (error instanceof DailyCheckRuleError) {

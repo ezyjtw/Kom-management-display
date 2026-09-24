@@ -16,6 +16,13 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+
+/** Details of the "completed" audit entry for an action (fail-closed audit writes requested + completed). */
+function completedAudit(action: string) {
+  const call = prismaMock.auditLog.create.mock.calls.map((c) => c[0].data).find((d) => d.action === action && d.phase === "completed");
+  expect(call, `no completed audit entry for ${action}`).toBeTruthy();
+  return JSON.parse(call.details);
+}
 vi.mock("@/lib/auth-user", () => ({
   requireAuth: vi.fn(async () => state.user),
 }));
@@ -138,9 +145,10 @@ describe("SLA policies", () => {
     const res = await slaRoute.PATCH(req("PATCH", { ownershipMins: 15 }), ctx({ id: "p1" }));
     expect(res.status).toBe(200);
     expect(prismaMock.slaPolicy.update.mock.calls[0][0].data).toMatchObject({ ownershipMins: 15, version: { increment: 1 } });
-    const details = JSON.parse(prismaMock.auditLog.create.mock.calls[0][0].data.details);
-    expect(details.before.ownershipMins).toBeNull();
-    expect(details.after.ownershipMins).toBe(15);
+    // Fail-closed audit: requested entry (with before) then completed entry (with the outcome).
+    const done = completedAudit("sla_policy_updated");
+    expect(done.before.ownershipMins).toBeNull();
+    expect(done.outcome.ownershipMins).toBe(15);
   });
 
   it("rejects non-integer or empty updates", async () => {
@@ -160,11 +168,9 @@ describe("alert rules", () => {
     prismaMock.alertRule.update.mockResolvedValue({ code: "ALR-OES-01", enabled: true, severity: "critical", params: {}, route: {}, version: 2 });
     const res = await ruleRoute.PATCH(req("PATCH", { enabled: true }), ctx({ code: "ALR-OES-01" }));
     expect(res.status).toBe(200);
-    const audit = prismaMock.auditLog.create.mock.calls[0][0].data;
-    expect(audit.action).toBe("alert_rule_updated");
-    const details = JSON.parse(audit.details);
+    const details = completedAudit("alert_rule_updated");
     expect(details.before.enabled).toBe(false);
-    expect(details.after.enabled).toBe(true);
+    expect(details.outcome.enabled).toBe(true);
   });
 
   it("refuses (422) to enable a rule with CONFIRM placeholders and lists the missing params (spec §11.5)", async () => {

@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { approveClientUpdate } from "@/modules/client-incidents/service";
@@ -22,9 +22,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
   try {
     const { id, updateId } = await params;
-    const update = await approveClientUpdate(id, updateId, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
     const actor = auditActor(auth);
-    await createAuditEntry({ action: "client_update_second_approver", entityType: "work_item", entityId: id, userId: actor.userId, summary: "Client update reviewed by a second team member and posted", metadata: actor.metadata });
+    const update = await auditedAction(
+      { action: "client_update_second_approver", entityType: "work_item", entityId: id, userId: actor.userId, summary: "Second team member reviews and posts client update", metadata: { ...actor.metadata, updateId } },
+      async () => approveClientUpdate(id, updateId, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }),
+      (r) => ({ status: r.status, postedAt: r.postedAt }),
+    );
     return apiSuccess(update);
   } catch (error) {
     return clientIncidentError(error, "client update approve");

@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { updateJiraProjectSchema, validateBody } from "@/lib/validation";
@@ -38,21 +38,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       types._default = types[defaultIssueType];
     }
 
-    const updated = await prisma.jiraProjectConfig.update({
-      where: { key },
-      data: { ...rest, ...(defaultIssueType !== undefined ? { issueTypeIds: types as Prisma.InputJsonValue } : {}) },
-    });
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "jira_project_updated",
-      entityType: "jira_project",
-      entityId: key,
-      userId: actor.userId,
-      summary: `Jira project ${key} routing updated`,
-      before: { enabled: before.enabled, syncInbound: before.syncInbound, issueTypeIds: before.issueTypeIds, serviceDeskId: before.serviceDeskId },
-      after: { enabled: updated.enabled, syncInbound: updated.syncInbound, issueTypeIds: updated.issueTypeIds, serviceDeskId: updated.serviceDeskId },
-      metadata: actor.metadata,
-    });
+    const updated = await auditedAction(
+      {
+        action: "jira_project_updated",
+        entityType: "jira_project",
+        entityId: key,
+        userId: actor.userId,
+        summary: `Update Jira project ${key} routing`,
+        before: { enabled: before.enabled, syncInbound: before.syncInbound, issueTypeIds: before.issueTypeIds, serviceDeskId: before.serviceDeskId },
+        metadata: actor.metadata,
+      },
+      async () => prisma.jiraProjectConfig.update({
+        where: { key },
+        data: { ...rest, ...(defaultIssueType !== undefined ? { issueTypeIds: types as Prisma.InputJsonValue } : {}) },
+      }),
+      (r) => ({ enabled: r.enabled, syncInbound: r.syncInbound, issueTypeIds: r.issueTypeIds, serviceDeskId: r.serviceDeskId }),
+    );
     return apiSuccess(updated);
   } catch (error) {
     return handleApiError(error, "admin jira-project PATCH");

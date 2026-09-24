@@ -6,6 +6,8 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, upsertFeatureFlagSchema } from "@/lib/validation";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/feature-flags
@@ -85,39 +87,46 @@ export async function POST(request: NextRequest) {
       return apiValidationError("key and name are required");
     }
 
-    const flag = await prisma.featureFlag.upsert({
-      where: { key },
-      update: {
-        name,
-        description: description ?? undefined,
-        enabled: enabled ?? undefined,
-        roles: roles ? JSON.stringify(roles) : undefined,
-        teams: teams ? JSON.stringify(teams) : undefined,
-        percentage: percentage ?? undefined,
-      },
-      create: {
-        key,
-        name,
-        description: description || "",
-        enabled: enabled ?? false,
-        roles: roles ? JSON.stringify(roles) : "[]",
-        teams: teams ? JSON.stringify(teams) : "[]",
-        percentage: percentage ?? 100,
-      },
-    });
-
-    invalidateFlagCache();
-
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
+    const existing = await prisma.featureFlag.findUnique({ where: { key }, select: { id: true, enabled: true } });
+    const actor = auditActor(auth);
+    // A new flag's id is not known until it is created: it is in the outcome.
+    const flag = await auditedAction(
+      {
         action: "feature_flag_updated",
         entityType: "feature_flag",
-        entityId: flag.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ key, enabled: flag.enabled }),
+        entityId: existing?.id ?? "new",
+        userId: actor.userId,
+        summary: `${existing ? "Update" : "Create"} feature flag ${key}`,
+        ...(existing ? { before: { enabled: existing.enabled } } : {}),
+        metadata: { ...actor.metadata, key },
       },
-    });
+      async () => {
+        const row = await prisma.featureFlag.upsert({
+          where: { key },
+          update: {
+            name,
+            description: description ?? undefined,
+            enabled: enabled ?? undefined,
+            roles: roles ? JSON.stringify(roles) : undefined,
+            teams: teams ? JSON.stringify(teams) : undefined,
+            percentage: percentage ?? undefined,
+          },
+          create: {
+            key,
+            name,
+            description: description || "",
+            enabled: enabled ?? false,
+            roles: roles ? JSON.stringify(roles) : "[]",
+            teams: teams ? JSON.stringify(teams) : "[]",
+            percentage: percentage ?? 100,
+          },
+        });
+        invalidateFlagCache();
+        return row;
+      },
+      (r) => ({ flagId: r.id, key, enabled: r.enabled }),
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(flag, undefined, 201);
   } catch (error) {
@@ -139,8 +148,23 @@ export async function DELETE(request: NextRequest) {
 
     if (!key) return apiValidationError("key query parameter is required");
 
-    await prisma.featureFlag.delete({ where: { key } });
-    invalidateFlagCache();
+    const existing = await prisma.featureFlag.findUnique({ where: { key }, select: { id: true, enabled: true } });
+    const actor = auditActor(auth);
+    await auditedAction(
+      {
+        action: "feature_flag_deleted",
+        entityType: "feature_flag",
+        entityId: existing?.id ?? key,
+        userId: actor.userId,
+        summary: `Delete feature flag ${key}`,
+        ...(existing ? { before: { enabled: existing.enabled } } : {}),
+        metadata: { ...actor.metadata, key },
+      },
+      async () => {
+        await prisma.featureFlag.delete({ where: { key } });
+        invalidateFlagCache();
+      },
+    );
 
     return apiSuccess({ deleted: true });
   } catch (error) {

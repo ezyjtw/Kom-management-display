@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { acknowledgeBlocker } from "@/modules/alerting/acknowledge";
@@ -30,18 +30,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const blocker = await acknowledgeBlocker(id);
     if (blocker) return NextResponse.json({ success: false, error: blocker }, { status: 422 });
 
-    const updated = await prisma.alert.update({ where: { id }, data: { status: "acknowledged", acknowledgedAt: new Date() } });
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "alert_acknowledge",
-      entityType: "alert",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Alert ${alert.ruleCode} acknowledged`,
-      before: { status: alert.status },
-      after: { status: "acknowledged", workItemId: alert.workItemId },
-      metadata: actor.metadata,
-    });
+    const updated = await auditedAction(
+      {
+        action: "alert_acknowledge",
+        entityType: "alert",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Acknowledge alert ${alert.ruleCode}`,
+        before: { status: alert.status },
+        after: { status: "acknowledged", workItemId: alert.workItemId },
+        metadata: actor.metadata,
+      },
+      async () => prisma.alert.update({ where: { id }, data: { status: "acknowledged", acknowledgedAt: new Date() } }),
+      (r) => ({ status: r.status, acknowledgedAt: r.acknowledgedAt }),
+    );
     return apiSuccess(updated);
   } catch (error) {
     return handleApiError(error, "alert acknowledge");

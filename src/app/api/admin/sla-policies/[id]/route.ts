@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateSlaPolicySchema } from "@/lib/validation";
@@ -27,22 +27,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const before = await prisma.slaPolicy.findUnique({ where: { id } });
     if (!before) return apiNotFoundError("SLA policy");
 
-    const policy = await prisma.slaPolicy.update({
-      where: { id },
-      data: { ...parsed.data, version: { increment: 1 } },
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "sla_policy_updated",
-      entityType: "sla_policy",
-      entityId: id,
-      userId: actor.userId,
-      summary: `SLA policy ${policy.code} updated to v${policy.version}`,
-      before: Object.fromEntries(TRACKED.map((k) => [k, before[k]])),
-      after: Object.fromEntries(TRACKED.map((k) => [k, policy[k]])),
-      metadata: actor.metadata,
-    });
+    const policy = await auditedAction(
+      {
+        action: "sla_policy_updated",
+        entityType: "sla_policy",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Update SLA policy ${before.code} from v${before.version}`,
+        before: Object.fromEntries(TRACKED.map((k) => [k, before[k]])),
+        metadata: actor.metadata,
+      },
+      async () => prisma.slaPolicy.update({
+        where: { id },
+        data: { ...parsed.data, version: { increment: 1 } },
+      }),
+      (r) => ({ version: r.version, ...Object.fromEntries(TRACKED.map((k) => [k, r[k]])) }),
+    );
 
     return apiSuccess(policy);
   } catch (error) {

@@ -12,7 +12,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -94,7 +94,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const actor = auditActor(auth);
   try {
     const body = await request.json();
-    let row: unknown;
+    // Validate first; the write itself runs inside the fail-closed audit below.
+    let write: () => Promise<unknown>;
     let key: string;
     if (table === "team-config") {
       const v = validateBody(teamConfig, body);
@@ -102,36 +103,41 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       for (const id of [v.data.leadEmployeeId, v.data.deputyEmployeeId, ...v.data.memberEmployeeIds].filter((x): x is string => !!x)) {
         if (!(await prisma.employee.findUnique({ where: { id }, select: { id: true } }))) return apiValidationError(`Unknown employee ${id}`);
       }
-      key = v.data.team;
-      row = await prisma.teamConfig.upsert({ where: { team: key }, update: v.data, create: v.data });
+      const team = v.data.team;
+      key = team;
+      write = () => prisma.teamConfig.upsert({ where: { team }, update: v.data, create: v.data });
     } else if (table === "asset-status") {
       const v = validateBody(assetStatus, body);
       if (!v.success) return apiValidationError(v.error);
       key = v.data.asset;
       const data = { ...v.data, updatedById: auth.id };
-      row = await prisma.assetStatus.upsert({ where: { asset: key }, update: data, create: data });
+      write = () => prisma.assetStatus.upsert({ where: { asset: data.asset }, update: data, create: data });
     } else if (table === "incident-categories") {
       // Spec §9.7: compliance-sensitive categories never create a client ticket without a Compliance decision.
       const v = validateBody(incidentCategory, body);
       if (!v.success) return apiValidationError(v.error);
       key = v.data.code;
-      row = await prisma.incidentCategory.upsert({ where: { code: key }, update: v.data, create: v.data });
+      write = () => prisma.incidentCategory.upsert({ where: { code: v.data.code }, update: v.data, create: v.data });
     } else if (table === "otc-break-types") {
       const v = validateBody(otcBreakType, body);
       if (!v.success) return apiValidationError(v.error);
       key = v.data.code;
-      row = await prisma.otcBreakType.upsert({ where: { code: key }, update: v.data, create: v.data });
+      write = () => prisma.otcBreakType.upsert({ where: { code: v.data.code }, update: v.data, create: v.data });
     } else {
       const v = validateBody(approvedValidator, body);
       if (!v.success) return apiValidationError(v.error);
       key = `${v.data.chain}:${v.data.validator}`;
-      row = await prisma.approvedValidator.upsert({
+      write = () => prisma.approvedValidator.upsert({
         where: { chain_validator: { chain: v.data.chain, validator: v.data.validator } },
         update: { notes: v.data.notes },
         create: { ...v.data, addedById: auth.id },
       });
     }
-    await createAuditEntry({ action: `reference_${table}_upserted`, entityType: "reference_data", entityId: key, userId: actor.userId, summary: `${table} ${key} saved`, after: row as Record<string, unknown>, metadata: actor.metadata });
+    const row = await auditedAction(
+      { action: `reference_${table}_upserted`, entityType: "reference_data", entityId: key, userId: actor.userId, summary: `Save ${table} ${key}`, after: body as Record<string, unknown>, metadata: actor.metadata },
+      write,
+      (r) => r as Record<string, unknown>,
+    );
     return apiSuccess(row);
   } catch (error) {
     return handleApiError(error, "admin reference PUT");
@@ -147,15 +153,26 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!key) return apiValidationError("key is required");
   const actor = auditActor(auth);
   try {
-    const { count } = table === "asset-status"
-      ? await prisma.assetStatus.deleteMany({ where: { asset: key } })
+    const existing = table === "asset-status"
+      ? await prisma.assetStatus.count({ where: { asset: key } })
       : table === "incident-categories"
-        ? await prisma.incidentCategory.updateMany({ where: { code: key }, data: { isActive: false } })
+        ? await prisma.incidentCategory.count({ where: { code: key } })
         : table === "otc-break-types"
-        ? await prisma.otcBreakType.deleteMany({ where: { code: key } })
-        : await prisma.approvedValidator.deleteMany({ where: { id: key } });
+        ? await prisma.otcBreakType.count({ where: { code: key } })
+        : await prisma.approvedValidator.count({ where: { id: key } });
+    if (!existing) return apiNotFoundError("Row");
+    const { count } = await auditedAction(
+      { action: `reference_${table}_deleted`, entityType: "reference_data", entityId: key, userId: actor.userId, summary: `Remove ${table} ${key}`, metadata: actor.metadata },
+      async () => table === "asset-status"
+        ? prisma.assetStatus.deleteMany({ where: { asset: key } })
+        : table === "incident-categories"
+          ? prisma.incidentCategory.updateMany({ where: { code: key }, data: { isActive: false } })
+          : table === "otc-break-types"
+          ? prisma.otcBreakType.deleteMany({ where: { code: key } })
+          : prisma.approvedValidator.deleteMany({ where: { id: key } }),
+      (r) => ({ deleted: r.count }),
+    );
     if (!count) return apiNotFoundError("Row");
-    await createAuditEntry({ action: `reference_${table}_deleted`, entityType: "reference_data", entityId: key, userId: actor.userId, summary: `${table} ${key} removed`, metadata: actor.metadata });
     return apiSuccess({ deleted: count });
   } catch (error) {
     return handleApiError(error, "admin reference DELETE");

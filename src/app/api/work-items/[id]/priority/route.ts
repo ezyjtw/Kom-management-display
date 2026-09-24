@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { changePrioritySchema, validateBody } from "@/lib/validation";
@@ -32,22 +32,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const sla = item.kind === "client_request"
       ? await prisma.slaPolicy.findUnique({ where: { code: `CLIENT-Q-${priority}` }, select: { id: true } })
       : null;
-    const updated = await prisma.workItem.update({
-      where: { id },
-      data: { priority, ...(sla ? { slaPolicyId: sla.id } : {}) },
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "work_item_priority_changed",
-      entityType: "work_item",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Priority ${item.priority} -> ${priority} on ${item.ticketKey ?? id}`,
-      before: { priority: item.priority },
-      after: { priority },
-      metadata: { ...actor.metadata, reason: reason ?? null },
-    });
+    const updated = await auditedAction(
+      {
+        action: "work_item_priority_changed",
+        entityType: "work_item",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Priority ${item.priority} -> ${priority} on ${item.ticketKey ?? id}`,
+        before: { priority: item.priority },
+        after: { priority },
+        metadata: { ...actor.metadata, reason: reason ?? null },
+      },
+      async () => prisma.workItem.update({
+        where: { id },
+        data: { priority, ...(sla ? { slaPolicyId: sla.id } : {}) },
+      }),
+      (r) => ({ priority: r.priority, slaPolicyId: r.slaPolicyId }),
+    );
     return apiSuccess(updated);
   } catch (error) {
     return handleApiError(error, "work-item priority");

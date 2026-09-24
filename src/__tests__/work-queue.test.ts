@@ -168,6 +168,14 @@ describe("work item actions (spec §14.2)", () => {
     expect(sse.events).toContainEqual(expect.objectContaining({ workItemId: "wi-warn", change: "owner" }));
   });
 
+  it("when the audit trail cannot be written, nothing happens: 503, no Jira call, no local change (fail-closed)", async () => {
+    vi.spyOn(p().auditLog, "create").mockRejectedValueOnce(new Error("audit store unavailable"));
+    const res = await ownership(req("/x", "POST", { employeeId: "me" }), ctx("wi-warn"));
+    expect(res.status).toBe(503);
+    expect(jira.calls.filter((c) => c.method !== "GET")).toEqual([]);
+    expect((await item("wi-warn")).ownerEmployeeId ?? null).toBeNull();
+  });
+
   it("when Jira rejects the change nothing changes locally (409)", async () => {
     jira.fail = true;
     const res = await ownership(req("/x", "POST", { employeeId: "me" }), ctx("wi-warn"));

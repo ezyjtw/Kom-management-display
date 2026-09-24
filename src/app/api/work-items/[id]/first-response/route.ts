@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -25,12 +25,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const parsed = validateBody(firstResponseSchema, await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error);
     const { id } = await params;
-    const result = await sendFirstResponse(id, parsed.data, { userId: auth.id, employeeId: auth.employeeId ?? null, role: auth.role });
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "work_item_first_response_sent", entityType: "work_item", entityId: id, userId: actor.userId,
-      summary: `First response ${parsed.data.markSentManually ? "marked as sent manually" : `sent via ${result.sentVia}`}`, metadata: actor.metadata,
-    });
+    const result = await auditedAction(
+      {
+        action: "work_item_first_response_sent", entityType: "work_item", entityId: id, userId: actor.userId,
+        summary: parsed.data.markSentManually ? "Mark first response as sent manually" : "Send first response", metadata: actor.metadata,
+      },
+      async () => sendFirstResponse(id, parsed.data, { userId: auth.id, employeeId: auth.employeeId ?? null, role: auth.role }),
+      (r) => ({ sentVia: r.sentVia }),
+    );
     return apiSuccess(result);
   } catch (error) {
     return clientIncidentError(error, "work-item first response");

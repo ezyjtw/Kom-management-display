@@ -9,7 +9,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiNotFoundError, apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -38,20 +38,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!parsed.data.complianceDecisionRef) {
         return NextResponse.json({ success: false, error: "A Compliance decision reference is required to create a client request for a compliance-sensitive entry." }, { status: 422 });
       }
-      const created = await releaseWithheldClientRequest(id, parsed.data.complianceDecisionRef, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
-      await createAuditEntry({
-        action: "client_ticket_released_after_compliance_decision",
-        entityType: "work_item",
-        entityId: id,
-        userId: actor.userId,
-        summary: `Client request ${created.key} created after Compliance decision ${parsed.data.complianceDecisionRef}`,
-        after: { clientTicketKey: created.key, complianceDecisionRef: parsed.data.complianceDecisionRef },
-        metadata: actor.metadata,
-      });
+      const complianceDecisionRef = parsed.data.complianceDecisionRef;
+      const created = await auditedAction(
+        {
+          action: "client_ticket_released_after_compliance_decision",
+          entityType: "work_item",
+          entityId: id,
+          userId: actor.userId,
+          summary: `Create client request for ${item.ticketKey ?? id} after Compliance decision ${complianceDecisionRef}`,
+          after: { complianceDecisionRef },
+          metadata: actor.metadata,
+        },
+        async () => releaseWithheldClientRequest(id, complianceDecisionRef, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }),
+        (r) => ({ clientTicketKey: r.key }),
+      );
       return apiSuccess(created, undefined, 201);
     }
-    const created = await retryClientRequest(id);
-    await createAuditEntry({ action: "client_ticket_created", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Client request ${created.key} created`, metadata: actor.metadata });
+    const created = await auditedAction(
+      { action: "client_ticket_created", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Create client request for ${item.ticketKey ?? id}`, metadata: actor.metadata },
+      async () => retryClientRequest(id),
+      (r) => ({ clientTicketKey: r.key }),
+    );
     return apiSuccess(created, undefined, 201);
   } catch (error) {
     return clientIncidentError(error, "client-ticket POST");

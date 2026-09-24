@@ -7,6 +7,8 @@ import { apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
 import { setClientStatus } from "@/modules/client-incidents/service";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 import { clientIncidentError } from "@/modules/client-incidents/http";
 
 const bodySchema = z.object({ status: z.string().min(1).max(40) });
@@ -22,7 +24,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     const parsed = validateBody(bodySchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
-    const item = await setClientStatus(id, parsed.data.status);
+    const actor = auditActor(auth);
+    // Client-visible status change on the JSM request: fail-closed audit.
+    const item = await auditedAction(
+      { action: "client_status_changed", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Client-visible status -> ${parsed.data.status}`, after: { status: parsed.data.status }, metadata: actor.metadata },
+      () => setClientStatus(id, parsed.data.status),
+    );
     return apiSuccess({ id: item.id, clientStatus: parsed.data.status });
   } catch (error) {
     return clientIncidentError(error, "client status POST");

@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { featureGate } from "@/lib/feature-gate";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
+import { prisma } from "@/lib/prisma";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { completeIaiDraft } from "@/modules/iai/drafts";
@@ -21,17 +22,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
-    const draft = await completeIaiDraft(id);
-    if (!draft) return apiNotFoundError("IAI draft");
+    const existing = await prisma.iaiDraft.findUnique({ where: { id }, select: { jiraKey: true } });
+    if (!existing) return apiNotFoundError("IAI draft");
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "iai_draft_completed",
-      entityType: "iai_draft",
-      entityId: id,
-      userId: actor.userId,
-      summary: `IAI draft ${draft.jiraKey ?? id} completed`,
-      metadata: actor.metadata,
-    });
+    const draft = await auditedAction(
+      {
+        action: "iai_draft_completed",
+        entityType: "iai_draft",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Complete IAI draft ${existing.jiraKey ?? id}`,
+        metadata: actor.metadata,
+      },
+      async () => completeIaiDraft(id),
+      (r) => ({ completedAt: r?.completedAt ?? null }),
+    );
+    if (!draft) return apiNotFoundError("IAI draft");
     return apiSuccess(draft);
   } catch (error) {
     return handleApiError(error, "iai draft complete");

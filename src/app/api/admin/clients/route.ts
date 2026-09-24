@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, maskSensitiveFields } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createClientSchema } from "@/lib/validation";
@@ -42,21 +42,25 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return apiValidationError(parsed.error);
     const { channels, ...fields } = parsed.data;
 
-    const client = await prisma.client.create({
-      data: { ...fields, channels: { create: channels } },
-      include: { channels: true },
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "client_created",
-      entityType: "client",
-      entityId: client.id,
-      userId: actor.userId,
-      summary: `Client created: ${client.displayName}`,
-      after: { displayName: client.displayName, jurisdiction: client.jurisdiction, channels: channels.length },
-      metadata: actor.metadata,
-    });
+    // The client id is not known until it is created: it is in the outcome.
+    const client = await auditedAction(
+      {
+        action: "client_created",
+        entityType: "client",
+        entityId: "new",
+        userId: actor.userId,
+        summary: `Create client: ${fields.displayName}`,
+        after: { displayName: fields.displayName, jurisdiction: fields.jurisdiction ?? null, channels: channels.length },
+        metadata: actor.metadata,
+      },
+      async () => prisma.client.create({
+        data: { ...fields, channels: { create: channels } },
+        include: { channels: true },
+      }),
+      (r) => ({ clientId: r.id }),
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(client, undefined, 201);
   } catch (error) {

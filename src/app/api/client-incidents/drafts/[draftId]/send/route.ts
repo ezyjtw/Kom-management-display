@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
+import { prisma } from "@/lib/prisma";
 import { apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -29,9 +30,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { draftId } = await params;
     const parsed = validateBody(bodySchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
-    const sent = await sendDraft(draftId, parsed.data.body, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }, { markSentManually: parsed.data.markSentManually });
+    const draft = await prisma.outboundMessageDraft.findUnique({ where: { id: draftId }, select: { workItemId: true, channel: true, status: true } });
+    if (!draft || draft.status !== "draft") return NextResponse.json({ success: false, error: "Draft not found or already handled." }, { status: 404 });
     const actor = auditActor(auth);
-    await createAuditEntry({ action: "client_message_sent", entityType: "work_item", entityId: sent.workItemId, userId: actor.userId, summary: `Client message sent (${sent.channel}${parsed.data.markSentManually ? ", marked sent manually" : ""})`, metadata: actor.metadata });
+    const sent = await auditedAction(
+      {
+        action: "client_message_sent",
+        entityType: "work_item",
+        entityId: draft.workItemId,
+        userId: actor.userId,
+        summary: `Send client message (${draft.channel}${parsed.data.markSentManually ? ", marked sent manually" : ""})`,
+        metadata: { ...actor.metadata, draftId },
+      },
+      async () => sendDraft(draftId, parsed.data.body, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }, { markSentManually: parsed.data.markSentManually }),
+      (r) => ({ status: r.status, sentAt: r.sentAt }),
+    );
     return apiSuccess({ id: sent.id, status: sent.status, sentAt: sent.sentAt });
   } catch (error) {
     return clientIncidentError(error, "draft send");

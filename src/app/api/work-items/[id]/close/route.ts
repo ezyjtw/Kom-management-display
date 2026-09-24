@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { closeWorkItemSchema, validateBody } from "@/lib/validation";
@@ -30,16 +30,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params;
     const actor = auditActor(auth);
-    const updated = await closeWorkItem(id, parsed.data, actor.userId, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
-    await createAuditEntry({
-      action: "work_item_closed",
-      entityType: "work_item",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Work item ${updated.ticketKey ?? id} ${updated.state} (${updated.rootCause})`,
-      after: { state: updated.state, rootCause: updated.rootCause, riskScore: updated.riskScore, timeLogBucketMins: parsed.data.timeLogBucketMins ?? null },
-      metadata: actor.metadata,
-    });
+    const updated = await auditedAction(
+      {
+        action: "work_item_closed",
+        entityType: "work_item",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Close work item ${id}`,
+        after: { timeLogBucketMins: parsed.data.timeLogBucketMins ?? null },
+        metadata: actor.metadata,
+      },
+      async () => closeWorkItem(id, parsed.data, actor.userId, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }),
+      (r) => ({ ticketKey: r.ticketKey, state: r.state, rootCause: r.rootCause, riskScore: r.riskScore }),
+    );
     return apiSuccess(updated);
   } catch (error) {
     if (error instanceof ClosureValidationError) {

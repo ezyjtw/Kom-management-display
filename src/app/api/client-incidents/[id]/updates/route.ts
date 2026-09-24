@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -26,9 +26,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     const parsed = validateBody(updateSchema, await request.json());
     if (!parsed.success) return apiValidationError(parsed.error);
-    const update = await postClientUpdate(id, parsed.data, { userId: auth.id, employeeId: auth.employeeId, role: auth.role });
     const actor = auditActor(auth);
-    await createAuditEntry({ action: update!.status === "posted" ? "client_update_posted" : "client_update_awaiting_approval", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Client update ${update!.status}`, metadata: actor.metadata });
+    // One action; whether it posted or awaits the second approver (four-eyes, decided by the service) is in the outcome.
+    const update = await auditedAction(
+      { action: "client_update_submitted", entityType: "work_item", entityId: id, userId: actor.userId, summary: "Submit client update", metadata: actor.metadata },
+      async () => postClientUpdate(id, parsed.data, { userId: auth.id, employeeId: auth.employeeId, role: auth.role }),
+      (r) => ({ updateId: r?.id ?? null, status: r?.status ?? null }),
+    );
     return apiSuccess(update, undefined, 201);
   } catch (error) {
     return clientIncidentError(error, "client update POST");

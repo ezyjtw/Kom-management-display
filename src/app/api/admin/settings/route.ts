@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { SETTINGS, isSettingKey, type SettingKey } from "@/modules/settings/registry";
@@ -52,17 +52,19 @@ export async function PUT(request: NextRequest) {
 
     const before = await getSetting(key);
     const actor = auditActor(auth);
-    await writeSetting(key, parsed.data as never, actor.userId);
-    await createAuditEntry({
-      action: "app_setting_updated",
-      entityType: "app_setting",
-      entityId: key,
-      userId: actor.userId,
-      summary: `Setting ${key} changed`,
-      before: { value: before },
-      after: { value: parsed.data },
-      metadata: actor.metadata,
-    });
+    await auditedAction(
+      {
+        action: "app_setting_updated",
+        entityType: "app_setting",
+        entityId: key,
+        userId: actor.userId,
+        summary: `Change setting ${key}`,
+        before: { value: before },
+        after: { value: parsed.data },
+        metadata: actor.metadata,
+      },
+      async () => writeSetting(key, parsed.data as never, actor.userId),
+    );
     return apiSuccess({ key, value: parsed.data });
   } catch (error) {
     return handleApiError(error, "admin settings PUT");

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateClientSchema } from "@/lib/validation";
@@ -30,37 +30,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const before = await prisma.client.findUnique({ where: { id }, include: { channels: true } });
     if (!before) return apiNotFoundError("Client");
 
-    const client = await prisma.$transaction(async (tx) => {
-      if (channels) {
-        await tx.clientChannel.deleteMany({ where: { clientId: id } });
-        await tx.clientChannel.createMany({ data: channels.map((c) => ({ ...c, clientId: id })) });
-      }
-      return tx.client.update({ where: { id }, data: fields, include: { channels: true } });
-    });
-
     const actor = auditActor(auth);
-    await createAuditEntry({
-      action: "client_updated",
-      entityType: "client",
-      entityId: id,
-      userId: actor.userId,
-      summary: `Client updated: ${client.displayName}`,
-      before: {
-        displayName: before.displayName,
-        isActive: before.isActive,
-        jurisdiction: before.jurisdiction,
-        channels: before.channels.map((c) => `${c.kind}:${c.ref}`),
+    const client = await auditedAction(
+      {
+        action: "client_updated",
+        entityType: "client",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Update client: ${before.displayName}`,
+        before: {
+          displayName: before.displayName,
+          isActive: before.isActive,
+          jurisdiction: before.jurisdiction,
+          channels: before.channels.map((c) => `${c.kind}:${c.ref}`),
+        },
+        metadata: actor.metadata,
       },
-      after: {
-        displayName: client.displayName,
-        isActive: client.isActive,
-        jurisdiction: client.jurisdiction,
-        inboundThresholdUsd: client.inboundThresholdUsd,
-        thresholdReviewedAt: client.thresholdReviewedAt,
-        channels: client.channels.map((c) => `${c.kind}:${c.ref}`),
-      },
-      metadata: actor.metadata,
-    });
+      async () => prisma.$transaction(async (tx) => {
+        if (channels) {
+          await tx.clientChannel.deleteMany({ where: { clientId: id } });
+          await tx.clientChannel.createMany({ data: channels.map((c) => ({ ...c, clientId: id })) });
+        }
+        return tx.client.update({ where: { id }, data: fields, include: { channels: true } });
+      }),
+      (r) => ({
+        displayName: r.displayName,
+        isActive: r.isActive,
+        jurisdiction: r.jurisdiction,
+        inboundThresholdUsd: r.inboundThresholdUsd,
+        thresholdReviewedAt: r.thresholdReviewedAt,
+        channels: r.channels.map((c) => `${c.kind}:${c.ref}`),
+      }),
+    );
 
     return apiSuccess(client);
   } catch (error) {
