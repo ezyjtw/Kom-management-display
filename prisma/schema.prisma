@@ -1666,6 +1666,7 @@ enum WorkItemKind {
   incident
   rca
   internal_task
+  uat_task
 }
 
 enum WorkItemState {
@@ -2186,4 +2187,87 @@ model LeadHandover {
   updatedAt          DateTime  @updatedAt
 
   @@unique([date, team])
+}
+
+/// GX sprint (spec §16). One per sprint number; release notes read from Confluence.
+model GxSprint {
+  id                 String     @id @default(cuid())
+  sprint             String     @unique // "6.19"
+  releaseNotesUrl    String     @default("")
+  releaseNotesPageId String?
+  pageVersion        Int        @default(0)
+  uatLandedAt        DateTime? // from the KMNC UAT ticket
+  prodPlannedAt      DateTime? // from the KMNC PROD ticket or the release notes
+  kmncKeys           Json       @default("[]")
+  fixVersions        Json       @default("[]")
+  parentTicketKey    String?
+  parentWorkItemId   String?
+  lastParsedAt       DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  changes            GxChange[]
+}
+
+/// One change item parsed from a release-notes row (spec §16.2). Never deleted: a removed row gets removedAt.
+model GxChange {
+  id               String    @id @default(cuid())
+  sprintId         String
+  section          String
+  itemType         String // function_toggle | ui_change | api_change | permission_change | staking_change | risk_engine_change | technical_change | highlight | deployment_note | verify_fix
+  summary          String
+  detail           Json // the parsed row, cell by cell (release engineer names redacted)
+  gxJiraKeys       Json      @default("[]")
+  env              String    @default("")
+  rowHash          String
+  firstCell        String    @default("")
+  qualifies        Boolean   @default(false)
+  tags             Json      @default("[]") // disabled-in-prod | client-awareness | scoped_not_operational
+  team             String    @default("All")
+  priority         String    @default("P2")
+  uatTemplate      String?
+  affectedTasks    Json      @default("[]")
+  affectedAlerts   Json      @default("[]")
+  affectedControls Json      @default("[]")
+  predecessorId    String?
+  workItemId       String?
+  uatTicketKey     String?
+  uatOutcome       String? // pass | fail | not_applicable | blocked
+  pageVersion      Int       @default(0)
+  removedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sprint GxSprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, section, rowHash])
+  @@index([sprintId, removedAt])
+}
+
+/// Impact mapping (spec §16.3): config, not code. Admin-editable, versioned, audit-logged. TODO(CONFIRM-GX-IMPACT-RULES).
+model GxImpactRule {
+  id          String   @id @default(cuid())
+  name        String
+  matchOn     String // section | workstream | keyword | jira_project
+  pattern     String // case-insensitive regular expression
+  taskCodes   Json     @default("[]")
+  alertCodes  Json     @default("[]")
+  controls    Json     @default("[]")
+  team        String   @default("All")
+  uatTemplate String   @default("")
+  priority    String   @default("P2")
+  isActive    Boolean  @default(true)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Human-authored UAT test outline (spec §16.5). Seeded empty; never generated.
+model UatTemplate {
+  code             String   @id
+  title            String
+  steps            String   @default("")
+  expectedResults  String   @default("")
+  evidenceRequired String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
