@@ -88,7 +88,7 @@ async function slackUserId(email: string): Promise<string | null> {
 
 function alertLink(alert: AlertWithTicket): string {
   const base = (env("NEXTAUTH_URL") ?? "").replace(/\/+$/, "");
-  return alert.workItemId ? `${base}/work/${alert.workItemId}` : `${base}/admin/alerts`;
+  return alert.workItemId ? `${base}/work/${alert.workItemId}` : `${base}/alerts`;
 }
 
 function alertText(alert: AlertWithTicket): string {
@@ -100,21 +100,34 @@ function alertText(alert: AlertWithTicket): string {
   ].filter(Boolean).join("\n");
 }
 
-/** Slack DM and email to each recipient. Failures are logged (counts only, no addresses: H8). */
+/**
+ * Slack DM and email to each recipient, each channel attempted independently.
+ * Returns the number of recipients reached on at least one channel (a channel
+ * counts only when it accepted the message). Failures are logged (counts only,
+ * no addresses: H8).
+ */
 export async function notifyPeople(people: Recipient[], alert: AlertWithTicket, prefix = ""): Promise<number> {
   const text = `${prefix}${alertText(alert)}`;
-  let sent = 0;
+  let reached = 0;
   for (const p of people) {
+    let ok = false;
     try {
       const userId = await slackUserId(p.email);
-      if (userId) await getSlackClient()?.chat.postMessage({ channel: userId, text });
-      await sendEmailNotification(p.email, `[${alert.severity.toUpperCase()}] ${alert.ruleCode}: ${alert.message}`.slice(0, 200), text);
-      sent++;
+      if (userId) {
+        const res = await getSlackClient()?.chat.postMessage({ channel: userId, text });
+        ok = !!res && res.ok !== false;
+      }
     } catch (error) {
-      logger.warn("Alert notification failed for one recipient", { ruleCode: alert.ruleCode, error: error instanceof Error ? error.message : String(error) });
+      logger.warn("Alert Slack DM failed for one recipient", { ruleCode: alert.ruleCode, error: error instanceof Error ? error.message : String(error) });
     }
+    try {
+      if (await sendEmailNotification(p.email, `[${alert.severity.toUpperCase()}] ${alert.ruleCode}: ${alert.message}`.slice(0, 200), text)) ok = true;
+    } catch (error) {
+      logger.warn("Alert email failed for one recipient", { ruleCode: alert.ruleCode, error: error instanceof Error ? error.message : String(error) });
+    }
+    if (ok) reached++;
   }
-  return sent;
+  return reached;
 }
 
 /** Extra targets from AlertRule.route: "slack:<channelId>", "email:<address>", "role:<lead|admin|oncall_primary|oncall_secondary>". */

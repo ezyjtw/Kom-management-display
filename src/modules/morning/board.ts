@@ -8,7 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { loadCalendar, londonParts, type BusinessCalendar } from "@/modules/alerting/calendar";
-import { handoverStatus, type HandoverStatus } from "@/modules/morning/handover";
+import { coverPool, handoverStatus, type HandoverStatus } from "@/modules/morning/handover";
 
 export const BOARD_TEAMS = ["Team 1", "Team 2", "Team 3", "All"] as const;
 const OPEN = ["open", "owned", "waiting_client", "waiting_vendor", "waiting_internal"] as const;
@@ -42,7 +42,10 @@ interface ItemRef {
 export interface TeamBoard {
   team: string;
   lead: { id: string; name: string } | null;
+  deputyId: string | null;
   handover: HandoverStatus | null;
+  /** Who may cover the lead today (deputy and team members, active, not on leave). */
+  coverPool: Array<{ id: string; name: string }>;
   checksNotCompleted: Array<{ code: string; name: string; periodKey: string; status: string }>;
   openExceptions: Array<ItemRef & { ageMins: number }>;
   blockers: Array<ItemRef & { state: string; reason: string | null; sinceMins: number }>;
@@ -90,7 +93,9 @@ export async function buildMorningBoard(now = new Date()) {
     teams.push({
       team,
       lead,
+      deputyId: cfg?.deputyEmployeeId ?? null,
       handover: team !== "All" && lead ? await handoverStatus(today, team, lead.id, now) : null,
+      coverPool: team !== "All" && lead ? await coverPool(team, today) : [],
       checksNotCompleted: checkItems
         .filter((c) => defByCode.get(c.definitionCode!)?.team === team)
         .map((c) => ({ code: c.definitionCode!, name: defByCode.get(c.definitionCode!)!.name, periodKey: c.periodKey!, status: c.status })),

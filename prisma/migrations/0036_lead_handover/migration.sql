@@ -10,9 +10,13 @@ CREATE TABLE "LeadHandover" (
     "note" TEXT,
     "submittedById" TEXT,
     "submittedAt" TIMESTAMP(3),
+    "postStatus" TEXT NOT NULL DEFAULT 'pending',
+    "postAttempts" INTEGER NOT NULL DEFAULT 0,
+    "lastPostAttemptAt" TIMESTAMP(3),
     "postedAt" TIMESTAMP(3),
     "postResults" JSONB NOT NULL DEFAULT '[]',
     "missingNotifiedAt" TIMESTAMP(3),
+    "reminderResults" JSONB NOT NULL DEFAULT '[]',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "LeadHandover_pkey" PRIMARY KEY ("id")

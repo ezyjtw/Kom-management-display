@@ -84,7 +84,10 @@ const DEFAULTS: Record<string, () => Row> = {
   clientUpdate: () => ({ kind: "update", status: "pending_approval", approverId: null, postedAt: null, targetStatus: null }),
   incidentCategory: () => ({ isActive: true, sortOrder: 0, complianceSensitive: false }),
   ticketLink: () => ({ role: "primary" }),
-  leadHandover: () => ({ absent: true, absenceSource: "manual", coveringEmployeeId: null, note: null, submittedById: null, submittedAt: null, postedAt: null, postResults: [], missingNotifiedAt: null }),
+  leadHandover: () => ({
+    absent: true, absenceSource: "manual", coveringEmployeeId: null, note: null, submittedById: null, submittedAt: null,
+    postStatus: "pending", postAttempts: 0, lastPostAttemptAt: null, postedAt: null, postResults: [], missingNotifiedAt: null, reminderResults: [],
+  }),
   ptoRecord: () => ({ type: "annual_leave", status: "approved", notes: "" }),
   teamConfig: () => ({ leadEmployeeId: null, deputyEmployeeId: null, memberEmployeeIds: [] }),
 };

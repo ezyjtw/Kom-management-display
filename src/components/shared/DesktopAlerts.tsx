@@ -45,7 +45,7 @@ export function desktopNotificationFor(event: { type: string; data: unknown }): 
     return { title: "New P1 client request", body: "Open the work queue to take it.", link: `/work/${String(d.workItemId)}`, tag: `wi-${String(d.workItemId)}` };
   }
   if (event.type === "alert" && d.severity === "critical") {
-    return { title: `Critical alert ${String(d.type ?? "")}`.trim(), body: String(d.message ?? "").slice(0, 200), link: "/admin/alerts", tag: `alert-${String(d.alertId)}` };
+    return { title: `Critical alert ${String(d.type ?? "")}`.trim(), body: String(d.message ?? "").slice(0, 200), link: "/alerts", tag: `alert-${String(d.alertId)}` };
   }
   return null;
 }

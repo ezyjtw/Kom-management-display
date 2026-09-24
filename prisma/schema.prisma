@@ -2142,9 +2142,15 @@ model LeadHandover {
   note               String?
   submittedById      String?
   submittedAt        DateTime?
+  /// pending | partially_posted | posted | failed. postedAt is set only when every open ticket accepted the comment.
+  postStatus         String    @default("pending")
+  postAttempts       Int       @default(0)
+  lastPostAttemptAt  DateTime?
   postedAt           DateTime?
-  postResults        Json      @default("[]") // [{ ticketKey, ok }]
+  postResults        Json      @default("[]") // [{ workItemId, ticketKey, ok, error?, at }]
+  /// Set only when every recipient was reached on at least one channel; reminderResults holds per-channel evidence.
   missingNotifiedAt  DateTime?
+  reminderResults    Json      @default("[]") // [{ userId, inApp, slack, email, at }]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

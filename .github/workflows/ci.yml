@@ -69,7 +69,10 @@ jobs:
 
       - name: Check test coverage thresholds
         run: |
-          npm test -- --coverage --coverageReporters=json-summary 2>&1 | tee coverage-output.txt
+          # BLOCKING. Vitest flags (the old Jest-style --coverageReporters made Vitest exit on an
+          # unknown option, so the threshold check was silently skipped).
+          set -o pipefail
+          npx vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary 2>&1 | tee coverage-output.txt
           if [ -f coverage/coverage-summary.json ]; then
             node -e "
               const c = require('./coverage/coverage-summary.json').total;
@@ -87,7 +90,8 @@ jobs:
               if (failed) process.exit(1);
             "
           else
-            echo "WARNING: Coverage summary not generated, skipping threshold check"
+            echo "::error::Coverage summary not generated"
+            exit 1
           fi
 
   security:
@@ -128,31 +132,12 @@ jobs:
           fi
           echo "No secrets detected"
 
-      - name: Auth guard check
-        run: |
-          FAIL=0
-          for f in $(find src/app/api -name 'route.ts' | grep -v '/health/' | grep -v '/auth/'); do
-            if ! grep -qE 'requireAuth|requireRole' "$f"; then
-              echo "::error::Missing auth guard in $f"
-              FAIL=1
-            fi
-          done
-          [ "$FAIL" -eq 0 ] || exit 1
-          echo "All API routes have auth guards"
-
-      - name: Zod validation check
-        run: |
-          FAIL=0
-          for f in $(find src/app/api -name 'route.ts' | grep -v '/health/' | grep -v '/auth/'); do
-            if grep -qE 'export\s+async\s+function\s+(POST|PUT|PATCH)' "$f"; then
-              if ! grep -qE 'safeParse|validateBody' "$f"; then
-                echo "::warning::Missing Zod validation in $f"
-                FAIL=1
-              fi
-            fi
-          done
-          [ "$FAIL" -eq 0 ] || echo "::warning::Some mutation routes lack Zod validation"
-          echo "Validation check completed"
+      # BLOCKING. Replaces the literal requireAuth/requireRole grep, which could not see
+      # wrapper guards (fabGuard, workAction, handoverAction, verifySlackWebhook): the test
+      # checks every route is public-by-name or guarded, that each wrapper authenticates,
+      # that every route reading a body validates it with Zod, and that anonymous calls get 401.
+      - name: API route guard and validation check
+        run: npx vitest run src/__tests__/api-route-guards.test.ts
 
       - name: CSP header check
         run: |

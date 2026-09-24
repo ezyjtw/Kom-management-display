@@ -67,6 +67,18 @@ export const updateThreadSchema = z.object({
   clientOrPartnerTag: z.string().max(200).optional(),
 });
 
+/** PATCH /api/comms/threads/:id. Value rules (allowed queues, closing note) stay in the route. */
+export const patchThreadSchema = z.object({
+  status: z.string().max(50).optional(),
+  ownerUserId: z.string().max(100).nullable().optional(),
+  priority: z.string().max(10).optional(),
+  queue: z.string().max(100).optional(),
+  linkedRecords: z.array(z.unknown()).max(200).optional(),
+  handoverNote: z.string().max(5000).optional(),
+  reason: z.string().max(2000).optional(),
+  lastActionAt: z.string().max(40).optional(),
+});
+
 // ─── Incident Schemas ───
 
 export const createIncidentSchema = z.object({

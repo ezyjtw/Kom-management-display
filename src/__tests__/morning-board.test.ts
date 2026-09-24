@@ -32,6 +32,7 @@ vi.mock("@/lib/api/rate-limit-middleware", () => ({ checkRateLimit: () => null, 
 import { GET as morningGet } from "@/app/api/morning/route";
 import { POST as handoverPost } from "@/app/api/morning/handover/route";
 import { POST as absencePost } from "@/app/api/morning/absence/route";
+import { POST as retryPost } from "@/app/api/morning/handover/retry/route";
 import { POST as firstResponse } from "@/app/api/work-items/[id]/first-response/route";
 import { runMorningHandover } from "@/modules/morning/handover";
 import { previousBusinessDate } from "@/modules/morning/board";
@@ -42,7 +43,7 @@ const add = (m: string, data: Record<string, unknown>) => p()[m].create({ data }
 const req = (url: string, method = "GET", body?: unknown) => new NextRequest(`http://localhost${url}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 type Call = { method: string; path: string; body: Record<string, unknown> | null };
-const jira = { calls: [] as Call[] };
+const jira = { calls: [] as Call[], failPaths: new Set<string>() };
 const comments = () => jira.calls.filter((c) => c.method === "POST" && c.path.endsWith("/comment"));
 
 // Wednesday 23 Sep 2026, 08:30 London (07:30 UTC).
@@ -54,12 +55,14 @@ beforeEach(async () => {
   vi.setSystemTime(NOW);
   p().__reset();
   jira.calls = [];
+  jira.failPaths = new Set();
   out.slack = [];
   out.emails = [];
   auth.user = { id: "u-lee", name: "Lee", email: "lee@k.com", role: "lead", employeeId: "emp-lee", team: null };
   vi.stubGlobal("fetch", vi.fn(async (input: URL | string, init?: RequestInit) => {
     const url = new URL(input.toString());
     jira.calls.push({ method: init?.method ?? "GET", path: url.pathname, body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (jira.failPaths.has(url.pathname)) return new Response(JSON.stringify({ errorMessages: ["unavailable"] }), { status: 503 });
     if ((init?.method ?? "GET") === "POST" && url.pathname.endsWith("/comment")) return new Response(JSON.stringify({ id: "c" }), { status: 201 });
     return new Response(null, { status: 204 });
   }));
@@ -142,11 +145,12 @@ describe("lead handover (spec §14.3)", () => {
   it("a PTO absence with no note by 09:00 notifies the lead and the Head of Transaction Operations, once", async () => {
     await add("ptoRecord", { employeeId: "emp-lee", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-25T00:00:00Z"), type: "annual_leave", status: "approved" });
     vi.setSystemTime(new Date("2026-09-23T08:00:00Z")); // 09:00 London
-    expect(await runMorningHandover()).toEqual({ posted: 0, missing: 1 });
+    expect(await runMorningHandover()).toEqual({ posted: 0, incomplete: 0, missing: 1 });
     const notes = await p().inAppNotification.findMany({});
     expect(notes.map((n) => String(n.userId)).sort()).toEqual(["u-head", "u-lee"]);
     expect(out.emails.sort()).toEqual(["head@k.com", "lee@k.com"]);
-    expect(await runMorningHandover()).toEqual({ posted: 0, missing: 0 });
+    expect(await runMorningHandover()).toEqual({ posted: 0, incomplete: 0, missing: 1 });
+    expect(await p().inAppNotification.findMany({})).toHaveLength(2); // not re-sent
     expect((await board()).teams.find((t: { team: string }) => t.team === "Team 2").handover).toMatchObject({ absent: true, source: "pto", missing: true });
   });
 
@@ -155,10 +159,88 @@ describe("lead handover (spec §14.3)", () => {
     expect((await handoverPost(req("/x", "POST", { date: "2026-09-24", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Bob covers; TOPS-1 needs a vendor chase." }))).status).toBe(200);
     expect(comments()).toHaveLength(0);
     vi.setSystemTime(new Date("2026-09-24T08:00:00Z"));
-    expect(await runMorningHandover()).toEqual({ posted: 1, missing: 0 });
+    expect(await runMorningHandover()).toEqual({ posted: 1, incomplete: 0, missing: 0 });
     expect(comments()).toHaveLength(2);
     vi.setSystemTime(new Date("2026-09-26T08:00:00Z"));
     expect((await runMorningHandover()).skipped).toBe("not a business day");
+  });
+});
+
+describe("no false green (review remediation)", () => {
+  const team2 = async () => (await board()).teams.find((t: { team: string }) => t.team === "Team 2");
+
+  it("a failed ticket comment leaves the handover partially posted, and a retry posts only the failed ticket", async () => {
+    jira.failPaths.add("/rest/api/3/issue/TOPS-2/comment");
+    await absencePost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", absent: true }));
+    expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "TOPS-1 waits on the vendor; TOPS-2 waits on the client." }))).status).toBe(200);
+    let h = (await team2()).handover;
+    expect(h).toMatchObject({ postStatus: "partially_posted", postedAt: null, postedTo: 1, failedTickets: ["TOPS-2"] });
+
+    // Saving again is refused: retry the failed ticket instead.
+    expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "A different note for the same day." }))).status).toBe(409);
+
+    jira.failPaths.clear();
+    const before = comments().length;
+    expect((await retryPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2" }))).status).toBe(200);
+    expect(comments().slice(before).map((c) => c.path)).toEqual(["/rest/api/3/issue/TOPS-2/comment"]);
+    h = (await team2()).handover;
+    expect(h).toMatchObject({ postStatus: "posted", postedTo: 2, failedTickets: [] });
+    expect(h.postedAt).not.toBeNull();
+  });
+
+  it("when every comment fails the handover is 'failed', and the 09:00 job retries it", async () => {
+    jira.failPaths.add("/rest/api/3/issue/TOPS-1/comment");
+    jira.failPaths.add("/rest/api/3/issue/TOPS-2/comment");
+    await absencePost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", absent: true }));
+    await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Everything is waiting on third parties today." }));
+    expect((await team2()).handover).toMatchObject({ postStatus: "failed", postedTo: 0 });
+    vi.setSystemTime(new Date("2026-09-23T08:15:00Z"));
+    expect(await runMorningHandover()).toEqual({ posted: 0, incomplete: 1, missing: 0 });
+    jira.failPaths.clear();
+    vi.setSystemTime(new Date("2026-09-23T08:30:00Z"));
+    expect(await runMorningHandover()).toEqual({ posted: 1, incomplete: 0, missing: 0 });
+  });
+
+  it("cover must be the deputy or a team member who is active and not on leave", async () => {
+    await add("employee", { id: "emp-zed", name: "Zed Elsewhere", email: "zed@k.com", role: "Analyst", team: "DataOperations", active: true });
+    await add("ptoRecord", { employeeId: "emp-ann", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-23T00:00:00Z") });
+    const body = (coveringEmployeeId: string) => ({ date: "2026-09-23", team: "Team 2", coveringEmployeeId, note: "Cover the queue and chase TOPS-1 with the vendor." });
+    expect((await handoverPost(req("/x", "POST", body("emp-zed")))).status).toBe(422);
+    expect((await handoverPost(req("/x", "POST", body("emp-ann")))).status).toBe(422); // on leave
+    expect((await team2()).coverPool).toEqual([{ id: "emp-bob", name: "Bob Operator" }]);
+    expect((await handoverPost(req("/x", "POST", body("emp-bob")))).status).toBe(200);
+  });
+
+  it("reminders record per-channel evidence; a recipient counts as reached only when a channel accepted it", async () => {
+    await add("ptoRecord", { employeeId: "emp-lee", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-23T00:00:00Z") });
+    vi.setSystemTime(new Date("2026-09-23T08:00:00Z"));
+    await runMorningHandover();
+    const row = await p().leadHandover.findUnique({ where: { date_team: { date: "2026-09-23", team: "Team 2" } } });
+    expect(row!.reminderResults).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "u-lee", inApp: true, slack: true, email: true })]));
+    expect(row!.missingNotifiedAt).toBeInstanceOf(Date);
+    expect((await team2()).handover.reminder).toMatchObject({ reached: 2, recipients: 2 });
+  });
+
+  it("with no one to reach, the reminder is not marked done and the next run tries again", async () => {
+    await p().user.deleteMany({});
+    await add("ptoRecord", { employeeId: "emp-lee", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-23T00:00:00Z") });
+    vi.setSystemTime(new Date("2026-09-23T08:00:00Z"));
+    await runMorningHandover();
+    const row = await p().leadHandover.findUnique({ where: { date_team: { date: "2026-09-23", team: "Team 2" } } });
+    expect(row!.missingNotifiedAt ?? null).toBeNull();
+  });
+
+  it("the board tells the page which teams this user may manage", async () => {
+    expect((await board()).me.canManage).toEqual(["Team 2"]);
+    auth.user = { id: "u-ann", name: "Ann", email: "ann@k.com", role: "employee", employeeId: "emp-ann", team: null };
+    expect((await board()).me.canManage).toEqual([]);
+  });
+
+  it("the sidebar shows admin-only items to admins only (the /admin middleware rule)", () => {
+    const sidebar = readFileSync("src/components/shared/Sidebar.tsx", "utf8");
+    expect(sidebar).toContain('const isAdmin = user?.role === "admin";');
+    expect(sidebar).not.toMatch(/isAdmin = [^;]*"lead"/);
+    expect(sidebar).toContain('href: "/alerts"');
   });
 });
 
@@ -198,7 +280,7 @@ describe("navigation (spec §14.1) and desktop notifications (spec §14.4)", () 
   const sidebar = readFileSync("src/components/shared/Sidebar.tsx", "utf8");
 
   it("lists the spec's destinations and none of the removed ones", () => {
-    for (const href of ["/work", "/boards", "/daily-checks", "/admin/alerts", "/clients/overview", "/settlements", "/travel-rule", "/staking", "/kps", "/fab", "/tokens", "/incidents", "/rca", "/metrics", "/morning", "/admin"]) {
+    for (const href of ["/work", "/boards", "/daily-checks", "/alerts", "/clients/overview", "/settlements", "/travel-rule", "/staking", "/kps", "/fab", "/tokens", "/incidents", "/rca", "/metrics", "/morning", "/admin"]) {
       expect(sidebar).toContain(`href: "${href}"`);
     }
     for (const href of ["/approvals", "/usdc-ramp", "/briefing", "/compliance-bot", "/activity"]) expect(sidebar).not.toContain(`href: "${href}"`);

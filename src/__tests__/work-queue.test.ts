@@ -28,6 +28,7 @@ import { POST as stateRoute } from "@/app/api/work-items/[id]/state/route";
 import { POST as notes } from "@/app/api/work-items/[id]/notes/route";
 import { POST as timeRoute } from "@/app/api/work-items/[id]/time/route";
 import { POST as links } from "@/app/api/work-items/[id]/links/route";
+import { GET as alertsGet } from "@/app/api/alerts/route";
 import { slaStatus, type QueueRow } from "@/modules/work-items/queue";
 import type { BusinessCalendar } from "@/modules/alerting/calendar";
 import type { SlaPolicy, WorkItem } from "@prisma/client";
@@ -241,5 +242,20 @@ describe("work item detail (spec §14.2)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
     const d = (await (await detailGet(req("/x"), ctx("wi-breach"))).json()).data;
     expect(d.timelineWarning).toMatch(/could not be read/);
+  });
+});
+
+describe("alerts page API (spec §14.1)", () => {
+  it("lists engine alerts by severity with fire count, work item and ticket", async () => {
+    await add("alert", { type: "ALR-SLA-01", ruleCode: "ALR-SLA-01", dedupeKey: "a", message: "SLA warning", severity: "medium", workItemId: "wi-warn", fireCount: 3 });
+    await add("alert", { type: "ALR-OES-01", ruleCode: "ALR-OES-01", dedupeKey: "b", message: "OES late", severity: "critical", workItemId: "wi-breach" });
+    await add("alert", { type: "tto_breach", ruleCode: "tto_breach", dedupeKey: "c", message: "legacy comms alert", severity: "high" });
+    await add("alert", { type: "ALR-X", ruleCode: "ALR-X", dedupeKey: "d", message: "resolved one", severity: "high", status: "resolved" });
+    const res = await alertsGet(req("/api/alerts"));
+    expect(res.status).toBe(200);
+    const { alerts } = (await res.json()).data;
+    expect(alerts.map((a: { ruleCode: string }) => a.ruleCode)).toEqual(["ALR-OES-01", "ALR-SLA-01"]);
+    expect(alerts[1]).toMatchObject({ fireCount: 3, workItem: { id: "wi-warn", ticketKey: "TOPS-2" } });
+    expect((await alertsGet(req("/api/alerts?status=bogus"))).status).toBe(400);
   });
 });

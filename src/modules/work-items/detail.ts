@@ -123,7 +123,7 @@ export async function workItemDetail(id: string, now = new Date()) {
   const timeline: TimelineEntry[] = [
     ...messages,
     ...comments.entries,
-    ...item.alerts.map((a) => ({ at: a.firstFiredAt.toISOString(), kind: "alert" as const, title: `${a.ruleCode} · ${a.severity} · ${a.status}`, text: a.message, author: null, link: `/admin/alerts?alert=${a.id}`, raiseLink: null })),
+    ...item.alerts.map((a) => ({ at: a.firstFiredAt.toISOString(), kind: "alert" as const, title: `${a.ruleCode} · ${a.severity} · ${a.status}`, text: a.message, author: null, link: "/alerts", raiseLink: null })),
     ...slaEvents.map((e) => ({ at: e.at.toISOString(), kind: "sla" as const, title: `SLA ${e.kind.replace("_", " ")}`, text: "", author: null, link: null, raiseLink: null })),
     ...updates.map((u) => ({ at: (u.postedAt ?? u.createdAt).toISOString(), kind: "client_update" as const, title: `Client ${u.kind} · ${u.status.replace("_", " ")}`, text: u.body, author: null, link: item.clientTicketUrl, raiseLink: null })),
     ...audits.map((a) => {

@@ -12,8 +12,7 @@ import { Sunrise, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { buildMorningBoard, TeamBoard } from "@/modules/morning/board";
 
 type Board = Awaited<ReturnType<typeof buildMorningBoard>> & {
-  people: Array<{ id: string; name: string }>;
-  me: { employeeId: string | null; role: string };
+  me: { employeeId: string | null; role: string; canManage: string[] };
 };
 
 const input = "h-8 rounded-md border border-border bg-background px-2 text-sm";
@@ -39,6 +38,7 @@ function Handover({ t, board, onDone }: { t: TeamBoard; board: Board; onDone: ()
   const [busy, setBusy] = useState(false);
   if (!t.lead) return <p className="text-xs text-muted-foreground">No lead configured for {t.team}.</p>;
   const h = t.handover;
+  const canManage = board.me.canManage.includes(t.team);
 
   async function post(path: string, body: unknown, ok: string) {
     setBusy(true);
@@ -49,37 +49,63 @@ function Handover({ t, board, onDone }: { t: TeamBoard; board: Board; onDone: ()
     if (res.ok) onDone();
   }
 
+  const posted = h?.postStatus === "posted";
+  const incomplete = h?.postStatus === "partially_posted" || h?.postStatus === "failed";
+  const total = (h?.postedTo ?? 0) + (h?.failedTickets.length ?? 0);
+
   return (
     <div className="rounded-lg border border-border p-3 space-y-2">
       <div className="flex items-center gap-2 text-sm flex-wrap">
         <span>Lead: <strong>{t.lead.name}</strong></span>
         {h?.absent ? <span className="text-amber-500">absent ({h.source === "pto" ? "leave" : "marked absent"})</span> : <span className="text-emerald-500">present</span>}
-        {h?.source !== "pto" && (
+        {canManage && h?.source !== "pto" && !h?.note && (
           <button disabled={busy} className="text-xs text-primary" onClick={() => post("absence", { date: board.date, team: t.team, absent: !h?.absent }, "Saved.")}>
             {h?.absent ? "Mark present" : "Mark absent today"}
           </button>
         )}
       </div>
-      {h?.absent && (h.note ? (
+      {h?.absent && h.note && (
         <div className="text-sm space-y-1">
-          <p className="flex items-center gap-1 text-emerald-500"><CheckCircle2 size={14} /> Handover saved{h.late ? " (after 09:00)" : ""}. Covering: {h.covering?.name ?? "—"}.{h.postedAt ? ` Posted to ${h.postedTo} open ticket(s).` : " Posts at 09:00."}</p>
+          {posted && <p className="flex items-center gap-1 text-emerald-500"><CheckCircle2 size={14} /> Handover posted to {h.postedTo} open ticket(s){h.late ? " (saved after 09:00)" : ""}. Covering: {h.covering?.name ?? "—"}.</p>}
+          {h.postStatus === "pending" && <p className="text-muted-foreground">Handover saved{h.late ? " (after 09:00)" : ""}. Covering: {h.covering?.name ?? "—"}. It posts to the lead&apos;s open tickets at 09:00.</p>}
+          {incomplete && (
+            <p className="flex items-center gap-1 text-red-500 flex-wrap">
+              <AlertTriangle size={14} /> Handover {h.postStatus === "failed" ? "not posted" : "partially posted"}: {h.postedTo}/{total} tickets updated. Still to post: {h.failedTickets.join(", ")}.
+              {canManage && <button disabled={busy} className="ml-2 text-xs text-primary" onClick={() => post("handover/retry", { date: board.date, team: t.team }, "Retried.")}>Retry now</button>}
+            </p>
+          )}
           <p className="whitespace-pre-wrap text-muted-foreground">{h.note}</p>
         </div>
-      ) : (
-        <form className="space-y-2" onSubmit={(e) => {
-          e.preventDefault();
-          const f = new FormData(e.currentTarget);
-          void post("handover", { date: board.date, team: t.team, coveringEmployeeId: f.get("covering"), note: f.get("note") }, "Handover saved and posted to the lead's open tickets.");
-        }}>
-          {h.missing && <p className="text-sm text-red-500 flex items-center gap-1"><AlertTriangle size={14} /> Handover missing: it was due before 09:00. The lead and the Head of Transaction Operations have been notified.</p>}
-          <select name="covering" aria-label="Covering member" required className={input} defaultValue="">
-            <option value="" disabled>Covering member…</option>
-            {board.people.filter((p) => p.id !== t.lead!.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <textarea name="note" aria-label="Handover note" required minLength={20} rows={3} placeholder="Handover note (posted as an internal comment on each of the lead's open tickets)" className="w-full rounded-md border border-border bg-background p-2 text-sm" />
-          <button disabled={busy} className={button}>Save handover</button>
-        </form>
-      ))}
+      )}
+      {h?.absent && !h.note && (
+        <div className="space-y-2">
+          {h.missing && (
+            <p className="text-sm text-red-500 flex items-center gap-1"><AlertTriangle size={14} /> Handover missing: it was due before 09:00.
+              {h.reminder ? ` Reminder reached ${h.reminder.reached} of ${h.reminder.recipients} (lead and Head of Transaction Operations)${h.reminder.notifiedAt ? "" : "; retrying"}.` : " Reminder pending."}
+            </p>
+          )}
+          {canManage ? (
+            <form className="space-y-2" onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              void post("handover", { date: board.date, team: t.team, coveringEmployeeId: f.get("covering"), note: f.get("note") }, "Handover saved.");
+            }}>
+              {t.coverPool.length === 0 ? (
+                <p className="text-xs text-red-500">No one is available to cover: add the deputy and team members in Admin → Reference data → Team config.</p>
+              ) : (
+                <select name="covering" aria-label="Covering member" required className={input} defaultValue="">
+                  <option value="" disabled>Covering member…</option>
+                  {t.coverPool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )}
+              <textarea name="note" aria-label="Handover note" required minLength={20} rows={3} placeholder="Handover note (posted as an internal comment on each of the lead's open tickets)" className="w-full rounded-md border border-border bg-background p-2 text-sm" />
+              <button disabled={busy || t.coverPool.length === 0} className={button}>Save handover</button>
+            </form>
+          ) : (
+            <p className="text-xs text-muted-foreground">The lead, the deputy or an admin records the handover.</p>
+          )}
+        </div>
+      )}
       {msg && <p role="status" className={`text-xs ${msg.ok ? "text-emerald-500" : "text-red-500"}`}>{msg.text}</p>}
     </div>
   );

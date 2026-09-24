@@ -51,6 +51,7 @@ interface NavItem {
   label: string;
   icon: typeof Zap;
   flag?: SafetyFlagKey;
+  /** Only role admin: matches the middleware rule that /admin is admin-only. */
   adminOnly?: true;
   /** Shown only when /api/me/capabilities grants it (e.g. kps:view). */
   capability?: "kps";
@@ -69,7 +70,7 @@ const navSections: Array<{ label: string; items: NavItem[]; collapsible?: true }
       { href: "/work", label: "Work", icon: Inbox },
       { href: "/boards", label: "Team Boards", icon: ClipboardList },
       { href: "/daily-checks", label: "Daily Checks", icon: ClipboardCheck },
-      { href: "/admin/alerts", label: "Alerts", icon: Bell },
+      { href: "/alerts", label: "Alerts", icon: Bell },
       { href: "/clients/overview", label: "Clients", icon: Users },
       { href: "/morning", label: "Morning Board", icon: Sunrise },
     ],
@@ -133,7 +134,8 @@ interface SidebarProps {
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const isAdmin = user?.role === "admin" || user?.role === "lead";
+  // Same rule as src/middleware.ts: /admin and /api/users are admin-only (leads included in neither).
+  const isAdmin = user?.role === "admin";
   const [mobileOpen, setMobileOpen] = useState(false);
   const { branding } = useBranding();
   const [clientCommsDraftCount, setClientCommsDraftCount] = useState(0);
@@ -141,6 +143,30 @@ export function Sidebar({ user }: SidebarProps) {
   const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
   const [openOther, setOpenOther] = useState(false);
+  const inSection = (items: NavItem[]) => items.some((i) => (i.href === "/" ? pathname === "/" : pathname === i.href || pathname?.startsWith(`${i.href}/`)));
+
+  // Expand "Other tools" when the current page lives there; otherwise keep the user's choice for this session.
+  useEffect(() => {
+    const other = navSections.find((sec) => sec.collapsible);
+    if (other && inSection(other.items)) {
+      setOpenOther(true);
+      return;
+    }
+    try {
+      setOpenOther(window.sessionStorage.getItem("kom.nav.other") === "open");
+    } catch {
+      // storage unavailable
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute on navigation only
+  }, [pathname]);
+  const toggleOther = () => setOpenOther((o) => {
+    try {
+      window.sessionStorage.setItem("kom.nav.other", o ? "closed" : "open");
+    } catch {
+      // storage unavailable
+    }
+    return !o;
+  });
 
   useEffect(() => {
     fetch("/api/me/capabilities")
@@ -240,7 +266,7 @@ export function Sidebar({ user }: SidebarProps) {
           {navSections.map((section, sIdx) => (
             <div key={section.label} className={sIdx > 0 ? "pt-4" : ""}>
               {section.collapsible ? (
-                <button onClick={() => setOpenOther((o) => !o)} aria-expanded={openOther} className="w-full flex items-center gap-1 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                <button onClick={toggleOther} aria-expanded={openOther} className="w-full flex items-center gap-1 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   {openOther ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {section.label}
                 </button>
               ) : (

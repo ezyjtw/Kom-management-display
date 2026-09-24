@@ -5,7 +5,7 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiConflictError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, updateThreadSchema } from "@/lib/validation";
+import { validateBody, patchThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
 import { legacyAlertKeys } from "@/lib/alert-keys";
 
@@ -143,7 +143,9 @@ export async function PATCH(
   if (limited) return limited;
 
   try {
-    const body = await request.json();
+    const parsedBody = validateBody(patchThreadSchema, await request.json().catch(() => null));
+    if (!parsedBody.success) return apiValidationError(parsedBody.error);
+    const body = parsedBody.data;
     const { status, ownerUserId, priority, queue, linkedRecords, handoverNote } = body;
 
     const actorId = auth.id;

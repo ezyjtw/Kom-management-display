@@ -35,10 +35,39 @@ export interface HandoverStatus {
   note: string | null;
   submittedAt: string | null;
   late: boolean;
+  /** pending | partially_posted | posted | failed (see LeadHandover.postStatus). */
+  postStatus: string;
   postedAt: string | null;
+  /** Tickets that accepted the comment. */
   postedTo: number;
+  /** Tickets whose comment failed and still need a retry. */
+  failedTickets: string[];
   missing: boolean;
+  /** Reminder evidence when the note was missing: recipients reached / total. */
+  reminder: { reached: number; recipients: number; notifiedAt: string | null } | null;
 }
+
+export interface PostResult {
+  workItemId: string;
+  ticketKey: string;
+  ok: boolean;
+  error?: string;
+  at: string;
+}
+
+export interface ReminderResult {
+  userId: string;
+  inApp: boolean;
+  slack: boolean | null; // null: no Slack user found
+  email: boolean;
+  at: string;
+}
+
+export const postResultsOf = (row: { postResults: unknown } | null | undefined): PostResult[] =>
+  Array.isArray(row?.postResults) ? (row!.postResults as PostResult[]) : [];
+const reminderResultsOf = (row: { reminderResults: unknown } | null | undefined): ReminderResult[] =>
+  Array.isArray(row?.reminderResults) ? (row!.reminderResults as ReminderResult[]) : [];
+const reached = (r: ReminderResult) => r.inApp || r.slack === true || r.email;
 
 const dayBounds = (date: string) => ({ start: new Date(`${date}T00:00:00.000Z`), end: new Date(`${date}T23:59:59.999Z`) });
 
@@ -62,9 +91,14 @@ export async function handoverStatus(date: string, team: string, leadId: string,
     note: row?.note ?? null,
     submittedAt: row?.submittedAt?.toISOString() ?? null,
     late: !!row?.submittedAt && row.submittedAt > deadline,
+    postStatus: row?.postStatus ?? "pending",
     postedAt: row?.postedAt?.toISOString() ?? null,
-    postedTo: Array.isArray(row?.postResults) ? (row!.postResults as unknown[]).length : 0,
+    postedTo: postResultsOf(row).filter((r) => r.ok).length,
+    failedTickets: postResultsOf(row).filter((r) => !r.ok).map((r) => r.ticketKey),
     missing: absent && !row?.note && now >= deadline,
+    reminder: reminderResultsOf(row).length
+      ? { reached: reminderResultsOf(row).filter(reached).length, recipients: reminderResultsOf(row).length, notifiedAt: row?.missingNotifiedAt?.toISOString() ?? null }
+      : null,
   };
 }
 
@@ -80,6 +114,22 @@ function canAct(actor: { employeeId: string | null; role: string }, cfg: { leadE
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/**
+ * Who may cover a team's lead on a date: the deputy and the configured team
+ * members (TeamConfig), active, not the lead, and not on approved leave that
+ * day. TODO(CONFIRM-COVER-POOL): a trained-cover / competency list may replace this.
+ */
+export async function coverPool(team: string, date: string): Promise<Array<{ id: string; name: string }>> {
+  const cfg = await prisma.teamConfig.findUnique({ where: { team } });
+  if (!cfg) return [];
+  const members = Array.isArray(cfg.memberEmployeeIds) ? (cfg.memberEmployeeIds as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  const ids = [...new Set([cfg.deputyEmployeeId, ...members].filter((x): x is string => !!x && x !== cfg.leadEmployeeId))];
+  const people = await prisma.employee.findMany({ where: { id: { in: ids }, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+  const out: Array<{ id: string; name: string }> = [];
+  for (const p of people) if (!(await onPto(p.id, date))) out.push({ id: p.id, name: p.name });
+  return out;
+}
+
 export const absenceSchema = z.object({ date: dateSchema, team: z.enum(TEAMS), absent: z.boolean() });
 
 /** Manual absence toggle by the lead, their deputy or an admin. PTO absence is changed in the schedule, not here. */
@@ -87,6 +137,8 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>, actor: { 
   const cfg = await teamConfig(input.team);
   if (!canAct(actor, cfg)) throw new HandoverError("Only the team's lead, deputy or an admin can change this.", 403);
   if (!input.absent && (await onPto(cfg.leadEmployeeId!, input.date))) throw new HandoverError("The lead is on approved leave that day; change it in the schedule.", 409);
+  const existing = await prisma.leadHandover.findUnique({ where: { date_team: { date: input.date, team: input.team } } });
+  if (!input.absent && existing?.note) throw new HandoverError("A handover is already recorded for that day.", 409);
   return prisma.leadHandover.upsert({
     where: { date_team: { date: input.date, team: input.team } },
     update: { absent: input.absent, absenceSource: "manual" },
@@ -112,10 +164,14 @@ export async function submitHandover(input: z.infer<typeof handoverSchema>, acto
   const today = londonParts(now).date;
   if (input.date < today) throw new HandoverError("The handover date has passed.");
   if (input.coveringEmployeeId === cfg.leadEmployeeId) throw new HandoverError("Choose someone other than the absent lead to cover.");
-  const covering = await prisma.employee.findUnique({ where: { id: input.coveringEmployeeId }, select: { active: true } });
-  if (!covering?.active) throw new HandoverError("The covering member does not exist or is inactive.");
+  const pool = await coverPool(input.team, input.date);
+  if (!pool.some((p) => p.id === input.coveringEmployeeId)) {
+    throw new HandoverError(pool.length
+      ? "The covering member must be the team's deputy or a team member who is active and not on leave that day."
+      : `${input.team} has no available cover: add the deputy and team members in Admin → Reference data → Team config.`);
+  }
   const existing = await prisma.leadHandover.findUnique({ where: { date_team: { date: input.date, team: input.team } } });
-  if (existing?.postedAt) throw new HandoverError("The handover for that day has already been posted to the tickets.", 409);
+  if (existing && existing.postStatus !== "pending") throw new HandoverError("The handover for that day has already been posted (or partly posted) to the tickets; retry failed tickets instead.", 409);
   const pto = await onPto(cfg.leadEmployeeId!, input.date);
   const row = await prisma.leadHandover.upsert({
     where: { date_team: { date: input.date, team: input.team } },
@@ -128,63 +184,120 @@ export async function submitHandover(input: z.infer<typeof handoverSchema>, acto
   return input.date === today ? postHandover(row, now) : row;
 }
 
-/** Post the note as an internal comment on each of the lead's open tickets. Failures are recorded per ticket. */
+/**
+ * Post the note as an internal comment on each of the lead's open tickets.
+ * Every ticket's outcome is recorded; tickets that already accepted the
+ * comment are not posted to again. postStatus becomes "posted" (and postedAt
+ * is set) only when every ticket accepted it; otherwise "partially_posted" or
+ * "failed", and the job and the retry action try the failed tickets again.
+ */
 export async function postHandover(row: LeadHandover, now = new Date()): Promise<LeadHandover> {
-  if (!row.note || row.postedAt) return row;
+  if (!row.note || row.postStatus === "posted") return row;
   const [lead, covering] = await Promise.all([
     prisma.employee.findUnique({ where: { id: row.leadEmployeeId }, select: { name: true } }),
     row.coveringEmployeeId ? prisma.employee.findUnique({ where: { id: row.coveringEmployeeId }, select: { name: true } }) : null,
   ]);
+  const previous = postResultsOf(row);
+  const done = new Set(previous.filter((r) => r.ok).map((r) => r.workItemId));
   const items = await prisma.workItem.findMany({
     where: { ownerEmployeeId: row.leadEmployeeId, state: { in: [...OPEN] }, ticketKey: { not: null } },
     select: { id: true, ticketKey: true },
   });
   const text = `Handover ${row.date}: ${lead?.name ?? "the lead"} is out. Covering: ${covering?.name ?? "see note"}.\n\n${row.note}`;
-  const results: Array<{ ticketKey: string; ok: boolean }> = [];
+  const results = new Map<string, PostResult>(previous.map((r) => [r.workItemId, r]));
   for (const item of items) {
+    if (done.has(item.id)) continue;
     try {
       await commentInternal(item.id, text);
-      results.push({ ticketKey: item.ticketKey!, ok: true });
+      results.set(item.id, { workItemId: item.id, ticketKey: item.ticketKey!, ok: true, at: now.toISOString() });
     } catch (error) {
-      results.push({ ticketKey: item.ticketKey!, ok: false });
-      logger.warn("Handover comment failed on one ticket", { error: error instanceof Error ? error.message : String(error) });
+      const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
+      results.set(item.id, { workItemId: item.id, ticketKey: item.ticketKey!, ok: false, error: message, at: now.toISOString() });
+      logger.warn("Handover comment failed on one ticket", { error: message });
     }
   }
-  return prisma.leadHandover.update({ where: { id: row.id }, data: { postedAt: now, postResults: results as unknown as Prisma.InputJsonValue } });
+  const all = [...results.values()];
+  const ok = all.filter((r) => r.ok).length;
+  const status = ok === all.length ? "posted" : ok === 0 ? "failed" : "partially_posted";
+  return prisma.leadHandover.update({
+    where: { id: row.id },
+    data: {
+      postStatus: status,
+      postAttempts: { increment: 1 },
+      lastPostAttemptAt: now,
+      postedAt: status === "posted" ? now : null,
+      postResults: all as unknown as Prisma.InputJsonValue,
+    },
+  });
 }
 
-/** In-app, Slack DM and email to the given employees and every admin (Head of Transaction Operations). */
-async function notifyLeadAndHead(leadId: string, title: string, body: string): Promise<number> {
-  const users = await prisma.user.findMany({ where: { OR: [{ employeeId: leadId }, { role: "admin" }] }, select: { id: true, email: true } });
-  const link = `${(env("NEXTAUTH_URL") ?? "").replace(/\/+$/, "")}/morning`;
-  let sent = 0;
-  for (const u of users) {
-    await prisma.inAppNotification.create({ data: { userId: u.id, title, body, link: "/morning" } });
-    try {
-      const slack = getSlackClient();
-      const res = await slack?.users.lookupByEmail({ email: u.email });
-      if (res?.user?.id) await slack!.chat.postMessage({ channel: res.user.id, text: `${title}\n${body}\n${link}` });
-      await sendEmailNotification(u.email, title, `${body}\n\n${link}`);
-    } catch (error) {
-      logger.warn("Handover reminder failed for one recipient", { error: error instanceof Error ? error.message : String(error) });
-    }
-    sent++;
-  }
-  return sent;
+export const retrySchema = z.object({ date: dateSchema, team: z.enum(TEAMS) });
+
+/** Retry the tickets whose handover comment failed (lead, deputy or admin). */
+export async function retryHandover(input: z.infer<typeof retrySchema>, actor: { employeeId: string | null; role: string }, now = new Date()): Promise<LeadHandover> {
+  const cfg = await teamConfig(input.team);
+  if (!canAct(actor, cfg)) throw new HandoverError("Only the team's lead, deputy or an admin can retry the handover.", 403);
+  const row = await prisma.leadHandover.findUnique({ where: { date_team: { date: input.date, team: input.team } } });
+  if (!row?.note) throw new HandoverError("There is no saved handover for that day.", 404);
+  if (row.postStatus === "posted") throw new HandoverError("The handover is already posted to every ticket.", 409);
+  if (input.date !== londonParts(now).date) throw new HandoverError("Only today's handover can be posted.", 409);
+  return postHandover(row, now);
 }
 
 /**
- * 09:00 UK on business days: post saved handovers for absent leads, and
- * notify the lead and the Head of Transaction Operations where the note is
- * missing (once per day).
+ * In-app, Slack DM and email to the lead and every admin (Head of Transaction
+ * Operations). Each channel is attempted independently and its outcome
+ * recorded; nothing is counted as sent without the channel accepting it.
  */
-export async function runMorningHandover(now = new Date()): Promise<{ posted: number; missing: number; skipped?: string }> {
+export async function notifyLeadAndHead(leadId: string, title: string, body: string, now = new Date()): Promise<ReminderResult[]> {
+  const users = await prisma.user.findMany({ where: { OR: [{ employeeId: leadId }, { role: "admin" }] }, select: { id: true, email: true } });
+  const link = `${(env("NEXTAUTH_URL") ?? "").replace(/\/+$/, "")}/morning`;
+  const results: ReminderResult[] = [];
+  for (const u of users) {
+    const r: ReminderResult = { userId: u.id, inApp: false, slack: null, email: false, at: now.toISOString() };
+    try {
+      await prisma.inAppNotification.create({ data: { userId: u.id, title, body, link: "/morning" } });
+      r.inApp = true;
+    } catch (error) {
+      logger.warn("Handover reminder: in-app notification failed", { error: error instanceof Error ? error.message : String(error) });
+    }
+    try {
+      const slack = getSlackClient();
+      const res = slack ? await slack.users.lookupByEmail({ email: u.email }) : null;
+      if (res?.user?.id) {
+        const sent = await slack!.chat.postMessage({ channel: res.user.id, text: `${title}\n${body}\n${link}` });
+        r.slack = sent?.ok !== false;
+      }
+    } catch (error) {
+      r.slack = false;
+      logger.warn("Handover reminder: Slack DM failed", { error: error instanceof Error ? error.message : String(error) });
+    }
+    try {
+      r.email = await sendEmailNotification(u.email, title, `${body}\n\n${link}`);
+    } catch (error) {
+      logger.warn("Handover reminder: email failed", { error: error instanceof Error ? error.message : String(error) });
+    }
+    results.push(r);
+  }
+  return results;
+}
+
+/**
+ * From 09:00 UK on business days (every 15 minutes until noon): post saved
+ * handovers for absent leads and retry failed tickets; where the note is
+ * missing, remind the lead and the Head of Transaction Operations. The
+ * reminder counts as done only when every recipient was reached on at least
+ * one channel; otherwise the next run tries again.
+ */
+export async function runMorningHandover(now = new Date()): Promise<{ posted: number; incomplete: number; missing: number; skipped?: string }> {
   const today = londonParts(now).date;
   const cal = await loadCalendar("business_uk", now, now);
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
-  if (weekday === 0 || weekday === 6 || cal.holidays.has(today)) return { posted: 0, missing: 0, skipped: "not a business day" };
+  if (weekday === 0 || weekday === 6 || cal.holidays.has(today)) return { posted: 0, incomplete: 0, missing: 0, skipped: "not a business day" };
+  if (now < londonInstant(today, HANDOVER_DEADLINE_MIN)) return { posted: 0, incomplete: 0, missing: 0, skipped: "before 09:00" };
 
   let posted = 0;
+  let incomplete = 0;
   let missing = 0;
   for (const team of TEAMS) {
     const cfg = await prisma.teamConfig.findUnique({ where: { team } });
@@ -194,21 +307,27 @@ export async function runMorningHandover(now = new Date()): Promise<{ posted: nu
     if (!pto && !row?.absent) continue;
     row ??= await prisma.leadHandover.create({ data: { date: today, team, leadEmployeeId: cfg.leadEmployeeId, absent: true, absenceSource: "pto" } });
     if (row.note) {
-      if (!row.postedAt) {
-        await postHandover(row, now);
-        posted++;
+      if (row.postStatus !== "posted") {
+        const after = await postHandover(row, now);
+        if (after.postStatus === "posted") posted++;
+        else incomplete++;
       }
       continue;
     }
+    missing++;
     if (row.missingNotifiedAt) continue;
     const lead = await prisma.employee.findUnique({ where: { id: cfg.leadEmployeeId }, select: { name: true } });
-    await notifyLeadAndHead(
+    const results = await notifyLeadAndHead(
       cfg.leadEmployeeId,
       `Handover missing for ${team}`,
       `${lead?.name ?? "The lead"} is absent today and no handover note (covering member and note) was saved before 09:00. Add it on the Morning board.`,
+      now,
     );
-    await prisma.leadHandover.update({ where: { id: row.id }, data: { missingNotifiedAt: now } });
-    missing++;
+    const everyoneReached = results.length > 0 && results.every(reached);
+    await prisma.leadHandover.update({
+      where: { id: row.id },
+      data: { reminderResults: results as unknown as Prisma.InputJsonValue, missingNotifiedAt: everyoneReached ? now : null },
+    });
   }
-  return { posted, missing };
+  return { posted, incomplete, missing };
 }

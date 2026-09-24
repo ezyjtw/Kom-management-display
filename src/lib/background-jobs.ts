@@ -117,7 +117,7 @@ export async function registerDefaultJobs(): Promise<void> {
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
     { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
     { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
-    { type: "morning_handover", cronExpression: "TZ=Europe/London 0 9 * * 1-5" }, // spec §14.3: post handovers / flag missing ones at 09:00 UK
+    { type: "morning_handover", cronExpression: "TZ=Europe/London */15 9-11 * * 1-5" }, // spec §14.3: from 09:00 UK post handovers, retry failed tickets, remind when missing
   ];
 
   await prisma.backgroundJob.deleteMany({

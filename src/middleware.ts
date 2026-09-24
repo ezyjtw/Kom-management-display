@@ -375,5 +375,6 @@ export const config = {
     "/morning/:path*",
     "/api/morning/:path*",
     "/api/me/:path*",
+    "/alerts/:path*",
   ],
 };
