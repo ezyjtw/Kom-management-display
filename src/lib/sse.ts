@@ -26,7 +26,8 @@ export type SSEEventType =
   | "settlement_update"
   | "token_review_update"
   | "compliance_deadline"
-  | "staking_anomaly";
+  | "staking_anomaly"
+  | "work_item_update";
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -214,7 +215,7 @@ export function emitHighRiskTransaction(data: {
   confirmationId: string;
   transactionId: string;
   asset: string;
-  amount: number;
+  amount: string;
   riskLevel: string;
 }): void {
   sendToRoles(["admin", "lead"], {
@@ -269,7 +270,7 @@ export function emitSettlementUpdate(data: {
   status: string;
   venue: string;
   asset: string;
-  amount: number;
+  amount: string;
 }): void {
   sendToRoles(["admin", "lead"], {
     type: "settlement_update",
@@ -317,4 +318,9 @@ export function emitStakingAnomaly(data: {
     data,
     timestamp: new Date().toISOString(),
   });
+}
+
+/** A WorkItem changed (spec §14.4): queues refresh and re-order. Carries ids only. */
+export function emitWorkItemUpdate(data: { workItemId: string; team: string; change: string; priority?: string; kind?: string }): void {
+  broadcastEvent({ type: "work_item_update", data, timestamp: new Date().toISOString() });
 }

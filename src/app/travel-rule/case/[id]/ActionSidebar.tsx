@@ -5,7 +5,6 @@ import {
   UserPlus,
   Mail,
   Send,
-  Zap,
   RefreshCw,
   CheckCircle2,
   Clock,
@@ -51,13 +50,6 @@ interface ActionSidebarProps {
   onEmailNameChange: (value: string) => void;
   onSelectVasp: (contact: VaspContact) => void;
   onPreviewEmail: () => void;
-  // API Approval
-  showApproveApi: boolean;
-  requestId: string;
-  submittingApproval: boolean;
-  onToggleApproveApi: (show: boolean) => void;
-  onRequestIdChange: (value: string) => void;
-  onApproveApi: () => void;
   // Recheck
   recheckLoading: boolean;
   onRecheckNotabene: () => void;
@@ -131,44 +123,6 @@ export function ActionSidebar(props: ActionSidebarProps) {
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Resolution Actions</h3>
           <div className="space-y-2">
-            {/* API Approval */}
-            {props.showApproveApi ? (
-              <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-                <p className="text-xs font-medium text-foreground">Approve via Custody API</p>
-                <p className="text-xs text-muted-foreground">Enter the custody request ID to approve this transaction via API.</p>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Request ID</label>
-                  <input
-                    value={props.requestId}
-                    onChange={(e) => props.onRequestIdChange(e.target.value)}
-                    placeholder="req_..."
-                    className="w-full text-sm border border-border rounded px-2 py-1.5 font-mono"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={props.onApproveApi}
-                    disabled={!props.requestId.trim() || props.submittingApproval}
-                    className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1"
-                  >
-                    <Zap size={12} />
-                    {props.submittingApproval ? "Submitting..." : "Submit Approval"}
-                  </button>
-                  <button onClick={() => props.onToggleApproveApi(false)} className="text-xs px-3 py-1.5 border border-border rounded hover:bg-accent/50">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : caseData.status !== "PendingResponse" ? (
-              <button
-                onClick={() => props.onToggleApproveApi(true)}
-                className="w-full text-xs px-3 py-2 border border-purple-500/30 text-purple-400 rounded-lg hover:bg-purple-500/10 flex items-center justify-center gap-1.5"
-              >
-                <Zap size={14} />
-                Approve via API
-              </button>
-            ) : null}
-
             {/* Recheck Notabene */}
             <button
               onClick={props.onRecheckNotabene}

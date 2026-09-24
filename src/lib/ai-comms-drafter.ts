@@ -8,9 +8,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { isAiEnabled, getProviderName } from "@/lib/ai";
+import { isAiActive, getProviderName } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
+import { httpFetch } from "@/lib/http/client";
 
 interface ImpactRecordInput {
   id: string;
@@ -53,7 +54,7 @@ export async function draftClientComms(
 
     // Attempt AI draft
     let aiDraft = "";
-    if (isAiEnabled()) {
+    if (await isAiActive()) {
       aiDraft = await generateAiDraft(impactRecord, incident) || "";
     }
 
@@ -135,7 +136,7 @@ Draft a notification body for this client about this incident.`;
 
       if (provider === "anthropic") {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY") });
+        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), fetch: httpFetch });
         const response = await client.messages.create({
           model: env("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514",
           max_tokens: 300,
@@ -147,7 +148,7 @@ Draft a notification body for this client about this incident.`;
       }
 
       if (provider === "groq") {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const res = await httpFetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -170,7 +171,7 @@ Draft a notification body for this client about this incident.`;
 
       if (provider === "ollama") {
         const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
-        const res = await fetch(`${baseUrl}/api/chat`, {
+        const res = await httpFetch(`${baseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -13,7 +13,7 @@
    ```bash
    # Check PostgreSQL process
    docker compose ps db
-   # Or check Railway DB status in dashboard
+   # Or check the Azure Database for PostgreSQL status (deploy/azure/README.md)
 
    # Test connectivity directly
    psql $DATABASE_URL -c "SELECT 1"
@@ -80,10 +80,9 @@ docker compose ps db  # should show "healthy"
 
 2. **Rollback the application**
 
-   **Railway:**
-   ```bash
-   railway rollback
-   ```
+   **Azure:** redeploy the previous image digest through the release pipeline
+   (see `deploy/azure/README.md`). Images are pinned by digest, so the previous
+   release is exactly reproducible.
 
    **Docker:**
    ```bash

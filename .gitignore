@@ -41,3 +41,5 @@ next-env.d.ts
 prisma/dev.db
 prisma/dev.db-journal
 prisma/seed.js
+/dist
+sbom.cdx.json

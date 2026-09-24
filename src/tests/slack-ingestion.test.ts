@@ -171,7 +171,7 @@ describe("syncChannelMessages", () => {
     expect(result.threadsUpserted).toBe(0);
   });
 
-  it("enqueues sync_slack_replies job when reply_count > 0", async () => {
+  it("flags threads with replies; the 5-minute sync_slack cycle pulls the replies inline (spec v2 §8.4)", async () => {
     const threadRoot = makeSlackMessage({
       ts: "1700000001.000001",
       thread_ts: "1700000001.000001",
@@ -183,11 +183,7 @@ describe("syncChannelMessages", () => {
     const result = await syncChannelMessages(CHANNEL_ID);
 
     expect(result.repliesEnqueued).toBe(1);
-    expect(mockEnqueueJob).toHaveBeenCalledWith(
-      "sync_slack_replies",
-      { channelId: CHANNEL_ID, threadTs: "1700000001.000001" },
-      { deduplicationKey: `slack_replies_${CHANNEL_ID}_1700000001.000001` },
-    );
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
   });
 
   it("does not enqueue reply job when reply_count is 0", async () => {

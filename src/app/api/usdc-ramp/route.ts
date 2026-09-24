@@ -5,6 +5,10 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/validation";
+import { featureGate } from "@/lib/feature-gate";
+import { sum } from "@/lib/decimal";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/usdc-ramp
@@ -13,6 +17,9 @@ import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/
  *   ?status=instruction_received&direction=onramp&client=Acme
  */
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -66,8 +73,8 @@ export async function GET(request: NextRequest) {
       ).length,
       completed: completed.length,
       feeBufferLow: tickets.some((t) => t.feeBufferLow),
-      totalOnrampVolume: completed.filter((t) => t.direction === "onramp").reduce((s, t) => s + t.amount, 0),
-      totalOfframpVolume: completed.filter((t) => t.direction === "offramp").reduce((s, t) => s + t.amount, 0),
+      totalOnrampVolume: sum(completed.filter((t) => t.direction === "onramp").map((t) => t.amount)).toFixed(),
+      totalOfframpVolume: sum(completed.filter((t) => t.direction === "offramp").map((t) => t.amount)).toFixed(),
     };
 
     const enriched = tickets.map((t) => ({
@@ -88,6 +95,9 @@ export async function GET(request: NextRequest) {
  * Create a new USDC ramp ticket (instruction received).
  */
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -98,31 +108,38 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createUsdcRampSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "usdc_ramp_created", entityType: "usdc_ramp_request", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Create a USDC ramp request", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createUsdcRampSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const data = parsed.data;
 
-    const ticket = await prisma.usdcRampRequest.create({
-      data: {
-        clientName: data.clientName,
-        clientAccount: data.clientAccount ?? "",
-        direction: data.direction,
-        amount: data.amount,
-        fiatCurrency: data.fiatCurrency ?? "USD",
-        fiatAmount: data.fiatAmount ?? null,
-        bankReference: data.bankReference ?? "",
-        instructionRef: data.instructionRef ?? "",
-        custodyWalletId: data.custodyWalletId ?? "",
-        ssiDetails: data.ssiDetails ?? "",
-        priority: data.priority ?? "normal",
-        notes: data.notes ?? "",
-        status: "instruction_received",
-        requestedAt: new Date(),
+        const ticket = await prisma.usdcRampRequest.create({
+          data: {
+            clientName: data.clientName,
+            clientAccount: data.clientAccount ?? "",
+            direction: data.direction,
+            amount: data.amount,
+            fiatCurrency: data.fiatCurrency ?? "USD",
+            fiatAmount: data.fiatAmount ?? null,
+            bankReference: data.bankReference ?? "",
+            instructionRef: data.instructionRef ?? "",
+            custodyWalletId: data.custodyWalletId ?? "",
+            ssiDetails: data.ssiDetails ?? "",
+            priority: data.priority ?? "normal",
+            notes: data.notes ?? "",
+            status: "instruction_received",
+            requestedAt: new Date(),
+          },
+        });
+
+        return apiSuccess(ticket, undefined, 201);
       },
-    });
-
-    return apiSuccess(ticket, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "USDC ramp POST");
   }
@@ -146,6 +163,9 @@ export async function POST(request: NextRequest) {
  *   reject          — reject the ticket
  */
 export async function PATCH(request: NextRequest) {
+  const gated = await featureGate("module.usdc_ramp");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -156,88 +176,95 @@ export async function PATCH(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateUsdcRampSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { id, action, ...fields } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "usdc_ramp_updated", entityType: "usdc_ramp_request", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Advance or update a USDC ramp request", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateUsdcRampSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { id, action, ...fields } = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
-    const data: Record<string, unknown> = {};
+        const actorId = auth.employeeId || auth.id;
+        const data: Record<string, unknown> = {};
 
-    switch (action) {
-      case "advance_status":
-        if (!fields.status) {
-          return apiValidationError("status is required");
+        switch (action) {
+          case "advance_status":
+            if (!fields.status) {
+              return apiValidationError("status is required");
+            }
+            data.status = fields.status;
+            if (fields.status === "completed") data.completedAt = new Date();
+            break;
+
+          case "maker_confirm":
+            data.makerById = actorId;
+            data.makerAt = new Date();
+            if (fields.makerNote) data.makerNote = fields.makerNote;
+            if (fields.status) data.status = fields.status;
+            break;
+
+          case "checker_approve": {
+            const existing = await prisma.usdcRampRequest.findUnique({ where: { id }, select: { makerById: true } });
+            if (existing?.makerById === actorId) {
+              return apiForbiddenError("Checker cannot be the same person as the maker");
+            }
+            data.checkerById = actorId;
+            data.checkerAt = new Date();
+            if (fields.checkerNote) data.checkerNote = fields.checkerNote;
+            if (fields.status) data.status = fields.status;
+            break;
+          }
+
+          case "update_checks":
+            if (fields.kycAmlOk !== undefined) data.kycAmlOk = fields.kycAmlOk;
+            if (fields.ssiVerified !== undefined) data.ssiVerified = fields.ssiVerified;
+            if (fields.walletWhitelisted !== undefined) data.walletWhitelisted = fields.walletWhitelisted;
+            if (fields.gasWalletOk !== undefined) data.gasWalletOk = fields.gasWalletOk;
+            if (fields.expressEnabled !== undefined) data.expressEnabled = fields.expressEnabled;
+            break;
+
+          case "add_evidence": {
+            const ticket = await prisma.usdcRampRequest.findUnique({ where: { id } });
+            if (!ticket) {
+              return apiNotFoundError("Ticket");
+            }
+            let existingEvidence: string[] = [];
+            try { existingEvidence = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
+            existingEvidence.push(fields.evidenceRef || "");
+            data.evidence = JSON.stringify(existingEvidence);
+            break;
+          }
+
+          case "flag_buffer":
+            data.feeBufferLow = true;
+            break;
+
+          case "notify_client":
+            data.clientNotifiedAt = new Date();
+            break;
+
+          case "reject":
+            data.status = "rejected";
+            data.rejectionReason = fields.rejectionReason || "";
+            break;
+
+          default:
+            if (fields.status) data.status = fields.status;
+            if (fields.onChainTxHash !== undefined) data.onChainTxHash = fields.onChainTxHash;
+            if (fields.issuerConfirmation !== undefined) data.issuerConfirmation = fields.issuerConfirmation;
+            if (fields.holdingWalletId !== undefined) data.holdingWalletId = fields.holdingWalletId;
+            if (fields.notes !== undefined) data.notes = fields.notes;
+            if (fields.bankReference !== undefined) data.bankReference = fields.bankReference;
+            if (fields.priority) data.priority = fields.priority;
+            break;
         }
-        data.status = fields.status;
-        if (fields.status === "completed") data.completedAt = new Date();
-        break;
 
-      case "maker_confirm":
-        data.makerById = actorId;
-        data.makerAt = new Date();
-        if (fields.makerNote) data.makerNote = fields.makerNote;
-        if (fields.status) data.status = fields.status;
-        break;
-
-      case "checker_approve": {
-        const existing = await prisma.usdcRampRequest.findUnique({ where: { id }, select: { makerById: true } });
-        if (existing?.makerById === actorId) {
-          return apiForbiddenError("Checker cannot be the same person as the maker");
-        }
-        data.checkerById = actorId;
-        data.checkerAt = new Date();
-        if (fields.checkerNote) data.checkerNote = fields.checkerNote;
-        if (fields.status) data.status = fields.status;
-        break;
-      }
-
-      case "update_checks":
-        if (fields.kycAmlOk !== undefined) data.kycAmlOk = fields.kycAmlOk;
-        if (fields.ssiVerified !== undefined) data.ssiVerified = fields.ssiVerified;
-        if (fields.walletWhitelisted !== undefined) data.walletWhitelisted = fields.walletWhitelisted;
-        if (fields.gasWalletOk !== undefined) data.gasWalletOk = fields.gasWalletOk;
-        if (fields.expressEnabled !== undefined) data.expressEnabled = fields.expressEnabled;
-        break;
-
-      case "add_evidence": {
-        const ticket = await prisma.usdcRampRequest.findUnique({ where: { id } });
-        if (!ticket) {
-          return apiNotFoundError("Ticket");
-        }
-        let existingEvidence: string[] = [];
-        try { existingEvidence = typeof ticket.evidence === "string" ? JSON.parse(ticket.evidence) as string[] : (ticket.evidence as string[] ?? []); } catch { /* ignore */ }
-        existingEvidence.push(fields.evidenceRef || "");
-        data.evidence = JSON.stringify(existingEvidence);
-        break;
-      }
-
-      case "flag_buffer":
-        data.feeBufferLow = true;
-        break;
-
-      case "notify_client":
-        data.clientNotifiedAt = new Date();
-        break;
-
-      case "reject":
-        data.status = "rejected";
-        data.rejectionReason = fields.rejectionReason || "";
-        break;
-
-      default:
-        if (fields.status) data.status = fields.status;
-        if (fields.onChainTxHash !== undefined) data.onChainTxHash = fields.onChainTxHash;
-        if (fields.issuerConfirmation !== undefined) data.issuerConfirmation = fields.issuerConfirmation;
-        if (fields.holdingWalletId !== undefined) data.holdingWalletId = fields.holdingWalletId;
-        if (fields.notes !== undefined) data.notes = fields.notes;
-        if (fields.bankReference !== undefined) data.bankReference = fields.bankReference;
-        if (fields.priority) data.priority = fields.priority;
-        break;
-    }
-
-    const ticket = await prisma.usdcRampRequest.update({ where: { id }, data });
-    return apiSuccess(ticket);
+        const ticket = await prisma.usdcRampRequest.update({ where: { id }, data });
+        return apiSuccess(ticket);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "USDC ramp PATCH");
   }

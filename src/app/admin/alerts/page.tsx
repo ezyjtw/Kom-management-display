@@ -41,6 +41,7 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -60,11 +61,16 @@ export default function AlertsPage() {
   }, [fetchAlerts]);
 
   async function handleAction(alertId: string, action: "acknowledge" | "resolve") {
-    await fetch("/api/comms/alerts", {
+    setActionError(null);
+    const res = await fetch("/api/comms/alerts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ alertId, action }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setActionError(body?.error ?? `Could not ${action} the alert.`);
+    }
     fetchAlerts();
   }
 
@@ -114,6 +120,12 @@ export default function AlertsPage() {
       {scanResult && (
         <div className="p-3 rounded-lg text-sm bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
           {scanResult}
+        </div>
+      )}
+
+      {actionError && (
+        <div role="alert" className="p-3 rounded-lg text-sm bg-red-500/10 text-red-400 border border-red-500/20">
+          {actionError}
         </div>
       )}
 

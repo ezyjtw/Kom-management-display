@@ -6,12 +6,16 @@ import {
   isNotabeneConfigured,
 } from "@/lib/integrations/notabene";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/integrations/notabene
  * Return Notabene integration status + recent transfers.
  */
 export async function GET() {
+  const gated = await featureGate("integration.notabene.enabled");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

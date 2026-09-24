@@ -7,6 +7,8 @@ import { apiSuccess, apiValidationError, apiConflictError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createUserSchema } from "@/lib/validation";
 import { validatePassword, BCRYPT_ROUNDS } from "@/lib/password-policy";
+import { auditedAction } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/users
@@ -69,34 +71,38 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role: role ?? "employee",
-        employeeId: employeeId ?? null,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        employeeId: true,
-        createdAt: true,
-      },
-    });
-
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
+    const actor = auditActor(auth);
+    // The user id is not known until it is created: it is in the outcome.
+    const user = await auditedAction(
+      {
         action: "user_created",
         entityType: "user",
-        entityId: user.id,
-        userId: auth.id,
-        details: JSON.stringify({ email, role: role || "employee" }),
+        entityId: "new",
+        userId: actor.userId,
+        summary: `Create user account (${role || "employee"})`,
+        after: { email, role: role || "employee" },
+        metadata: actor.metadata,
       },
-    });
+      async () => prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role: role ?? "employee",
+          employeeId: employeeId ?? null,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          employeeId: true,
+          createdAt: true,
+        },
+      }),
+      (r) => ({ createdUserId: r.id }),
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(user, undefined, 201);
   } catch (error) {

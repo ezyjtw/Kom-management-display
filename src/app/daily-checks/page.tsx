@@ -1,15 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle, ClipboardCheck, Play, CheckCircle2, XCircle, SkipForward, Copy } from "lucide-react";
+import { RefreshCw, ClipboardCheck, CheckCircle2, XCircle, SkipForward, Copy, ShieldCheck } from "lucide-react";
 import { CheckStatusBadge } from "@/components/shared/StatusBadge";
-import type { DailyCheckRunEntry, DailyCheckItemEntry } from "@/types";
+import type { DailyCheckRunEntry } from "@/types";
 
 export default function DailyChecksPage() {
   const [run, setRun] = useState<DailyCheckRunEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [noRun, setNoRun] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [openForm, setOpenForm] = useState<{ itemId: string; kind: "pass" | "issues" | "skip" } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -36,19 +38,50 @@ export default function DailyChecksPage() {
     } catch { /* */ } finally { setCreating(false); }
   }
 
-  async function updateItem(itemId: string, status: string, notes?: string) {
-    await fetch("/api/daily-checks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId, status, notes }),
-    });
+  /** The server enforces the rules (spec §10.2); errors are shown as returned. */
+  async function send(url: string, method: string, body: unknown): Promise<boolean> {
+    setError(null);
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      setError([json?.error, ...(json?.issues ?? [])].filter(Boolean).join(" ") || "The change was rejected.");
+      return false;
+    }
+    setOpenForm(null);
     await fetchData();
+    return true;
   }
 
-  async function runAutoCheck(item: DailyCheckItemEntry) {
-    // Auto-check queries existing data — for now, mark as pass if autoCheckKey is set
-    if (!item.autoCheckKey) return;
-    await updateItem(item.id, "pass", "Auto-checked");
+  function submitPass(itemId: string, form: HTMLFormElement) {
+    const f = new FormData(form);
+    const asOf = String(f.get("dataAsOf") || "");
+    return send("/api/daily-checks", "PATCH", {
+      itemId,
+      status: "pass",
+      evidence: {
+        recordCount: f.get("recordCount") === "" ? undefined : Number(f.get("recordCount")),
+        dataAsOf: asOf ? new Date(asOf).toISOString() : undefined,
+        source: String(f.get("source") || ""),
+      },
+    });
+  }
+
+  function submitExceptions(itemId: string, form: HTMLFormElement) {
+    const f = new FormData(form);
+    const exceptions = String(f.get("rows") || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [summary, reference] = line.split("|").map((p) => p.trim());
+        return { summary, ...(reference ? { reference } : {}) };
+      });
+    return send(`/api/daily-checks/items/${itemId}/exceptions`, "POST", { exceptions });
+  }
+
+  function submitSkip(itemId: string, form: HTMLFormElement) {
+    const f = new FormData(form);
+    return send("/api/daily-checks", "PATCH", { itemId, status: "skipped", skippedReason: String(f.get("reason") || "") });
   }
 
   function generateJiraSummary() {
@@ -82,6 +115,10 @@ export default function DailyChecksPage() {
         </div>
         <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-card border border-border rounded-lg hover:bg-accent/50"><RefreshCw size={16} /></button>
       </div>
+
+      {error && (
+        <div role="alert" className="p-3 rounded-lg text-sm bg-red-500/10 text-red-400 border border-red-500/20">{error}</div>
+      )}
 
       {noRun && !run && (
         <div className="bg-card rounded-xl border border-border p-8 text-center">
@@ -117,7 +154,8 @@ export default function DailyChecksPage() {
           {/* Check items */}
           <div className="space-y-2">
             {run.items.map((item) => (
-              <div key={item.id} className="bg-card rounded-xl border border-border p-4 flex items-center gap-4">
+              <div key={item.id} className="bg-card rounded-xl border border-border p-4">
+                <div className="flex items-center gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-foreground">{item.name}</p>
@@ -129,24 +167,56 @@ export default function DailyChecksPage() {
 
                 {item.status === "pending" && (
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {item.autoCheckKey && (
-                      <button onClick={() => runAutoCheck(item)} className="p-2 text-xs bg-blue-500/10 text-blue-400 rounded-lg hover:bg-blue-500/20" title="Auto-check">
-                        <Play size={14} />
-                      </button>
-                    )}
-                    <button onClick={() => updateItem(item.id, "pass")} className="p-2 text-xs bg-emerald-500/10 text-emerald-400 rounded-lg hover:bg-emerald-500/20" title="Pass">
+                    <button onClick={() => setOpenForm({ itemId: item.id, kind: "pass" })} className="p-2 text-xs bg-emerald-500/10 text-emerald-400 rounded-lg hover:bg-emerald-500/20" title="Pass (with evidence)">
                       <CheckCircle2 size={14} />
                     </button>
-                    <button onClick={() => {
-                      const notes = prompt("Describe the issues found:");
-                      if (notes) updateItem(item.id, "issues_found", notes);
-                    }} className="p-2 text-xs bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20" title="Issues found">
+                    <button onClick={() => setOpenForm({ itemId: item.id, kind: "issues" })} className="p-2 text-xs bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20" title="Record exceptions">
                       <XCircle size={14} />
                     </button>
-                    <button onClick={() => updateItem(item.id, "skipped")} className="p-2 text-xs bg-amber-500/10 text-amber-400 rounded-lg hover:bg-amber-500/20" title="Skip">
-                      <SkipForward size={14} />
-                    </button>
+                    {item.skipRequestedBy ? (
+                      <button onClick={() => send(`/api/daily-checks/items/${item.id}/skip-signoff`, "POST", {})} className="p-2 text-xs bg-amber-500/10 text-amber-400 rounded-lg hover:bg-amber-500/20" title="Approve skip (lead/admin, not the requester)">
+                        <ShieldCheck size={14} />
+                      </button>
+                    ) : (
+                      <button onClick={() => setOpenForm({ itemId: item.id, kind: "skip" })} className="p-2 text-xs bg-amber-500/10 text-amber-400 rounded-lg hover:bg-amber-500/20" title="Request skip">
+                        <SkipForward size={14} />
+                      </button>
+                    )}
                   </div>
+                )}
+                </div>
+
+                {item.status === "pending" && item.skipRequestedBy && (
+                  <p className="text-xs text-amber-400 mt-2">Skip requested: {item.skippedReason}. Awaiting approval by a different lead or admin.</p>
+                )}
+                {item.status === "pass" && item.dataAsOf && (
+                  <p className="text-xs text-muted-foreground mt-2">Evidence: {item.recordCount} record(s), data as of {new Date(item.dataAsOf).toLocaleString()}</p>
+                )}
+                {item.status === "issues_found" && (
+                  <p className="text-xs text-red-400 mt-2">{item.exceptionWorkItemIds?.length ?? 0} exception(s) ticketed</p>
+                )}
+
+                {openForm?.itemId === item.id && openForm.kind === "pass" && (
+                  <form className="mt-3 grid gap-2 sm:grid-cols-4 items-end" onSubmit={(e) => { e.preventDefault(); submitPass(item.id, e.currentTarget); }}>
+                    <label className="text-xs text-muted-foreground">Record count<input name="recordCount" type="number" min={0} required className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" /></label>
+                    <label className="text-xs text-muted-foreground">Data as of<input name="dataAsOf" type="datetime-local" required className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" /></label>
+                    <label className="text-xs text-muted-foreground">Source<input name="source" required maxLength={200} className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" /></label>
+                    <button type="submit" className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg">Record pass</button>
+                  </form>
+                )}
+                {openForm?.itemId === item.id && openForm.kind === "issues" && (
+                  <form className="mt-3 space-y-2" onSubmit={(e) => { e.preventDefault(); submitExceptions(item.id, e.currentTarget); }}>
+                    <label className="text-xs text-muted-foreground block">One exception per line: <code>summary | reference</code>. Each gets a ticket.
+                      <textarea name="rows" required rows={3} className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
+                    </label>
+                    <button type="submit" className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg">Record exceptions</button>
+                  </form>
+                )}
+                {openForm?.itemId === item.id && openForm.kind === "skip" && (
+                  <form className="mt-3 flex gap-2 items-end" onSubmit={(e) => { e.preventDefault(); submitSkip(item.id, e.currentTarget); }}>
+                    <label className="text-xs text-muted-foreground flex-1">Reason for skipping<input name="reason" required minLength={5} maxLength={1000} className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm" /></label>
+                    <button type="submit" className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg">Request skip</button>
+                  </form>
                 )}
               </div>
             ))}

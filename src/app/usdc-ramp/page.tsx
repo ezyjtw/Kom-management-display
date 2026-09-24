@@ -12,9 +12,9 @@ interface RampTicket {
   clientName: string;
   clientAccount: string;
   direction: string;
-  amount: number;
+  amount: string;
   fiatCurrency: string;
-  fiatAmount: number | null;
+  fiatAmount: string | null;
   status: string;
   bankReference: string;
   instructionRef: string;

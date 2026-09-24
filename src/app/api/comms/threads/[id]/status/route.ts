@@ -33,8 +33,9 @@ const THREAD_TRANSITIONS: Record<string, string[]> = {
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

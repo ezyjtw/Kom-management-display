@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette } from "lucide-react";
+import { Save, Users, BarChart3, Shield, Clock, Link2, UserPlus, Palette, Building2, Timer, Inbox, Ticket, BellRing, Database } from "lucide-react";
 import type { ScoringConfigData, Category } from "@/types";
 
 import ScoringWeightsTab from "./ScoringWeightsTab";
@@ -11,35 +11,59 @@ import KnowledgeScoringTab from "./KnowledgeScoringTab";
 import UserAccountsTab from "./UserAccountsTab";
 import IntegrationsTab from "./IntegrationsTab";
 import BrandingTab from "./BrandingTab";
+import ClientsTab from "./ClientsTab";
+import SlaPoliciesTab from "./SlaPoliciesTab";
+import IntakeTab from "./IntakeTab";
+import JiraProjectsTab from "./JiraProjectsTab";
+import AlertRulesTab from "./AlertRulesTab";
+import ReferenceDataTab from "./ReferenceDataTab";
+import { SlaTargetsBanner } from "./SlaTargetsBanner";
 import type { Employee } from "./EmployeesTab";
 import type { UserAccount } from "./UserAccountsTab";
 import type { SlackStatus, EmailStatus } from "./IntegrationsTab";
 
 const tabs = [
-  { key: "weights" as const, label: "Scoring Weights", icon: BarChart3 },
-  { key: "targets" as const, label: "Role Targets", icon: Shield },
+  { key: "weights" as const, label: "Scoring Weights", icon: BarChart3, scoring: true },
+  { key: "targets" as const, label: "Role Targets", icon: Shield, scoring: true },
   { key: "employees" as const, label: "Employees", icon: Users },
-  { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock },
+  { key: "knowledge" as const, label: "Knowledge Scoring", icon: Clock, scoring: true },
   { key: "users" as const, label: "User Accounts", icon: UserPlus },
   { key: "integrations" as const, label: "Integrations", icon: Link2 },
   { key: "branding" as const, label: "Branding", icon: Palette },
+  { key: "clients" as const, label: "Clients & Channels", icon: Building2 },
+  { key: "sla" as const, label: "SLA Policies", icon: Timer },
+  { key: "intake" as const, label: "Client Intake", icon: Inbox },
+  { key: "jira" as const, label: "Jira Projects", icon: Ticket },
+  { key: "alertRules" as const, label: "Alert Rules", icon: BellRing },
+  { key: "reference" as const, label: "Reference Data", icon: Database },
 ];
 
 type TabKey = (typeof tabs)[number]["key"];
 
-export default function AdminClient() {
+export default function AdminClient({ scoringEnabled }: { scoringEnabled: boolean }) {
   const [config, setConfig] = useState<ScoringConfigData | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("weights");
+  const [activeTab, setActiveTab] = useState<TabKey>(scoringEnabled ? "weights" : "employees");
+  const visibleTabs = tabs.filter((t) => scoringEnabled || !("scoring" in t && t.scoring));
+  const [slaTargetsNotSet, setSlaTargetsNotSet] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/admin/sla-policies")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setSlaTargetsNotSet(json.data.targetsNotSet); })
+      .catch(() => {});
+  }, [activeTab]);
   const [slackStatus, setSlackStatus] = useState<SlackStatus | null>(null);
   const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/scoring-config").then((r) => r.json()),
+      scoringEnabled
+        ? fetch("/api/scoring-config").then((r) => r.json())
+        : Promise.resolve({ success: false }),
       fetch("/api/employees").then((r) => r.json()),
       fetch("/api/users").then((r) => r.json()).catch(() => ({ success: false })),
       fetch("/api/integrations/slack").then((r) => r.json()).catch(() => ({ success: false })),
@@ -58,7 +82,7 @@ export default function AdminClient() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [scoringEnabled]);
 
   async function saveConfig() {
     if (!config) return;
@@ -99,20 +123,22 @@ export default function AdminClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {config && <span className="text-xs text-muted-foreground">Config v{config.version}</span>}
-          <button
+          {scoringEnabled && config && <span className="text-xs text-muted-foreground">Config v{config.version}</span>}
+          {scoringEnabled && <button
             onClick={saveConfig}
             disabled={saving}
             className="flex items-center gap-2 px-4 py-2 text-sm text-primary-foreground bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
           >
             <Save size={16} />
             {saving ? "Saving..." : "Save Config"}
-          </button>
+          </button>}
         </div>
       </div>
 
-      <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
-        {tabs.map((tab) => {
+      {activeTab !== "sla" && <SlaTargetsBanner codes={slaTargetsNotSet} />}
+
+      <div className="flex flex-wrap gap-1 bg-card border border-border rounded-xl p-1">
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
@@ -160,6 +186,12 @@ export default function AdminClient() {
         <IntegrationsTab slackStatus={slackStatus} emailStatus={emailStatus} />
       )}
       {activeTab === "branding" && <BrandingTab />}
+      {activeTab === "clients" && <ClientsTab />}
+      {activeTab === "sla" && <SlaPoliciesTab />}
+      {activeTab === "intake" && <IntakeTab />}
+      {activeTab === "jira" && <JiraProjectsTab />}
+      {activeTab === "alertRules" && <AlertRulesTab />}
+      {activeTab === "reference" && <ReferenceDataTab />}
     </div>
   );
 }

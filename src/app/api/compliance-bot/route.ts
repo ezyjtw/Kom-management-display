@@ -9,6 +9,7 @@ import { apiSuccess, apiValidationError, apiError, handleApiError } from "@/lib/
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * Disclaimer appended in code to every reply. The model is instructed to give
@@ -41,6 +42,9 @@ Guidelines:
 - Where relevant, flag if something requires board or MLRO sign-off under our compliance framework.`;
 
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("ai.compliance_bot");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

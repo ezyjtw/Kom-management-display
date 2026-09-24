@@ -1,0 +1,18 @@
+# Code owners (spec §17.6): changes to integrations, authentication, the worker,
+# deployment config and the pipeline need an owner's review. Two-person review
+# for production changes is enforced by branch protection on main (DL1).
+# TODO(CONFIRM-CODEOWNERS): replace the repository owner with the owning team(s)
+# (e.g. @org/kommand-maintainers and @org/platform-security) once named.
+
+*                               @ezyjtw
+/src/lib/integrations/          @ezyjtw
+/src/modules/auth/              @ezyjtw
+/src/modules/security/          @ezyjtw
+/src/lib/secrets.ts             @ezyjtw
+/src/lib/env.ts                 @ezyjtw
+/src/middleware.ts              @ezyjtw
+/src/worker/                    @ezyjtw
+/prisma/migrations/             @ezyjtw
+/deploy/                        @ezyjtw
+/.github/                       @ezyjtw
+/Dockerfile                     @ezyjtw

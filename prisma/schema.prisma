@@ -161,28 +161,30 @@ model Employee {
   scores                  CategoryScore[]
   knowledgeScores         KnowledgeScore[]
   employeeNotes           EmployeeNote[]
-  ownedThreads            CommsThread[]     @relation("ThreadOwner")
-  ownershipChangesFrom    OwnershipChange[] @relation("OldOwner")
-  ownershipChangesTo      OwnershipChange[] @relation("NewOwner")
-  ownershipChangesBy      OwnershipChange[] @relation("ChangedBy")
+  ownedThreads            CommsThread[]             @relation("ThreadOwner")
+  ownershipChangesFrom    OwnershipChange[]         @relation("OldOwner")
+  ownershipChangesTo      OwnershipChange[]         @relation("NewOwner")
+  ownershipChangesBy      OwnershipChange[]         @relation("ChangedBy")
   alerts                  Alert[]
   auditLogs               AuditLog[]
   threadNotes             ThreadNote[]
   caseNotes               CaseNote[]
   onCallSchedules         OnCallSchedule[]
   ptoRecords              PtoRecord[]
-  assignedTasks           DailyTask[]       @relation("TaskAssignee")
-  completedTasks          DailyTask[]       @relation("TaskCompleter")
-  createdTasks            DailyTask[]       @relation("TaskCreator")
-  ledProjects             Project[]         @relation("ProjectLead")
+  assignedTasks           DailyTask[]               @relation("TaskAssignee")
+  completedTasks          DailyTask[]               @relation("TaskCompleter")
+  createdTasks            DailyTask[]               @relation("TaskCreator")
+  ledProjects             Project[]                 @relation("ProjectLead")
   projectMemberships      ProjectMember[]
   projectUpdates          ProjectUpdate[]
   rotaAssignments         RotaAssignment[]
   activityStatuses        ActivityStatus[]
-  reportedIncidents       Incident[]        @relation("IncidentReporter")
-  resolvedIncidents       Incident[]        @relation("IncidentResolver")
-  rcaResponsibleIncidents Incident[]        @relation("RcaResponsible")
+  reportedIncidents       Incident[]                @relation("IncidentReporter")
+  resolvedIncidents       Incident[]                @relation("IncidentResolver")
+  rcaResponsibleIncidents Incident[]                @relation("RcaResponsible")
   clientContactsCreated   ClientContactPreference[] @relation("ClientContactCreatedBy")
+  ownedWorkItems          WorkItem[]                @relation("WorkItemOwner")
+  timeLogs                TimeLog[]
   user                    User?
 
   @@index([team, active])
@@ -200,12 +202,13 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee               Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  workflowEvents         WorkflowEvent[]  @relation("WorkflowPerformedBy")
-  createdScoringConfigs  ScoringConfig[]  @relation("ScoringConfigCreatedBy")
-  reviewedScoringConfigs ScoringConfig[]  @relation("ScoringConfigReviewedBy")
-  approvedScoringConfigs ScoringConfig[]  @relation("ScoringConfigApprovedBy")
-  scoredKnowledgeScores  KnowledgeScore[] @relation("KnowledgeScoreScorer")
+  employee               Employee?         @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  workflowEvents         WorkflowEvent[]   @relation("WorkflowPerformedBy")
+  createdScoringConfigs  ScoringConfig[]   @relation("ScoringConfigCreatedBy")
+  reviewedScoringConfigs ScoringConfig[]   @relation("ScoringConfigReviewedBy")
+  approvedScoringConfigs ScoringConfig[]   @relation("ScoringConfigApprovedBy")
+  scoredKnowledgeScores  KnowledgeScore[]  @relation("KnowledgeScoreScorer")
+  clientScopes           UserClientScope[]
 }
 
 // ─── Scoring System ───
@@ -232,8 +235,8 @@ model CategoryScore {
   rawIndex      Float // 0-1 raw performance index
   score         Float // 3-8 clamped score
   configVersion String // scoring config version used
-  evidence      Json          @default("[]") // JSON array of evidence links — denormalized for fast reads
-  metadata      Json          @default("{}") // JSON object with detailed metrics
+  evidence      String        @default("[]") // JSON array of evidence links — denormalized for fast reads — stored as TEXT holding JSON (drift reconciliation, 0043)
+  metadata      String        @default("{}") // JSON object with detailed metrics — stored as TEXT holding JSON (drift reconciliation, 0043)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -256,7 +259,7 @@ model KnowledgeScore {
   mappedScore              Float    @default(3) // 3-8 mapped
   notes                    String   @default("")
   scoredBy                 String   @default("") // display name — prefer scoredById FK for lookups
-  scoredById               String?  // FK to User who scored
+  scoredById               String? // FK to User who scored
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
@@ -302,7 +305,7 @@ model EmployeeNote {
   authorId    String
   createdAt   DateTime @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
 }
@@ -313,13 +316,13 @@ model CommsThread {
   id                 String         @id @default(cuid())
   source             CommsSource    @default(email)
   sourceThreadRef    String // gmail thread id / slack channel+ts / jira issue key
-  participants       Json           @default("[]") // JSON array of { name, email, role } objects
+  participants       String         @default("[]") // JSON array of { name, email, role } objects — stored as TEXT holding JSON (drift reconciliation, 0043)
   clientOrPartnerTag String         @default("")
   subject            String
   priority           ThreadPriority @default(P2)
   status             ThreadStatus   @default(Unassigned) // Unassigned, Assigned, InProgress, WaitingExternal, WaitingInternal, PendingHandover, Done, Closed
   ownerUserId        String?
-  secondaryOwnerIds  Json           @default("[]") // JSON array of employee IDs (watchers / collaborators)
+  secondaryOwnerIds  String         @default("[]") // JSON array of employee IDs (watchers / collaborators) — stored as TEXT holding JSON (drift reconciliation, 0043)
   queue              String         @default("Transaction Operations") // Admin Operations, Transaction Operations, Data Operations
   createdAt          DateTime       @default(now())
   lastMessageAt      DateTime       @default(now())
@@ -327,22 +330,22 @@ model CommsThread {
   ttoDeadline        DateTime? // Time-to-Ownership deadline
   ttfaDeadline       DateTime? // Time-to-First-Action deadline
   tslaDeadline       DateTime? // Time-since-last-action deadline
-  linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
+  linkedRecords      String         @default("[]") // JSON: Jira tickets, Confluence, transaction IDs — stored as TEXT holding JSON (drift reconciliation, 0043)
 
   // Stream 2: Slack thread fields
-  slackChannelId    String? // FK -> SlackChannel
-  slackRootTs       String? // root message ts — the thread identifier in Slack
-  slackThreadTs     String? // same as slackRootTs for root messages
-  isSlackThread     Boolean   @default(false) // true if reply_count > 0
-  slackReplyCount   Int?      // latest known reply count
-  slackLastReplyTs  String?   // ts of newest reply — reply sync cursor
+  slackChannelId   String? // FK -> SlackChannel
+  slackRootTs      String? // root message ts — the thread identifier in Slack
+  slackThreadTs    String? // same as slackRootTs for root messages
+  isSlackThread    Boolean   @default(false) // true if reply_count > 0
+  slackReplyCount  Int? // latest known reply count
+  slackLastReplyTs String? // ts of newest reply — reply sync cursor
   // Stream 3: AI classification fields
-  aiClassification  Json?
-  aiClassifiedAt    DateTime?
-  aiUrgencyScore    Int       @default(0)
+  aiClassification Json?
+  aiClassifiedAt   DateTime?
+  aiUrgencyScore   Int       @default(0)
 
   owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
-  slackChannel        SlackChannel?         @relation(fields: [slackChannelId], references: [id])
+  slackChannel        SlackChannel?        @relation(fields: [slackChannelId], references: [id])
   messages            CommsMessage[]
   ownershipChanges    OwnershipChange[]
   alerts              Alert[]
@@ -372,16 +375,16 @@ model CommsMessage {
   authorType     String // external, internal
   bodySnippet    String
   bodyLink       String    @default("") // link to full content
-  attachments    Json      @default("[]") // JSON: [{name, size, type}]
+  attachments    String    @default("[]") // JSON: [{name, size, type}] — stored as TEXT holding JSON (drift reconciliation, 0043)
   // Stream 2: Slack message fields
-  slackTs        String?   // Slack message ts — unique within thread
-  slackUserId    String?   // Slack user ID of author
-  slackThreadTs  String?   // thread_ts of parent thread
+  slackTs        String? // Slack message ts — unique within thread
+  slackUserId    String? // Slack user ID of author
+  slackThreadTs  String? // thread_ts of parent thread
   isRootMessage  Boolean   @default(false)
-  slackReactions Json?     // [{name: string, count: number}]
+  slackReactions Json? // [{name: string, count: number}]
   editedAt       DateTime?
 
-  thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Restrict)
   messageAttachments MessageAttachment[]
 
   @@unique([threadId, slackTs])
@@ -398,7 +401,7 @@ model OwnershipChange {
   reason       String   @default("")
   handoverNote String   @default("")
 
-  thread    CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread    CommsThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
   oldOwner  Employee?   @relation("OldOwner", fields: [oldOwnerId], references: [id])
   newOwner  Employee?   @relation("NewOwner", fields: [newOwnerId], references: [id])
   changedBy Employee    @relation("ChangedBy", fields: [changedById], references: [id])
@@ -414,7 +417,7 @@ model ThreadNote {
   content   String
   createdAt DateTime @default(now())
 
-  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread CommsThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
   author Employee    @relation(fields: [authorId], references: [id])
 
   @@index([threadId])
@@ -504,7 +507,7 @@ model TravelRuleCase {
   txHash             String                    @default("")
   direction          String // IN, OUT
   asset              String
-  amount             Float
+  amount             Decimal                   @db.Decimal(38, 18) // token quantity in `asset`
   senderAddress      String                    @default("")
   receiverAddress    String                    @default("")
   matchStatus        String // unmatched, missing_originator, missing_beneficiary
@@ -544,33 +547,33 @@ model VaspContact {
 // ─── Client Contact Preferences ───
 
 model ClientContactPreference {
-  id                String   @id @default(cuid())
-  clientName        String   @unique // Matches CommsThread.clientOrPartnerTag
-  displayName       String   @default("") // Friendly name for UI
-  preferredChannel  String   @default("email") // email | slack | phone | portal
-  primaryEmail      String   @default("")
-  secondaryEmail    String   @default("")
-  slackChannel      String   @default("") // e.g. #client-acme
-  phoneNumber       String   @default("")
-  timezone          String   @default("UTC") // IANA timezone
-  businessHoursStart String  @default("09:00")
-  businessHoursEnd  String   @default("17:00")
-  businessDays      String   @default("mon,tue,wed,thu,fri") // CSV of days
-  language          String   @default("en")
+  id                 String    @id @default(cuid())
+  clientName         String    @unique // Matches CommsThread.clientOrPartnerTag
+  displayName        String    @default("") // Friendly name for UI
+  preferredChannel   String    @default("email") // email | slack | phone | portal
+  primaryEmail       String    @default("")
+  secondaryEmail     String    @default("")
+  slackChannel       String    @default("") // e.g. #client-acme
+  phoneNumber        String    @default("")
+  timezone           String    @default("UTC") // IANA timezone
+  businessHoursStart String    @default("09:00")
+  businessHoursEnd   String    @default("17:00")
+  businessDays       String    @default("mon,tue,wed,thu,fri") // CSV of days
+  language           String    @default("en")
   // Travel rule specific
-  vaspDid           String   @default("") // Links to VaspContact if applicable
-  travelRuleContact String   @default("") // Dedicated TR contact email
+  vaspDid            String    @default("") // Links to VaspContact if applicable
+  travelRuleContact  String    @default("") // Dedicated TR contact email
   // Escalation
-  escalationEmail   String   @default("") // For urgent/P0 matters
-  escalationPhone   String   @default("")
+  escalationEmail    String    @default("") // For urgent/P0 matters
+  escalationPhone    String    @default("")
   // Metadata
-  notes             String   @default("")
-  tags              String   @default("[]") // JSON array of tags
-  active            Boolean  @default(true)
-  lastContactedAt   DateTime?
-  createdById       String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  notes              String    @default("")
+  tags               String    @default("[]") // JSON array of tags
+  active             Boolean   @default(true)
+  lastContactedAt    DateTime?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   createdBy Employee @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
 
@@ -586,7 +589,7 @@ model CaseNote {
   content   String
   createdAt DateTime @default(now())
 
-  case   TravelRuleCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case   TravelRuleCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
   author Employee       @relation(fields: [authorId], references: [id])
 
   @@index([caseId])
@@ -702,7 +705,7 @@ model Project {
   targetDate  DateTime?
   completedAt DateTime?
   progress    Int           @default(0) // 0-100 percentage
-  tags        Json          @default("[]") // JSON array of tag strings
+  tags        String        @default("[]") // JSON array of tag strings — stored as TEXT holding JSON (drift reconciliation, 0043)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -774,67 +777,91 @@ model Alert {
   resolvedAt       DateTime?
   createdAt        DateTime      @default(now())
 
-  thread         CommsThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread         CommsThread?    @relation(fields: [threadId], references: [id], onDelete: SetNull)
   employee       Employee?       @relation(fields: [employeeId], references: [id])
-  travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: Cascade)
+  travelRuleCase TravelRuleCase? @relation(fields: [travelRuleCaseId], references: [id], onDelete: SetNull)
   incident       Incident?       @relation(fields: [incidentId], references: [id])
+
+  // Alerting engine (spec §7.4)
+  ruleCode       String // e.g. "ALR-OES-01"; legacy alerts use their `type`
+  dedupeKey      String // one open alert per (ruleCode, dedupeKey) — partial unique index in migration 0022
+  workItemId     String? // required before acknowledge (spec §10.2)
+  firstFiredAt   DateTime  @default(now())
+  lastFiredAt    DateTime  @default(now())
+  fireCount      Int       @default(1)
+  escalatedAt    DateTime?
+  autoResolvedAt DateTime?
+
+  // Alerting engine state (spec §11.1, §11.3)
+  detail         String    @default("")
+  exposureUsd    Decimal?  @db.Decimal(20, 2) // USD
+  cleanRuns      Int       @default(0) // consecutive evaluations without this candidate; 2 = auto-resolve
+  lastNotifiedAt DateTime? // quiet rule: no re-notify within 15 minutes
+  escalationStep Int       @default(0) // next index in the rule's escalation ladder
+  digestedAt     DateTime? // included in a daily digest
+
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
 
   @@index([threadId])
   @@index([employeeId])
   @@index([travelRuleCaseId])
+  @@index([incidentId])
+  @@index([workItemId])
   @@index([status])
   @@index([type])
   @@index([type, status])
   @@index([severity, status])
+  @@index([ruleCode, dedupeKey, status])
 }
 
 // ─── 3rd Party Incidents ───
 
 model Incident {
-  id                          String                @id @default(cuid())
+  id                          String           @id @default(cuid())
+  workItemId                  String? // our GXS/VSR ticket (spec §12 CHK-11); timeline updates post there as comments
   title                       String // e.g. "Fireblocks signing service degraded"
   provider                    String // Fireblocks, Ledger, GX, Custody, Notabene, etc.
-  severity                    IncidentSeverity      @default(medium)
-  status                      IncidentStatus        @default(active)
-  description                 String                @default("")
-  impact                      String                @default("") // what ops impact this causes
-  startedAt                   DateTime              @default(now())
+  severity                    IncidentSeverity @default(medium)
+  status                      IncidentStatus   @default(active)
+  description                 String           @default("")
+  impact                      String           @default("") // what ops impact this causes
+  startedAt                   DateTime         @default(now())
   resolvedAt                  DateTime?
   reportedById                String // employee who raised it
   resolvedById                String?
-  linkedThreadIds             Json                  @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds        Json                  @default("[]") // JSON array of transaction IDs (custody)
+  linkedThreadIds             String           @default("[]") // JSON array of commsThread IDs — stored as TEXT holding JSON (drift reconciliation, 0043)
+  linkedTransactionIds        String           @default("[]") // JSON array of transaction IDs (custody) — stored as TEXT holding JSON (drift reconciliation, 0043)
   // ─── RCA Tracker Fields ───
-  rcaStatus                   String                @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
-  rcaDocumentRef              String                @default("") // link to RCA document
+  rcaStatus                   String           @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
+  rcaDocumentRef              String           @default("") // link to RCA document
   rcaResponsibleId            String? // person responsible for chasing RCA
   rcaSlaDeadline              DateTime? // SLA for receiving RCA
   rcaReceivedAt               DateTime?
-  rcaFollowUpItems            Json                  @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaFollowUpItems            String           @default("[]") // JSON array: [{title, status, assigneeId}] — stored as TEXT holding JSON (drift reconciliation, 0043)
   rcaRaisedAt                 DateTime? // when RCA was formally raised
   // ─── External Provider Ticket Tracking ───
-  externalTicketRef           String                @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
-  externalTicketUrl           String                @default("") // full URL to provider ticket
-  externalTicketStatus        String                @default("") // last known status from Jira sync
+  externalTicketRef           String           @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
+  externalTicketUrl           String           @default("") // full URL to provider ticket
+  externalTicketStatus        String           @default("") // last known status from Jira sync
   externalTicketLastSyncAt    DateTime? // when we last polled the ticket
-  externalTicketDisputed      Boolean               @default(false) // true if provider closed prematurely and we dispute
-  externalTicketDisputeReason String                @default("") // why we disagree with closure
+  externalTicketDisputed      Boolean          @default(false) // true if provider closed prematurely and we dispute
+  externalTicketDisputeReason String           @default("") // why we disagree with closure
   // Stream 3: Impact chain fields
-  affectedServices            Json                  @default("[]")
-  detectionSource             String                @default("manual") // manual|ai_slack|status_page
-  clientImpactCount           Int                   @default(0)
-  clientNotifiedCount         Int                   @default(0)
+  affectedServices            Json             @default("[]")
+  detectionSource             String           @default("manual") // manual|ai_slack|status_page
+  clientImpactCount           Int              @default(0)
+  clientNotifiedCount         Int              @default(0)
   firstClientNotifiedAt       DateTime?
 
-  updates                     IncidentUpdate[]
-  alerts                      Alert[]
-  ticketEvents                ExternalTicketEvent[]
-  clientImpacts               ClientImpactRecord[]
-  reportedBy                  Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
-  resolvedBy                  Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
-  rcaResponsible              Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
-  createdAt                   DateTime              @default(now())
-  updatedAt                   DateTime              @updatedAt
+  updates        IncidentUpdate[]
+  alerts         Alert[]
+  ticketEvents   ExternalTicketEvent[]
+  clientImpacts  ClientImpactRecord[]
+  reportedBy     Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
+  resolvedBy     Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
+  rcaResponsible Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([status])
   @@index([provider])
@@ -851,7 +878,7 @@ model IncidentUpdate {
   type       String   @default("update") // update, escalation, resolution
   createdAt  DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
 
   @@index([incidentId])
 }
@@ -885,7 +912,7 @@ model OesSettlement {
   clientName            String
   clientAccount         String    @default("")
   asset                 String // BTC, ETH, USDC, SOL, etc.
-  amount                Float
+  amount                Decimal   @db.Decimal(38, 18) // token quantity in `asset`
   direction             String // custody_to_exchange, exchange_to_custody
   settlementCycle       String    @default("") // e.g. "2026-03-07T09:00Z"
   // Matching: exchange instruction ↔ on-chain tx
@@ -897,7 +924,7 @@ model OesSettlement {
   matchNote             String    @default("") // mismatch reason or exchange escalation note
   // Delegation (OKX specific)
   delegationStatus      String    @default("n/a") // n/a, delegated, undelegated, pending_delegation
-  delegatedAmount       Float     @default(0)
+  delegatedAmount       Decimal   @default(0) @db.Decimal(38, 18)
   // Maker/Checker
   status                String    @default("pending") // pending, confirmed, escalated, failed, completed
   makerById             String? // maker who checked
@@ -926,9 +953,9 @@ model UsdcRampRequest {
   clientName         String
   clientAccount      String    @default("")
   direction          String // onramp (USD→USDC), offramp (USDC→USD)
-  amount             Float // USDC amount
+  amount             Decimal   @db.Decimal(38, 18) // USDC amount
   fiatCurrency       String    @default("USD")
-  fiatAmount         Float? // fiat equivalent
+  fiatAmount         Decimal?  @db.Decimal(20, 2) // fiat equivalent in fiatCurrency
   // Workflow status — tracks the full ops pipeline
   status             String    @default("instruction_received")
   // Onramp: instruction_received → usd_received → usd_receipt_confirmed → usd_sent_to_issuer → usdc_minted → usdc_delivered → completed
@@ -961,7 +988,7 @@ model UsdcRampRequest {
   kycAmlOk           Boolean   @default(false)
   walletWhitelisted  Boolean   @default(false)
   // Evidence & notes
-  evidence           Json      @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.)
+  evidence           String    @default("[]") // JSON array of evidence refs (SWIFT confirmations, issuer reports, etc.) — stored as TEXT holding JSON (drift reconciliation, 0043)
   notes              String    @default("")
   rejectionReason    String    @default("")
   // Dates
@@ -991,16 +1018,29 @@ model BrandingConfig {
 // ─── Audit ───
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  action     String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
-  entityType String // scoring_config, employee, thread, knowledge_score
-  entityId   String
-  userId     String
-  details    Json     @default("{}") // JSON
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  action        String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
+  entityType    String // scoring_config, employee, thread, knowledge_score
+  entityId      String
+  /// Employee of the actor ("system" when the actor has none). Normalised by a database trigger (migration 0037).
+  userId        String
+  details       String   @default("{}") // JSON — stored as TEXT holding JSON (drift reconciliation, 0043)
+  /// user | system | service. The table is append-only: UPDATE, DELETE and TRUNCATE are rejected by triggers (migration 0037).
+  actorType     String   @default("user")
+  /// User.id of the signed-in principal (no FK: users may be removed, the audit trail stays).
+  actorUserId   String?
+  /// Links the requested / completed / failed entries of one audited action.
+  correlationId String?
+  /// recorded (single entry) | requested | completed | failed
+  phase         String   @default("recorded")
+  createdAt     DateTime @default(now())
 
   user Employee @relation(fields: [userId], references: [id])
 
+  @@index([correlationId])
+  @@index([actorUserId, createdAt])
+  @@index([userId, action])
+  @@index([phase, createdAt])
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@index([entityType, entityId])
@@ -1013,7 +1053,7 @@ model StakingWallet {
   walletAddress           String    @unique
   asset                   String // BTC, ETH, SOL, DOT, etc.
   validator               String    @default("")
-  stakedAmount            Float     @default(0)
+  stakedAmount            Decimal   @default(0) @db.Decimal(38, 18)
   rewardModel             String // auto, daily, weekly, monthly, manual_claim, rebate
   clientName              String    @default("")
   isColdStaking           Boolean   @default(false)
@@ -1023,10 +1063,10 @@ model StakingWallet {
   actualFirstRewardDate   DateTime?
   lastRewardAt            DateTime?
   expectedNextRewardAt    DateTime?
-  onChainBalance          Float? // for reconciliation
-  platformBalance         Float? // internal representation
-  varianceThreshold       Float     @default(0.01) // flag if variance > this
-  tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold
+  onChainBalance          Decimal?  @db.Decimal(38, 18) // for reconciliation
+  platformBalance         Decimal?  @db.Decimal(38, 18) // internal representation
+  varianceThreshold       Decimal   @default(0.01) @db.Decimal(38, 18) // absolute, in `asset`: flag if |onChain - platform| > this
+  tags                    String    @default("[]") // JSON: test wallet, known deviations, minimum threshold — stored as TEXT holding JSON (drift reconciliation, 0043)
   notes                   String    @default("")
   status                  String    @default("active") // active, unstaking, inactive
   createdAt               DateTime  @default(now())
@@ -1043,7 +1083,7 @@ model StakingWallet {
 
 model DailyCheckRun {
   id          String    @id @default(cuid())
-  date        DateTime  @unique // one run per day
+  date        DateTime // legacy daily run; per-definition items are unique by (definitionCode, periodKey)
   operatorId  String // employee running the checks
   completedAt DateTime?
   jiraSummary String    @default("") // generated summary text
@@ -1069,10 +1109,48 @@ model DailyCheckItem {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  run DailyCheckRun @relation(fields: [runId], references: [id])
+  // Definition-driven checks (spec §7.6)
+  definitionCode       String? // DailyCheckDefinition.code, e.g. "CHK-01"
+  periodKey            String? // e.g. "2026-09-23" (daily), "2026-W39" (weekly), cycle id
+  evidence             Json      @default("{}")
+  recordCount          Int?
+  dataAsOf             DateTime?
+  skippedReason        String?
+  skipRequestedBy      String? // who asked to skip; approval must come from a different lead/admin (spec §10.2)
+  skipApprovedBy       String?
+  exceptionWorkItemIds Json      @default("[]")
 
+  run        DailyCheckRun         @relation(fields: [runId], references: [id])
+  definition DailyCheckDefinition? @relation(fields: [definitionCode], references: [code])
+
+  @@unique([definitionCode, periodKey])
   @@index([runId])
   @@index([category])
+  @@index([status])
+  @@index([definitionCode])
+}
+
+model DailyCheckDefinition {
+  code          String   @id // "CHK-01" .. (spec §12)
+  name          String
+  team          String
+  frequency     String // daily | weekly | per_cycle
+  dueByLocal    String // "09:05" Europe/London unless stated
+  evidenceSpec  Json // what counts as positive evidence
+  ticketProject String // default Jira project for exceptions
+  confluenceUrl String
+  kind          String   @default("check") // check | task (spec §12 recurring non-check tasks)
+  requiredFlag  String? // feature flag that must be on (e.g. module.fab)
+  restricted    Boolean  @default(false) // RESTRICTED explainer: needs kps:view
+  version       Int      @default(1)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items DailyCheckItem[]
+
+  @@index([team, isActive])
+  @@index([isActive])
 }
 
 // ─── Screening & Scam/Dust ───
@@ -1082,7 +1160,7 @@ model ScreeningEntry {
   transactionId          String    @unique // Custody transaction ID
   txHash                 String    @default("")
   asset                  String
-  amount                 Float     @default(0)
+  amount                 Decimal   @default(0) @db.Decimal(38, 18)
   direction              String    @default("IN") // IN, OUT
   screeningStatus        String    @default("not_submitted") // submitted, processing, completed, not_submitted, exception
   classification         String    @default("unclassified") // unclassified, legitimate, dust, scam
@@ -1102,88 +1180,77 @@ model ScreeningEntry {
   @@index([asset])
 }
 
-// ─── Approval Audit Trail ───
-
-model ApprovalAuditEntry {
-  id            String   @id @default(cuid())
-  requestId     String // Custody request ID
-  action        String // approved, escalated, flagged_stuck
-  performedById String
-  riskLevel     String   @default("medium") // low, medium, high
-  notes         String   @default("")
-  createdAt     DateTime @default(now())
-
-  @@index([requestId])
-  @@index([performedById])
-}
+// ─── Approval Audit Trail (archived in migration 0017) ───
+// The ApprovalAuditEntry table has been renamed to _archived_ApprovalAuditEntry.
+// Model removed from schema per H1: no transaction approval.
 
 // ─── Token Review & Onboarding ───
 
 model TokenReview {
-  id                 String              @id @default(cuid())
-  symbol             String // e.g. "BTC", "ETH", "SOL"
-  name               String // e.g. "Bitcoin", "Ethereum"
-  network            String              @default("") // e.g. "Ethereum", "Solana", "Polkadot"
-  contractAddress    String              @default("") // for ERC-20/SPL tokens
-  tokenType          String              @default("native") // native, erc20, spl, substrate, other
+  id                       String              @id @default(cuid())
+  symbol                   String // e.g. "BTC", "ETH", "SOL"
+  name                     String // e.g. "Bitcoin", "Ethereum"
+  network                  String              @default("") // e.g. "Ethereum", "Solana", "Polkadot"
+  contractAddress          String              @default("") // for ERC-20/SPL tokens
+  tokenType                String              @default("native") // native, erc20, spl, substrate, other
   // Review pipeline
-  status             String              @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
-  proposedById       String? // employee who proposed
-  proposedAt         DateTime            @default(now())
-  reviewedById       String? // ops reviewer
-  reviewedAt         DateTime?
-  complianceById     String? // compliance reviewer
-  complianceAt       DateTime?
-  approvedAt         DateTime?
-  rejectedAt         DateTime?
-  liveAt             DateTime? // when token went live in custody
-  rejectionReason    String              @default("")
+  status                   String              @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
+  proposedById             String? // employee who proposed
+  proposedAt               DateTime            @default(now())
+  reviewedById             String? // ops reviewer
+  reviewedAt               DateTime?
+  complianceById           String? // compliance reviewer
+  complianceAt             DateTime?
+  approvedAt               DateTime?
+  rejectedAt               DateTime?
+  liveAt                   DateTime? // when token went live in custody
+  rejectionReason          String              @default("")
   // Risk & compliance assessment
-  riskLevel          String              @default("medium") // low, medium, high, critical
-  riskNotes          String              @default("") // free-form risk assessment
-  regulatoryNotes    String              @default("") // regulatory considerations
-  sanctionsCheck     Boolean             @default(false) // sanctions screening completed
-  amlRiskAssessed    Boolean             @default(false) // AML risk assessed
+  riskLevel                String              @default("medium") // low, medium, high, critical
+  riskNotes                String              @default("") // free-form risk assessment
+  regulatoryNotes          String              @default("") // regulatory considerations
+  sanctionsCheck           Boolean             @default(false) // sanctions screening completed
+  amlRiskAssessed          Boolean             @default(false) // AML risk assessed
   // Custody support details
-  custodianSupport   String              @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
-  stakingAvailable   Boolean             @default(false)
+  custodianSupport         String              @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
+  stakingAvailable         Boolean             @default(false)
   // Third-party vendor support tracking
-  chainalysisSupport String              @default("unknown") // supported, partial, not_supported, unknown
-  notabeneSupport    String              @default("unknown") // supported, partial, not_supported, unknown
-  fireblocksSupport  String              @default("unknown") // supported, partial, not_supported, unknown
-  ledgerSupport      String              @default("unknown") // supported, partial, not_supported, unknown
-  vendorNotes        String              @default("") // JSON: per-vendor notes/caveats
+  chainalysisSupport       String              @default("unknown") // supported, partial, not_supported, unknown
+  notabeneSupport          String              @default("unknown") // supported, partial, not_supported, unknown
+  fireblocksSupport        String              @default("unknown") // supported, partial, not_supported, unknown
+  ledgerSupport            String              @default("unknown") // supported, partial, not_supported, unknown
+  vendorNotes              String              @default("") // JSON: per-vendor notes/caveats
   // Institutional demand
-  demandScore        Int                 @default(0) // 0-100 computed from demand signals
-  demandSignals      TokenDemandSignal[]
+  demandScore              Int                 @default(0) // 0-100 computed from demand signals
+  demandSignals            TokenDemandSignal[]
   // AI research persistence
-  aiResearchResult   String              @default("") // JSON: full AI research output
-  aiResearchedAt     DateTime? // when AI research was last run
-  aiRecommendation   String              @default("") // approve, approve_with_conditions, further_review, reject
+  aiResearchResult         String              @default("") // JSON: full AI research output
+  aiResearchedAt           DateTime? // when AI research was last run
+  aiRecommendation         String              @default("") // approve, approve_with_conditions, further_review, reject
   // Token listing checklist fields
-  jiraTicket         String              @default("") // Jira ticket reference
-  complianceDoc      String              @default("") // link to compliance document
-  launchDate         String              @default("") // token launch date
-  founders           String              @default("") // founder(s) names
-  website            String              @default("") // project website URL
-  supportedNetworks  String              @default("") // JSON array of supported networks
-  whitepaper         String              @default("") // whitepaper URL
-  explorer           String              @default("") // block explorer URL
-  blockchainAnalytics String             @default("unknown") // pre_growth, emerging, mature
-  travelRuleNotabene Boolean             @default(false) // Notabene travel rule compliance
-  priceFeedCoingecko Boolean             @default(false) // CoinGecko price feed available
-  consensusMechanism String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
-  privacyToken       Boolean             @default(false) // whether this is a privacy token
+  jiraTicket               String              @default("") // Jira ticket reference
+  complianceDoc            String              @default("") // link to compliance document
+  launchDate               String              @default("") // token launch date
+  founders                 String              @default("") // founder(s) names
+  website                  String              @default("") // project website URL
+  supportedNetworks        String              @default("") // JSON array of supported networks
+  whitepaper               String              @default("") // whitepaper URL
+  explorer                 String              @default("") // block explorer URL
+  blockchainAnalytics      String              @default("unknown") // pre_growth, emerging, mature
+  travelRuleNotabene       Boolean             @default(false) // Notabene travel rule compliance
+  priceFeedCoingecko       Boolean             @default(false) // CoinGecko price feed available
+  consensusMechanism       String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
+  privacyToken             Boolean             @default(false) // whether this is a privacy token
   // Smart contract review — required when tokenType is not "native"
-  smartContractReview Boolean             @default(false) // smart contract audit/review completed
-  smartContractReviewNotes String         @default("") // auditor, audit date, findings summary
+  smartContractReview      Boolean             @default(false) // smart contract audit/review completed
+  smartContractReviewNotes String              @default("") // auditor, audit date, findings summary
   // Per-jurisdiction compliance guidance
-  jurisdictionStatus String              @default("") // JSON: per-jurisdiction compliance status & guidance
+  jurisdictionStatus       String              @default("") // JSON: per-jurisdiction compliance status & guidance
   // Metadata
-  marketCapTier      String              @default("unknown") // mega, large, mid, small, micro, unknown
-  notes              String              @default("")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  marketCapTier            String              @default("unknown") // mega, large, mid, small, micro, unknown
+  notes                    String              @default("")
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 
   @@unique([symbol, network])
   @@index([status])
@@ -1275,6 +1342,7 @@ model SessionMetadata {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([userId, expiresAt])
 }
 
 // ─── Transaction Confirmation Flow ───
@@ -1284,46 +1352,48 @@ enum TransactionRiskLevel {
   medium
   high
   critical
+  unknown
 }
 
 enum ConfirmationStatus {
   pending
-  acknowledged
-  signed_off
+  owned
+  closed_in_source
   escalated
   expired
 }
 
 model TransactionConfirmation {
-  id                String             @id @default(cuid())
-  transactionId     String // Custody transaction ID
-  requestId         String? // Custody request ID (if applicable)
-  riskLevel         TransactionRiskLevel @default(medium)
-  asset             String
-  amount            Float
-  direction         String // IN, OUT
-  account           String             @default("")
-  workspace         String             @default("")
-  // Confirmation tracking
-  status            ConfirmationStatus @default(pending)
-  acknowledgedById  String?
-  acknowledgedAt    DateTime?
-  signedOffById     String?
-  signedOffAt       DateTime?
-  escalatedById     String?
-  escalatedAt       DateTime?
-  escalationReason  String             @default("")
+  id               String               @id @default(cuid())
+  transactionId    String // Custody transaction ID
+  requestId        String? // Custody request ID (if applicable)
+  riskLevel        TransactionRiskLevel @default(unknown) // from GX only (H5)
+  asset            String
+  amount           Decimal              @db.Decimal(38, 18) // token quantity in `asset`
+  direction        String // IN, OUT
+  account          String               @default("")
+  workspace        String               @default("")
+  // Read-only tracking of GX items awaiting human action in GX
+  status           ConfirmationStatus   @default(pending)
+  ownedById        String?
+  ownedAt          DateTime?
+  closedById       String? // legacy sign-off actor; null for automatic closure
+  closedInSourceAt DateTime?
+  ticketRef        String               @default("")
+  escalatedById    String?
+  escalatedAt      DateTime?
+  escalationReason String               @default("")
   // Notification tracking
-  slackNotifiedAt   DateTime?
-  slackChannel      String             @default("")
-  slackMessageTs    String             @default("") // Slack message timestamp for threading
-  emailNotifiedAt   DateTime?
-  emailSentTo       String             @default("") // comma-separated emails
+  slackNotifiedAt  DateTime?
+  slackChannel     String               @default("")
+  slackMessageTs   String               @default("") // Slack message timestamp for threading
+  emailNotifiedAt  DateTime?
+  emailSentTo      String               @default("") // comma-separated emails
   // Metadata
-  expiresAt         DateTime? // auto-expire unacknowledged confirmations
-  notes             String             @default("")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  expiresAt        DateTime? // auto-expire unacknowledged confirmations
+  notes            String               @default("")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([transactionId])
   @@index([status])
@@ -1368,7 +1438,7 @@ model BackgroundJob {
   type             String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_custody
   status           JobStatus @default(pending)
   payload          Json      @default("{}") // job-specific configuration
-  result           Json?     // job output
+  result           Json? // job output
   error            String    @default("")
   attempts         Int       @default(0)
   maxAttempts      Int       @default(3)
@@ -1381,7 +1451,7 @@ model BackgroundJob {
   lastRunAt        DateTime?
   // Stream 1: priority + deduplication
   priority         Int       @default(2) // 0=critical 1=high 2=normal 3=low
-  deduplicationKey String?   // unique job identity for dedup
+  deduplicationKey String? // unique job identity for dedup
   deadLetteredAt   DateTime?
   deadLetterReason String    @default("")
   createdAt        DateTime  @default(now())
@@ -1391,6 +1461,25 @@ model BackgroundJob {
   @@index([type])
   @@index([isRecurring, status])
   @@index([deduplicationKey])
+}
+
+/// One row per job execution attempt, never updated or reset (durable run and dead-letter evidence).
+/// BackgroundJob is the schedule/queue entry; a recurring job's failed run stays here after it is rescheduled.
+model BackgroundJobRun {
+  id         String    @id @default(cuid())
+  jobId      String
+  type       String
+  attempt    Int
+  startedAt  DateTime?
+  finishedAt DateTime  @default(now())
+  status     String // succeeded | retrying | dead_lettered
+  error      String    @default("")
+  result     Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([type, finishedAt])
+  @@index([status, finishedAt])
+  @@index([jobId])
 }
 
 // ─── Stream 2: Slack Thread Architecture ───
@@ -1405,32 +1494,38 @@ model SlackChannel {
   syncCursor     String? // oldest ts already synced (incremental)
   lastSyncedAt   DateTime?
   createdAt      DateTime  @default(now())
+  clientId       String? // spec §8.4
+  purpose        String    @default("internal_ops") // client | gx_notifications | vendor | internal_ops | alerts_out
 
   threads CommsThread[]
+  client  Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([purpose, isActive])
 }
 
 // ─── Stream 3: Intelligent Comms & Impact Chain ───
 
 model ServiceProvider {
-  id               String    @id @default(cuid())
-  name             String    @unique
-  providerType     String // wallet_tech|travel_rule|analytics|exchange|other
-  services         Json // string[] of service names this provider offers
-  slackChannelId   String? // references SlackChannel.channelId
-  statusPageUrl    String?
-  statusPageType   String? // statuspage | pagerduty | custom
-  contactEmail     String?
-  isActive         Boolean   @default(true)
+  id             String  @id @default(cuid())
+  name           String  @unique
+  providerType   String // wallet_tech|travel_rule|analytics|exchange|other
+  services       Json // string[] of service names this provider offers
+  slackChannelId String? // references SlackChannel.channelId
+  statusPageUrl  String?
+  statusPageType String? // statuspage | pagerduty | custom
+  contactEmail   String?
+  isActive       Boolean @default(true)
 
-  dependencies     ClientServiceDependency[]
-  statusEvents     StatusPageEvent[]
+  dependencies      ClientServiceDependency[]
+  statusEvents      StatusPageEvent[]
   reliabilityScores VendorReliabilityScore[]
 }
 
 model ClientServiceDependency {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   clientName      String // matches ClientContactPreference.clientName
-  clientAccountId String   @default("")
+  clientAccountId String    @default("")
   providerId      String
   serviceNames    Json // string[] of specific services used
   source          String // custody_api | manual
@@ -1442,18 +1537,18 @@ model ClientServiceDependency {
 }
 
 model ClientImpactRecord {
-  id                    String    @id @default(cuid())
-  incidentId            String
-  clientName            String
-  clientAccountId       String    @default("")
-  affectedServices      Json
-  impactStatus          String    @default("potential") // potential|confirmed|resolved
-  estimatedImpact       String    @default("")
-  clientNotifiedAt      DateTime?
-  notifiedByEmployeeId  String?
-  impactStartAt         DateTime?
-  impactEndAt           DateTime?
-  impactDurationMins    Int?
+  id                   String    @id @default(cuid())
+  incidentId           String
+  clientName           String
+  clientAccountId      String    @default("")
+  affectedServices     Json
+  impactStatus         String    @default("potential") // potential|confirmed|resolved
+  estimatedImpact      String    @default("")
+  clientNotifiedAt     DateTime?
+  notifiedByEmployeeId String?
+  impactStartAt        DateTime?
+  impactEndAt          DateTime?
+  impactDurationMins   Int?
 
   incident Incident @relation(fields: [incidentId], references: [id])
 
@@ -1461,21 +1556,21 @@ model ClientImpactRecord {
 }
 
 model ClientCommsDraft {
-  id                    String    @id @default(cuid())
-  incidentId            String
-  clientImpactRecordId  String
-  clientName            String
-  aiDraft               String    @default("") // original AI draft — never overwritten
-  finalMessage          String    @default("") // as-sent, after any human edits
-  sendChannel           String // slack | email
-  sendChannelId         String // Slack channel ID or email address
-  status                String    @default("draft") // draft|approved|sent|dismissed|failed
-  approvedByEmployeeId  String?
-  approvedAt            DateTime?
-  sentAt                DateTime?
-  deliveryStatus        String    @default("pending") // pending|delivered|failed
-  deliveryError         String    @default("")
-  createdAt             DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  incidentId           String
+  clientImpactRecordId String
+  clientName           String
+  aiDraft              String    @default("") // original AI draft — never overwritten
+  finalMessage         String    @default("") // as-sent, after any human edits
+  sendChannel          String // slack | email
+  sendChannelId        String // Slack channel ID or email address
+  status               String    @default("draft") // draft|approved|sent|dismissed|failed
+  approvedByEmployeeId String?
+  approvedAt           DateTime?
+  sentAt               DateTime?
+  deliveryStatus       String    @default("pending") // pending|delivered|failed
+  deliveryError        String    @default("")
+  createdAt            DateTime  @default(now())
 }
 
 model StatusPageEvent {
@@ -1512,4 +1607,714 @@ model VendorReliabilityScore {
   computedAt        DateTime @default(now())
 
   provider ServiceProvider @relation(fields: [providerId], references: [id])
+}
+
+// ─── Core data model (spec §7) ───
+
+model Client {
+  id                  String    @id @default(cuid())
+  displayName         String
+  komainuOrgId        String?   @unique // Komainu API `organization`
+  komainuAccountNos   Json      @default("[]") // Komainu API account numbers
+  jsmOrganizationId   String?   @unique // JSM organisation
+  jurisdiction        String    @default("") // UK | JE | AE | EU (entity servicing)
+  isActive            Boolean   @default(true)
+  /// Client-attested inbound reporting threshold (spec §12 CHK-05).
+  inboundThresholdUsd Decimal?  @db.Decimal(20, 2) // USD
+  /// When the threshold was last reviewed (CF-31); ALR-CLI-01 when older than 12 months (CONFIRM).
+  thresholdReviewedAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  channels      ClientChannel[]
+  workItems     WorkItem[]
+  timeLogs      TimeLog[]
+  slackChannels SlackChannel[]
+  userScopes    UserClientScope[]
+
+  @@index([isActive])
+}
+
+/// Spec §17.5 client isolation. A user with no rows sees every client
+/// (TODO(CONFIRM-CLIENT-SCOPING): whether ops staff are restricted at all);
+/// a user with rows sees only those clients (plus work with no client).
+/// Enforced in one place: src/modules/auth/client-scope.ts.
+model UserClientScope {
+  userId    String
+  clientId  String
+  createdAt DateTime @default(now())
+  /// User.id of the admin who granted it.
+  grantedBy String?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([userId, clientId])
+  @@index([clientId])
+}
+
+model ClientChannel {
+  id        String   @id @default(cuid())
+  clientId  String
+  kind      String // slack | email_domain | teams
+  ref       String // Slack channel ID, email domain, Teams channel ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, ref])
+  @@index([clientId])
+}
+
+enum WorkItemKind {
+  client_request
+  client_incident
+  client_risk
+  alert
+  daily_check_exception
+  mtd_break
+  oes_settlement
+  fab_instruction
+  kps_case
+  vendor_ticket
+  travel_rule_case
+  screening_case
+  scam_dust_case
+  coin_review
+  staking_exception
+  nft_review
+  report_task
+  incident
+  rca
+  internal_task
+  uat_task
+}
+
+enum WorkItemState {
+  open
+  owned
+  waiting_client
+  waiting_vendor
+  waiting_internal
+  resolved
+  closed
+}
+
+/// The single queue. Every actionable thing is one WorkItem linked to one ticket.
+model WorkItem {
+  id               String        @id @default(cuid())
+  kind             WorkItemKind
+  title            String
+  team             String // "Team 1" | "Team 2" | "Team 3" | "All" (spec §12)
+  taskCode         String // e.g. "CHK-01" (spec §12) or "CLIENT-Q"
+  clientId         String?
+  priority         String        @default("P2") // P0..P3
+  riskScore        String? // required before closure (spec §10.2)
+  state            WorkItemState @default(open)
+  ownerEmployeeId  String?
+  sourceSystem     String // komainu_api | slack | email | teams | jira | jsm | manual | system
+  sourceId         String // dedupe key in source
+  ticketSystem     String? // jsm | jira
+  ticketKey        String? // e.g. OTC-1234
+  ticketUrl        String?
+  slaPolicyId      String?
+  clockStartedAt   DateTime // event time in source, not ingest time
+  firstResponseAt  DateTime?
+  ownedAt          DateTime?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+  rootCause        String? // controlled list (spec §10.2)
+  exposureUsd      Decimal?      @db.Decimal(20, 2) // USD, where relevant (OES, FAB)
+  clientTicketKey  String? // client-visible JSM request (spec §9.7), separate from ticketKey
+  clientTicketUrl  String? // portal URL shared with the client
+  sourceMessageRef String? // Slack permalink or Graph message id the entry was raised from
+  metadata         Json          @default("{}") // client_request: { threadId }
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  owner       Employee?    @relation("WorkItemOwner", fields: [ownerEmployeeId], references: [id], onDelete: SetNull)
+  slaPolicy   SlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  slaEvents   SlaEvent[]
+  alerts      Alert[]
+  timeLogs    TimeLog[]
+  ticketLinks TicketLink[]
+  iaiDrafts   IaiDraft[]
+
+  @@unique([sourceSystem, sourceId])
+  @@index([state, team])
+  @@index([clientId])
+  @@index([ticketKey])
+  @@index([taskCode, state])
+  @@index([ownerEmployeeId])
+  @@index([slaPolicyId])
+  @@index([kind, state])
+}
+
+model SlaPolicy {
+  id                   String   @id @default(cuid())
+  code                 String   @unique // e.g. "CLIENT-Q-P1", "OES-EXCHANGE-CONTACT", "MTD-BREAK"
+  description          String
+  ownershipMins        Int? // time to ownership; null = target not set (CONFIRM-SLA-TARGETS)
+  firstRespMins        Int? // time to first response
+  resolveMins          Int? // time to resolution
+  /// Resolution deadline that is not a fixed number of minutes, e.g. "next_business_day_eod" (T+1).
+  resolveRule          String?
+  calendar             String   @default("24x7") // "24x7" | "business_uk" | "business_<region>"
+  warnAtPct            Int      @default(50)
+  breachEscalationRole String   @default("lead")
+  version              Int      @default(1)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workItems WorkItem[]
+
+  @@index([isActive])
+}
+
+model SlaEvent {
+  id         String   @id @default(cuid())
+  workItemId String
+  kind       String // ownership_warn | ownership_breach | first_response_warn | ...
+  at         DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workItemId])
+  @@index([kind])
+}
+
+/// Admin-tunable alert rule (spec §7.4). Changes require admin and are audit-logged.
+model AlertRule {
+  code            String    @id
+  enabled         Boolean   @default(false)
+  severity        String // low | medium | high | critical
+  params          Json // thresholds, windows, channels
+  route           Json // { businessHours: [...targets], outOfHours: [...targets] }
+  version         Int       @default(1)
+  lastEvaluatedAt DateTime? // engine cadence (spec §11.1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([enabled])
+}
+
+model SourceHeartbeat {
+  source            String    @id // "komainu_api.requests", "slack.client", "outlook.fab_ics", ...
+  lastSuccessAt     DateTime?
+  lastRecordAt      DateTime? // newest record timestamp seen
+  lastCount         Int       @default(0)
+  expectedEveryMins Int
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+/// Client effort logging. loggedById is kept for data integrity only and is
+/// NEVER exposed in reports (H4).
+model TimeLog {
+  id         String   @id @default(cuid())
+  workItemId String
+  clientId   String?
+  bucketMins Int // 15 | 30 | 60 | 120 | 240
+  loggedAt   DateTime @default(now())
+  loggedById String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  client   Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  loggedBy Employee @relation(fields: [loggedById], references: [id])
+
+  @@index([workItemId])
+  @@index([clientId])
+  @@index([loggedById])
+}
+
+model TicketLink {
+  id         String   @id @default(cuid())
+  workItemId String
+  system     String // jsm | jira
+  key        String
+  url        String
+  role       String   @default("primary") // primary | related
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@unique([system, key, workItemId])
+  @@index([workItemId])
+  @@index([system, key])
+}
+
+model IaiDraft {
+  id          String    @id @default(cuid())
+  workItemId  String
+  triggerCode String // alert rule that triggered it
+  jiraKey     String? // once created in IAI
+  dueAt       DateTime // createdAt + 24h
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workItemId])
+  @@index([dueAt, completedAt])
+}
+
+// ─── Integrations (spec §8) ───
+
+/// Latest known state of a record polled from an external source. Only the
+/// fields a rule needs are kept (spec §8.1 data handling).
+model SourceRecord {
+  id              String    @id @default(cuid())
+  source          String // komainu_api | graph_teams | graph_mail | slack
+  kind            String // request | transaction | settlement | collateral_operation | portfolio | eod_balance | staking_reward | audit_log | risk_signal_raw | teams_message | vendor_email
+  externalId      String
+  credentialLabel String    @default("") // which Komainu API credential saw it (CONFIRM-API-SCOPE)
+  status          String? // raw status from the source
+  mappedStatus    String? // pending | in_progress | completed | failed | partial | unknown
+  occurredAt      DateTime? // event time in the source
+  sourceUpdatedAt DateTime?
+  fields          Json      @default("{}")
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([source, kind, externalId])
+  @@index([source, kind, status])
+  @@index([kind, mappedStatus])
+  @@index([lastSeenAt])
+}
+
+/// Raw external status -> mapped status (CONFIRM-SETTLEMENT-STATUS). Admin-maintained; unmapped values raise ALR-CFG-02.
+model SettlementStatusMap {
+  entity    String // settlement | collateral_operation | portfolio
+  raw       String
+  mapped    String // pending | in_progress | completed | failed | partial
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([entity, raw])
+}
+
+/// Jira/JSM project mapping (spec §8.3). Ids are discovered at runtime; nothing is hard-coded.
+model JiraProjectConfig {
+  key                 String   @id // OTC, TOPS, VSR, ...
+  name                String
+  purpose             String   @default("")
+  kind                String   @default("jira") // jira | jsm
+  enabled             Boolean  @default(false)
+  syncInbound         Boolean  @default(true)
+  defaultWorkItemKind String   @default("internal_task")
+  defaultTeam         String   @default("All")
+  defaultTaskCode     String   @default("")
+  serviceDeskId       String? // JSM only
+  issueTypeIds        Json     @default("{}") // name -> id, discovered at runtime
+  allowedCustomFields Json     @default("[]") // custom field ids KOMmand Centre may set
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+/// History of inbound Jira/JSM issue updates, idempotent on (system, key, updated).
+/// (The existing ExternalTicketEvent model is incident-specific and unchanged.)
+model JiraIssueEvent {
+  id         String   @id @default(cuid())
+  system     String // jira | jsm
+  key        String
+  updated    DateTime // issue `updated` timestamp from the source
+  status     String
+  assignee   String?
+  workItemId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([system, key, updated])
+  @@index([key])
+  @@index([workItemId])
+}
+
+/// Admin-editable runtime settings that are not simple on/off flags
+/// (e.g. intake.slack.route). Validated per key in src/modules/settings; changes are audit-logged.
+model AppSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// OES settlement windows (spec §11.2). `cron` is read in `referenceTz`.
+/// TODO(CONFIRM-OES-WINDOWS) / TODO(CONFIRM-DERIBIT): seed values await confirmation.
+model OesWindow {
+  id           String   @id @default(cuid())
+  exchange     String
+  cron         String // e.g. "15 9 * * *"
+  durationMins Int
+  referenceTz  String   @default("UTC")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([exchange, cron])
+}
+
+/// Per-asset "stuck" threshold for ALR-TX-02 (seed 120 minutes; CONFIRM).
+model AssetThreshold {
+  asset     String   @id // "*" is the default for assets without a row
+  stuckMins Int      @default(120)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// GX risk rule number -> tier (spec §11.2). Seeded with every rule at "high",
+/// the current approved flow (TODO(CONFIRM-RISKCO)).
+model RiskRuleTier {
+  rule      Int      @id
+  tier      String   @default("high") // low | medium | high | requires_escalation
+  note      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Team ownership (spec §12): team -> lead and deputy. Teams are fixed, no rotation.
+model TeamConfig {
+  team              String   @id // "Team 1" | "Team 2" | "Team 3"
+  leadEmployeeId    String?
+  deputyEmployeeId  String?
+  /// Team members (employee ids) for "my team" in the work queue (spec §14.1).
+  memberEmployeeIds Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Operator-maintained asset status (CF-26). "known_degraded" suppresses CHK-01 exception tickets, with a reason.
+model AssetStatus {
+  asset       String   @id
+  status      String   @default("normal") // normal | known_degraded | sunset
+  reason      String   @default("")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Approved validator set (CF-10, CF-24). Ships empty; control 5.1 cannot be evidenced until populated.
+model ApprovedValidator {
+  id        String   @id @default(cuid())
+  chain     String
+  validator String
+  notes     String   @default("")
+  addedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([chain, validator])
+}
+
+/// Notes on the read-only settlement matching view (spec §12 CHK-10).
+model SettlementNote {
+  id          String   @id @default(cuid())
+  windowKey   String // "2026-09-23:okx:09:00Z"
+  portfolioId String
+  text        String
+  authorId    String
+  createdAt   DateTime @default(now())
+
+  @@index([windowKey])
+}
+
+/// FAB instruction register (spec §12 TASK-FAB), behind flag module.fab.
+/// Rows are entered from the fab_ics mailbox until the parser is confirmed (CONFIRM-FAB-TEMPLATES).
+model FabInstruction {
+  id              String    @id @default(cuid())
+  messageType     String // TRD_NTF | STL_INS
+  reference       String    @unique // TradeReference or AgreementReference
+  instructionType String    @default("") // e.g. OPEN, MARGIN_RECEIVE, CLOSE (as in the message)
+  direction       String // RECEIVE | DELIVER
+  asset           String
+  amount          Decimal   @db.Decimal(38, 18) // quantity in `asset`
+  valueDate       String // YYYY-MM-DD
+  receivedAt      DateTime
+  ackStatus       String    @default("none") // none | ACK | NACK
+  ackSentAt       DateTime?
+  correctedByRef  String? // for a NACK: the corrected instruction's reference
+  sourceMessageId String? // Graph internetMessageId
+  workItemId      String?
+  notes           String    @default("")
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([ackStatus])
+  @@index([valueDate])
+}
+
+/// FAB settlement log. txHash is stored for matching and masked in logs and views (H8).
+model FabSettlementLog {
+  id           String   @id @default(cuid())
+  reference    String // FabInstruction.reference
+  status       String // RECEIVED | INITIATED | COMPLETED | FAILED
+  txHash       String?
+  kytStatus    String   @default("none") // none | fail | escalated | cleared
+  occurredAt   DateTime
+  recordedById String?
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([reference])
+  @@index([status])
+}
+
+/// Manual fee-reserve balance entries for ALR-FAB-08 (CONFIRM-FEE-ALERT-FORMAT).
+model FabFeeBalance {
+  id           String   @id @default(cuid())
+  walletRef    String
+  asset        String
+  balance      Decimal  @db.Decimal(38, 18) // quantity in `asset`
+  recordedAt   DateTime @default(now())
+  recordedById String?
+
+  @@index([walletRef, recordedAt])
+}
+
+/// OTC break types (spec §12 CHK-02), admin-editable. The list comes from
+/// Confluence "2.3 OTC Break Types" (TODO(CONFIRM-OTC-BREAK-TYPES)); ships empty.
+model OtcBreakType {
+  code        String   @id
+  label       String
+  description String   @default("")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-user notification preferences (spec §12 TASK-OTC: notify.on_assign.projects).
+model UserNotificationPreference {
+  userId           String   @id
+  onAssignProjects Json     @default("[]") // Jira project keys: DM + in-app when a ticket there is assigned to me
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// In-app notifications (informational; links only).
+model InAppNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String    @default("")
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+/// Stored polling cursors (spec §6.1, §8.5), e.g. a Graph delta link per mailbox folder.
+model SyncCursor {
+  source    String   @id // "outlook.<label>.<folder>"
+  cursor    String
+  updatedAt DateTime @updatedAt
+}
+
+/// One record per polling cycle, for polling health (spec §13.2) and the 24/7 guarantee.
+model PollCycle {
+  id         String   @id @default(cuid())
+  source     String // "slack" | "outlook.<label>"
+  startedAt  DateTime
+  finishedAt DateTime
+  ok         Boolean
+  count      Int      @default(0)
+  error      String?
+
+  @@index([source, startedAt])
+}
+
+/// Incident and risk categories (spec §9.7), admin-editable. TODO(CONFIRM-CATEGORY-LIST).
+model IncidentCategory {
+  code                String   @id
+  label               String
+  complianceSensitive Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+/// Human-written client-visible update (spec §9.7). Posted as a JSM public comment; P0/P1 need a second approver.
+model ClientUpdate {
+  id           String    @id @default(cuid())
+  workItemId   String
+  body         String
+  kind         String    @default("update") // update | resolution
+  targetStatus String? // Received | Investigating | Update provided | Resolved
+  status       String    @default("pending_approval") // pending_approval | posted | rejected
+  authorId     String // user id of the writer
+  approverId   String? // user id of the second approver
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workItemId])
+}
+
+/// Outbound message drafts (spec §9.7 notify the client; §14.4 first response). Sent only by an explicit operator action.
+model OutboundMessageDraft {
+  id         String    @id @default(cuid())
+  workItemId String
+  channel    String // slack | email
+  target     Json // slack: { channelId, threadTs }; email: { mailbox, messageId }
+  body       String
+  purpose    String    @default("client_ticket_link") // client_ticket_link | first_response
+  status     String    @default("draft") // draft | sent | discarded
+  sentById   String?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([workItemId])
+}
+
+/// Lead handover for the morning call (spec §14.3). One row per team per London date.
+model LeadHandover {
+  id                 String    @id @default(cuid())
+  date               String // YYYY-MM-DD (London)
+  team               String // "Team 1" | "Team 2" | "Team 3"
+  leadEmployeeId     String
+  absent             Boolean   @default(true)
+  absenceSource      String    @default("manual") // manual | pto
+  coveringEmployeeId String?
+  note               String?
+  submittedById      String?
+  submittedAt        DateTime?
+  /// pending | partially_posted | posted | failed. postedAt is set only when every open ticket accepted the comment.
+  postStatus         String    @default("pending")
+  postAttempts       Int       @default(0)
+  lastPostAttemptAt  DateTime?
+  postedAt           DateTime?
+  postResults        Json      @default("[]") // [{ workItemId, ticketKey, ok, error?, at }]
+  /// Set only when every recipient was reached on at least one channel; reminderResults holds per-channel evidence.
+  missingNotifiedAt  DateTime?
+  reminderResults    Json      @default("[]") // [{ userId, inApp, slack, email, at }]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([date, team])
+}
+
+/// GX sprint (spec §16). One per sprint number; release notes read from Confluence.
+model GxSprint {
+  id                 String     @id @default(cuid())
+  sprint             String     @unique // "6.19"
+  releaseNotesUrl    String     @default("")
+  releaseNotesPageId String?
+  pageVersion        Int        @default(0)
+  uatLandedAt        DateTime? // from the KMNC UAT ticket
+  prodPlannedAt      DateTime? // from the KMNC PROD ticket or the release notes
+  kmncKeys           Json       @default("[]")
+  fixVersions        Json       @default("[]")
+  parentTicketKey    String?
+  parentWorkItemId   String?
+  lastParsedAt       DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  changes            GxChange[]
+}
+
+/// One change item parsed from a release-notes row (spec §16.2). Never deleted: a removed row gets removedAt.
+model GxChange {
+  id               String    @id @default(cuid())
+  sprintId         String
+  section          String
+  itemType         String // function_toggle | ui_change | api_change | permission_change | staking_change | risk_engine_change | technical_change | highlight | deployment_note | verify_fix
+  summary          String
+  detail           Json // the parsed row, cell by cell (release engineer names redacted)
+  gxJiraKeys       Json      @default("[]")
+  env              String    @default("")
+  rowHash          String
+  firstCell        String    @default("")
+  qualifies        Boolean   @default(false)
+  tags             Json      @default("[]") // disabled-in-prod | client-awareness | scoped_not_operational
+  team             String    @default("All")
+  priority         String    @default("P2")
+  uatTemplate      String?
+  affectedTasks    Json      @default("[]")
+  affectedAlerts   Json      @default("[]")
+  affectedControls Json      @default("[]")
+  predecessorId    String?
+  workItemId       String?
+  uatTicketKey     String?
+  uatOutcome       String? // pass | fail | not_applicable | blocked
+  pageVersion      Int       @default(0)
+  removedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sprint GxSprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, section, rowHash])
+  @@index([sprintId, removedAt])
+}
+
+/// Impact mapping (spec §16.3): config, not code. Admin-editable, versioned, audit-logged. TODO(CONFIRM-GX-IMPACT-RULES).
+model GxImpactRule {
+  id          String   @id @default(cuid())
+  name        String
+  matchOn     String // section | workstream | keyword | jira_project
+  pattern     String // case-insensitive regular expression
+  taskCodes   Json     @default("[]")
+  alertCodes  Json     @default("[]")
+  controls    Json     @default("[]")
+  team        String   @default("All")
+  uatTemplate String   @default("")
+  priority    String   @default("P2")
+  isActive    Boolean  @default(true)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Human-authored UAT test outline (spec §16.5). Seeded empty; never generated.
+model UatTemplate {
+  code             String   @id
+  title            String
+  steps            String   @default("")
+  expectedResults  String   @default("")
+  evidenceRequired String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// Shared rate-limit counters (spec §17.4), so limits hold across replicas. Fixed windows; old rows are pruned.
+model RateLimitBucket {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+  updatedAt   DateTime @updatedAt
+}
+
+/// Archived evidence of the removed transaction-approval module (H1, migration
+/// 0017). Read-only: no code writes it, and the app role cannot (db-roles.sql).
+/// Declared so the schema matches the database and it is never dropped.
+model ArchivedApprovalAuditEntry {
+  id            String   @id
+  requestId     String
+  action        String
+  performedById String
+  riskLevel     String   @default("medium")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([requestId], map: "_archived_approval_audit_entry_requestId_idx")
+  @@index([performedById], map: "_archived_approval_audit_entry_performedById_idx")
+  @@map("_archived_approval_audit_entry")
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatUsd as fmtUsd } from "@/lib/decimal";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -23,9 +24,9 @@ interface RampTicket {
   clientName: string;
   clientAccount: string;
   direction: string;
-  amount: number;
+  amount: string;
   fiatCurrency: string;
-  fiatAmount: number | null;
+  fiatAmount: string | null;
   status: string;
   bankReference: string;
   instructionRef: string;
@@ -81,7 +82,7 @@ const OFFRAMP_STAGES = [
 function getStages(direction: string) { return direction === "onramp" ? ONRAMP_STAGES : OFFRAMP_STAGES; }
 function getStageIndex(direction: string, status: string): number { const idx = getStages(direction).findIndex((s) => s.key === status); return idx >= 0 ? idx : 0; }
 function getNextStatus(direction: string, currentStatus: string): string | null { const stages = getStages(direction); const idx = stages.findIndex((s) => s.key === currentStatus); return idx < 0 || idx >= stages.length - 1 ? null : stages[idx + 1].key; }
-function formatUsd(val: number) { return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function formatUsd(val: string) { return fmtUsd(val).replace("$", ""); }
 
 const PRIORITY_COLORS: Record<string, string> = { low: "text-muted-foreground", normal: "text-foreground", high: "text-amber-400", urgent: "text-red-400 font-semibold" };
 

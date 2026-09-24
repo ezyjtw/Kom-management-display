@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth-options";
 import { dashboardService } from "@/modules/dashboard/services/dashboard-service";
 import { DashboardClient } from "./DashboardClient";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 /**
  * Server component: fetches initial data on the server before render.
@@ -31,11 +32,15 @@ export default async function DashboardPage() {
 }
 
 async function DashboardDataLoader({ user }: { user: { id: string; role: string; employeeId?: string; team?: string } }) {
-  const { employees, opsData } = await dashboardService.loadDashboardData(user, "month");
+  const [{ employees, opsData }, scoringEnabled] = await Promise.all([
+    dashboardService.loadDashboardData(user, "month"),
+    isFeatureEnabled("people.scoring"),
+  ]);
 
   return (
     <DashboardClient
-      initialEmployees={employees}
+      scoringEnabled={scoringEnabled}
+      initialEmployees={scoringEnabled ? employees : []}
       initialOpsData={opsData}
       userRole={user.role}
     />

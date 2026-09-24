@@ -53,7 +53,7 @@ export interface TravelRuleReconciliationRow {
   txHash: string;
   direction: CustodyTransactionDirection;
   asset: string;
-  amount: number;
+  amount: number; // from the custody API response (not stored)
   senderAddress: string;
   receiverAddress: string;
   createdAt: string;

@@ -143,15 +143,16 @@ export const scoreRepository = {
         rawIndex: data.rawIndex,
         score: data.score,
         configVersion: data.configVersion,
-        evidence: data.evidence ?? [],
-        metadata: data.metadata ?? {},
+        // TEXT columns holding JSON (schema-drift reconciliation 0043); readers use safeParseJson.
+        evidence: JSON.stringify(data.evidence ?? []),
+        metadata: JSON.stringify(data.metadata ?? {}),
       },
       update: {
         rawIndex: data.rawIndex,
         score: data.score,
         configVersion: data.configVersion,
-        evidence: data.evidence ?? undefined,
-        metadata: data.metadata ?? undefined,
+        evidence: data.evidence === undefined ? undefined : JSON.stringify(data.evidence),
+        metadata: data.metadata === undefined ? undefined : JSON.stringify(data.metadata),
       },
       include: {
         employee: { select: { id: true, name: true, role: true, team: true, region: true } },

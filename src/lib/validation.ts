@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emptyAsUndefined, tokenAmount, usdAmount } from "@/lib/decimal";
 
 // ─── Reusable Schemas ───
 
@@ -67,6 +68,18 @@ export const updateThreadSchema = z.object({
   clientOrPartnerTag: z.string().max(200).optional(),
 });
 
+/** PATCH /api/comms/threads/:id. Value rules (allowed queues, closing note) stay in the route. */
+export const patchThreadSchema = z.object({
+  status: z.string().max(50).optional(),
+  ownerUserId: z.string().max(100).nullable().optional(),
+  priority: z.string().max(10).optional(),
+  queue: z.string().max(100).optional(),
+  linkedRecords: z.array(z.unknown()).max(200).optional(),
+  handoverNote: z.string().max(5000).optional(),
+  reason: z.string().max(2000).optional(),
+  lastActionAt: z.string().max(40).optional(),
+});
+
 // ─── Incident Schemas ───
 
 export const createIncidentSchema = z.object({
@@ -111,7 +124,7 @@ export const createScreeningSchema = z.object({
   transactionId: z.string().min(1).max(500),
   txHash: z.string().max(500).default(""),
   asset: z.string().min(1).max(50),
-  amount: z.number().min(0).default(0),
+  amount: tokenAmount({ min: "nonNegative" }).default("0"),
   direction: z.enum(["IN", "OUT"]).default("IN"),
   screeningStatus: z.enum(["not_submitted", "submitted", "processing", "completed", "exception"]).default("not_submitted"),
   classification: z.string().max(50).optional(),
@@ -141,7 +154,7 @@ export const createTravelRuleCaseSchema = z.object({
   txHash: z.string().max(500).default(""),
   direction: z.enum(["IN", "OUT"]),
   asset: z.string().min(1).max(50),
-  amount: z.number().min(0),
+  amount: tokenAmount({ min: "nonNegative" }),
   matchStatus: z.enum(["unmatched", "missing_originator", "missing_beneficiary"]),
   senderAddress: z.string().max(500).default(""),
   receiverAddress: z.string().max(500).default(""),
@@ -163,7 +176,7 @@ export const createSettlementSchema = z.object({
   clientName: z.string().min(1).max(200),
   clientAccount: z.string().max(200).default(""),
   asset: z.string().min(1).max(50),
-  amount: z.number().min(0),
+  amount: tokenAmount({ min: "nonNegative" }),
   direction: z.enum(["custody_to_exchange", "exchange_to_custody"]),
   settlementCycle: z.string().max(100).default(""),
   exchangeInstructionId: z.string().max(500).default(""),
@@ -179,7 +192,7 @@ export const updateSettlementSchema = z.object({
   matchNote: z.string().max(2000).optional(),
   escalationNote: z.string().max(2000).optional(),
   delegationStatus: z.string().max(100).optional(),
-  delegatedAmount: z.number().min(0).optional(),
+  delegatedAmount: tokenAmount({ min: "nonNegative" }).optional(),
   skipChecker: z.boolean().optional(),
   status: z.string().max(50).optional(),
   fireblockssTxId: z.string().max(500).optional(),
@@ -214,9 +227,9 @@ export const createUsdcRampSchema = z.object({
   clientName: z.string().min(1).max(200),
   clientAccount: z.string().max(200).default(""),
   direction: z.enum(["onramp", "offramp"]),
-  amount: z.number().min(0),
+  amount: tokenAmount({ min: "nonNegative" }),
   fiatCurrency: z.string().max(10).default("USD"),
-  fiatAmount: z.number().min(0).optional(),
+  fiatAmount: emptyAsUndefined(usdAmount({ min: "nonNegative" }).optional()),
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
   bankReference: z.string().max(500).optional(),
   instructionRef: z.string().max(500).optional(),
@@ -271,6 +284,10 @@ export const updateDailyCheckPatchSchema = z.union([
     itemId: z.string().min(1),
     status: z.enum(["pending", "pass", "issues_found", "skipped"]).optional(),
     notes: z.string().max(2000).optional(),
+    /** Required for `pass` (spec §10.2); validated by the daily-check rules. */
+    evidence: z.unknown().optional(),
+    /** Required for `skipped`, which only requests the skip. */
+    skippedReason: z.string().max(1000).optional(),
   }),
   z.object({
     runId: z.string().min(1),
@@ -284,16 +301,10 @@ export const createTransactionConfirmationSchema = z.object({
   transactionId: z.string().min(1).max(500),
   requestId: z.string().max(500).optional(),
   asset: z.string().min(1).max(50),
-  amount: z.number().min(0),
+  amount: tokenAmount({ min: "nonNegative" }),
   direction: z.string().min(1).max(20),
   account: z.string().max(500).default(""),
   workspace: z.string().max(500).default(""),
-});
-
-export const confirmationActionSchema = z.object({
-  action: z.enum(["acknowledge", "sign_off", "escalate"]),
-  confirmationId: z.string().min(1),
-  reason: z.string().max(2000).optional(),
 });
 
 export const transactionConfirmationPostSchema = z.discriminatedUnion("action", [
@@ -302,31 +313,32 @@ export const transactionConfirmationPostSchema = z.discriminatedUnion("action", 
     transactionId: z.string().min(1).max(500),
     requestId: z.string().max(500).optional(),
     asset: z.string().min(1).max(50),
-    amount: z.number().min(0),
+    amount: tokenAmount({ min: "nonNegative" }),
     direction: z.string().min(1).max(20),
     account: z.string().max(500).default(""),
     workspace: z.string().max(500).default(""),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    riskLevel: z.enum(["low", "medium", "high", "critical", "unknown"]).optional(),
   }),
   z.object({
-    action: z.literal("acknowledge"),
+    action: z.literal("take_ownership"),
     confirmationId: z.string().min(1),
   }),
   z.object({
-    action: z.literal("sign_off"),
+    action: z.literal("add_note"),
     confirmationId: z.string().min(1),
+    note: z.string().trim().min(1).max(2000),
   }),
   z.object({
-    action: z.literal("escalate"),
+    action: z.literal("link_ticket"),
     confirmationId: z.string().min(1),
-    reason: z.string().min(1).max(2000),
+    ticketRef: z.string().trim().min(1).max(200),
   }),
 ]);
 
 // ─── Feature Flag Schemas ───
 
 export const upsertFeatureFlagSchema = z.object({
-  key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Key must be lowercase alphanumeric with underscores"),
+  key: z.string().min(1).max(100).regex(/^[a-z0-9_.]+$/, "Key must be lowercase alphanumeric with underscores or dots"),
   name: z.string().min(1).max(200),
   description: z.string().max(1000).default(""),
   enabled: z.boolean().default(false),
@@ -344,14 +356,33 @@ export const revokeSessionSchema = z.object({
 
 // ─── Background Job Schemas ───
 
+const jobTypeSchema = z.enum([
+  "sync_jira", "check_sla", "check_staking", "check_confirmations", "cleanup_sessions",
+  "sync_slack", "sync_slack_replies", "slack_event",
+  "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
+  "komainu_poll_requests", "komainu_poll_transactions", "komainu_poll_collateral",
+  "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking", "komainu_poll_stakes",
+  "sync_mail", "graph_teams_sync",
+  "report_unticketed", "reconcile_tickets", "iai_overdue", "evaluate_alerts", "alert_digest", "poll_risk_signals",
+  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments", "morning_handover", "gx_sprint_intake",
+]);
+
 export const enqueueJobSchema = z.object({
-  type: z.enum([
-    "sync_slack", "sync_email", "sync_jira", "check_sla",
-    "check_staking", "poll_custody", "check_confirmations", "cleanup_sessions",
-    "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
-  ]),
+  type: jobTypeSchema,
   payload: z.record(z.string(), z.unknown()).default({}),
 });
+
+export const jobsPostSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("register_defaults") }),
+  z.object({
+    action: z.literal("enqueue"),
+    type: jobTypeSchema,
+    payload: z.record(z.string(), z.unknown()).default({}),
+    runAt: z.string().datetime().optional(),
+  }),
+  z.object({ action: z.literal("trigger"), type: jobTypeSchema }),
+  z.object({ action: z.literal("process_next") }),
+]);
 
 // ─── Search Schema ───
 
@@ -562,11 +593,6 @@ export const createTravelRuleCaseNoteSchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
-export const approveCustodySchema = z.object({
-  requestId: z.string().min(1).max(500).optional(),
-  action: z.enum(["check_status"]).optional(),
-});
-
 // ─── Staking Schemas ───
 
 export const createStakingWalletSchema = z.object({
@@ -576,7 +602,7 @@ export const createStakingWalletSchema = z.object({
   walletAddress: z.string().min(1).max(500),
   rewardModel: z.string().min(1).max(100),
   validatorName: z.string().max(200).default(""),
-  stakedAmount: z.number().min(0).default(0),
+  stakedAmount: tokenAmount({ min: "nonNegative" }).default("0"),
   expectedRewardFrequencyHours: z.number().min(0).default(24),
   minimumThreshold: z.number().min(0).default(0),
   isColdStaking: z.boolean().default(false),
@@ -585,9 +611,9 @@ export const createStakingWalletSchema = z.object({
   stakeDate: z.string().datetime().optional().nullable(),
   expectedFirstRewardDate: z.string().datetime().optional().nullable(),
   expectedNextRewardAt: z.string().datetime().optional().nullable(),
-  onChainBalance: z.number().min(0).optional().nullable(),
-  platformBalance: z.number().min(0).optional().nullable(),
-  varianceThreshold: z.number().min(0).default(0.01),
+  onChainBalance: tokenAmount({ min: "nonNegative" }).optional().nullable(),
+  platformBalance: tokenAmount({ min: "nonNegative" }).optional().nullable(),
+  varianceThreshold: tokenAmount({ min: "nonNegative" }).default("0.01"),
   tags: z.array(z.string().max(100)).max(50).default([]),
   notes: z.string().max(5000).default(""),
 });
@@ -595,9 +621,9 @@ export const createStakingWalletSchema = z.object({
 export const updateStakingWalletSchema = z.object({
   action: z.literal("update"),
   walletId: z.string().min(1),
-  stakedAmount: z.number().min(0).optional(),
-  onChainBalance: z.number().min(0).optional(),
-  platformBalance: z.number().min(0).optional(),
+  stakedAmount: tokenAmount({ min: "nonNegative" }).optional(),
+  onChainBalance: tokenAmount({ min: "nonNegative" }).optional(),
+  platformBalance: tokenAmount({ min: "nonNegative" }).optional(),
   validatorName: z.string().max(200).optional(),
   rewardStatus: z.string().max(50).optional(),
   notes: z.string().max(5000).optional(),
@@ -606,28 +632,19 @@ export const updateStakingWalletSchema = z.object({
 export const updateStakingPatchSchema = z.object({
   id: z.string().min(1),
   validator: z.string().max(200).optional(),
-  stakedAmount: z.number().min(0).optional(),
+  stakedAmount: tokenAmount({ min: "nonNegative" }).optional(),
   clientName: z.string().max(200).optional(),
   isColdStaking: z.boolean().optional(),
   isTestWallet: z.boolean().optional(),
   lastRewardAt: z.string().max(100).nullable().optional(),
   expectedNextRewardAt: z.string().max(100).nullable().optional(),
   actualFirstRewardDate: z.string().max(100).nullable().optional(),
-  onChainBalance: z.number().min(0).nullable().optional(),
-  platformBalance: z.number().min(0).nullable().optional(),
-  varianceThreshold: z.number().min(0).optional(),
+  onChainBalance: tokenAmount({ min: "nonNegative" }).nullable().optional(),
+  platformBalance: tokenAmount({ min: "nonNegative" }).nullable().optional(),
+  varianceThreshold: tokenAmount({ min: "nonNegative" }).optional(),
   tags: z.array(z.string().max(100)).max(50).optional(),
   notes: z.string().max(5000).optional(),
   status: z.string().max(50).optional(),
-});
-
-// ─── Approval Schemas ───
-
-export const approvalActionSchema = z.object({
-  action: z.enum(["approve", "reject", "reassign"]),
-  requestId: z.string().min(1),
-  reason: z.string().max(2000).optional(),
-  assignTo: z.string().max(200).optional(),
 });
 
 // ─── AI Assist Schema ───
@@ -724,10 +741,42 @@ export const createRcaTicketSchema = z.object({
  * Validate request body against a Zod schema.
  * Returns parsed data on success, or { error, status } on failure.
  */
+/** Generic caps on any request body before schema validation (spec §17.4). */
+export const INPUT_LIMITS = { maxDepth: 10, maxArrayLength: 1000, maxStringLength: 100_000, maxKeys: 500 } as const;
+
+export function inputShapeIssue(value: unknown, depth = 0): string | null {
+  if (depth > INPUT_LIMITS.maxDepth) return `Input nested deeper than ${INPUT_LIMITS.maxDepth} levels`;
+  if (typeof value === "string") return value.length > INPUT_LIMITS.maxStringLength ? `A text value is longer than ${INPUT_LIMITS.maxStringLength} characters` : null;
+  if (Array.isArray(value)) {
+    if (value.length > INPUT_LIMITS.maxArrayLength) return `A list has more than ${INPUT_LIMITS.maxArrayLength} items`;
+    for (const v of value) {
+      const issue = inputShapeIssue(v, depth + 1);
+      if (issue) return issue;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > INPUT_LIMITS.maxKeys) return `An object has more than ${INPUT_LIMITS.maxKeys} fields`;
+    for (const [, v] of entries) {
+      const issue = inputShapeIssue(v, depth + 1);
+      if (issue) return issue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate a request body. Unknown fields are stripped by Zod and never reach
+ * the database (no mass assignment); depth, list, text and field-count caps
+ * apply to every body.
+ */
 export function validateBody<T>(
   schema: z.ZodSchema<T>,
   data: unknown,
 ): { success: true; data: T } | { success: false; error: string; status: 400 } {
+  const shape = inputShapeIssue(data);
+  if (shape) return { success: false, error: shape, status: 400 };
   const result = schema.safeParse(data);
   if (result.success) {
     return { success: true, data: result.data };
@@ -751,3 +800,113 @@ export function validateQuery<T>(
   });
   return validateBody(schema, params);
 }
+
+// ─── Core data model admin (spec §7) ───
+
+const slackChannelRef = z.string().regex(/^[CG][A-Z0-9]{8,12}$/, "Slack channel ID, e.g. C01234ABCDE");
+const emailDomainRef = z.string().toLowerCase()
+  .regex(/^(?=.{3,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, "Email domain, e.g. example.com (no @)");
+const teamsChannelRef = z.string().min(3).max(300);
+
+export const clientChannelSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("slack"), ref: slackChannelRef }),
+  // Individual Slack users who belong to the client (spec §9.2 rule 2)
+  z.object({ kind: z.literal("slack_user"), ref: z.string().regex(/^[UW][A-Z0-9]{6,15}$/, "Slack user ID, e.g. U01234ABCDE") }),
+  z.object({ kind: z.literal("email_domain"), ref: emailDomainRef }),
+  z.object({ kind: z.literal("teams"), ref: teamsChannelRef }),
+]);
+
+const clientFields = {
+  displayName: z.string().trim().min(1).max(200),
+  komainuOrgId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  komainuAccountNos: z.array(z.string().trim().min(1).max(100)).max(200).default([]),
+  jsmOrganizationId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  jurisdiction: z.enum(["", "UK", "JE", "AE", "EU"]).default(""),
+  isActive: z.boolean().default(true),
+  channels: z.array(clientChannelSchema).max(100).default([]),
+  /** Spec §12 CHK-05: client-attested inbound threshold and its last review (CF-31). */
+  inboundThresholdUsd: usdAmount({ min: "positive" }).nullable().optional(),
+  thresholdReviewedAt: z.string().datetime({ offset: true }).nullable().optional().transform((v) => (v ? new Date(v) : v)),
+};
+
+export const createClientSchema = z.object(clientFields);
+export const updateClientSchema = z.object(clientFields).partial();
+
+const optionalMins = z.number().int().min(1).max(60 * 24 * 90).nullable();
+
+export const updateSlaPolicySchema = z.object({
+  description: z.string().trim().min(1).max(500).optional(),
+  ownershipMins: optionalMins.optional(),
+  firstRespMins: optionalMins.optional(),
+  resolveMins: optionalMins.optional(),
+  resolveRule: z.enum(["next_business_day_eod"]).nullable().optional(),
+  calendar: z.string().regex(/^(24x7|business_[a-z]+)$/).optional(),
+  warnAtPct: z.number().int().min(1).max(99).optional(),
+  breachEscalationRole: z.enum(["lead", "admin"]).optional(),
+  isActive: z.boolean().optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");
+
+export const updateAlertRuleSchema = z.object({
+  enabled: z.boolean().optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  route: z.object({
+    businessHours: z.array(z.string().min(1).max(200)).max(20),
+    outOfHours: z.array(z.string().min(1).max(200)).max(20),
+    /** Jira/JSM project that alerts of this rule are ticketed in (spec §10.1). */
+    ticketProject: z.string().regex(/^[A-Z][A-Z0-9_]+$/).optional(),
+  }).optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");
+
+// ─── Client intake (spec §9) ───
+
+export const NOT_A_QUESTION_REASONS = ["acknowledgement", "social", "duplicate", "other"] as const;
+
+export const notAQuestionSchema = z
+  .object({
+    reason: z.enum(NOT_A_QUESTION_REASONS),
+    text: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => v.reason !== "other" || (v.text && v.text.length >= 3), { message: "Reason 'other' needs a short explanation", path: ["text"] });
+
+export const changePrioritySchema = z.object({
+  priority: z.enum(["P0", "P1", "P2", "P3"]),
+  reason: z.string().trim().max(500).optional(),
+});
+
+// ─── Tickets by default (spec §10) ───
+
+/** Shape only; the root-cause list, risk-score scale and buckets are checked by closure-rules (422). */
+export const closeWorkItemSchema = z.object({
+  resolutionNote: z.string().max(5000).default(""),
+  rootCause: z.string().max(60).default(""),
+  riskScore: z.string().max(40).default(""),
+  timeLogBucketMins: z.number().int().optional(),
+  target: z.enum(["resolved", "closed"]).optional(),
+  transitionName: z.string().max(100).optional(),
+  clientResolutionMessage: z.string().max(2000).optional(),
+  uat: z.object({
+    outcome: z.enum(["pass", "fail", "not_applicable", "blocked"]),
+    evidence: z.string().trim().max(2000),
+    defectKey: z.string().trim().max(30).optional(),
+  }).optional(),
+});
+
+export const dailyCheckExceptionsSchema = z.object({
+  exceptions: z.array(z.object({
+    summary: z.string().trim().min(5).max(200),
+    breakType: z.string().trim().max(60).optional(),
+    detail: z.string().trim().max(4000).optional(),
+    reference: z.string().trim().max(200).optional(),
+    clientId: z.string().max(100).optional(),
+  })).min(1).max(50),
+});
+
+/** Local routing config for a Jira/JSM project; never changes Jira itself. */
+export const updateJiraProjectSchema = z.object({
+  enabled: z.boolean().optional(),
+  syncInbound: z.boolean().optional(),
+  /** Name of a discovered issue type used when KOMmand Centre creates tickets. */
+  defaultIssueType: z.string().min(1).max(100).optional(),
+  serviceDeskId: z.string().regex(/^\d*$/).max(20).optional(),
+}).refine((v) => Object.keys(v).length > 0, "No changes");

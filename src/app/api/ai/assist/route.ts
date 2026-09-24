@@ -22,6 +22,7 @@ import {
 import { apiSuccess, apiValidationError, handleApiError, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, aiAssistSchema } from "@/lib/validation";
+import { featureGate } from "@/lib/feature-gate";
 
 const AI_DISCLAIMER =
   "\n\n---\n_AI-generated guidance for internal use — not a formal compliance, legal, or regulatory sign-off. " +
@@ -61,6 +62,9 @@ const REGULATORY_ACTIONS = new Set([
  *   - "status":          Check if AI is enabled (no data needed)
  */
 export async function POST(request: NextRequest) {
+  const gated = await featureGate("ai.enabled");
+  if (gated) return gated;
+
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
 

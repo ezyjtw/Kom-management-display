@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { environmentSecret, loadSecrets, nonSecretEnv, type SecretSource } from "@/lib/secrets";
 
 const envSchema = z.object({
   // ─── Required ───
@@ -24,6 +25,8 @@ const envSchema = z.object({
 
   // ─── Optional with defaults ───
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  // Directory of mounted secret files (spec §17.3); see src/lib/secrets.ts
+  SECRETS_DIR: z.string().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // ─── Optional integrations (only validated if present) ───
@@ -37,10 +40,9 @@ const envSchema = z.object({
   SEED_USER_PASSWORD: z.string().optional(),
   SEED_LEAD_PASSWORD: z.string().optional(),
 
-  // Jira
-  JIRA_BASE_URL: z.string().optional(),
-  JIRA_API_TOKEN: z.string().optional(),
-  JIRA_EMAIL: z.string().optional(),
+  // Jira / JSM (spec §8.2): ATLASSIAN_BASE_URL is declared with the egress settings below
+  ATLASSIAN_EMAIL: z.string().optional(),
+  ATLASSIAN_API_TOKEN: z.string().optional(),
 
   // Confluence
   CONFLUENCE_BASE_URL: z.string().optional(),
@@ -52,12 +54,7 @@ const envSchema = z.object({
   SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_CHANNELS: z.string().optional(),
 
-  // Email (IMAP/SMTP)
-  IMAP_HOST: z.string().optional(),
-  IMAP_PORT: z.string().optional(),
-  IMAP_USER: z.string().optional(),
-  IMAP_PASSWORD: z.string().optional(),
-  IMAP_TLS: z.string().optional(),
+  // Email (SMTP, outbound only; inbound mail uses Microsoft Graph)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
@@ -66,9 +63,11 @@ const envSchema = z.object({
   SMTP_SECURE: z.string().optional(),
 
   // Custody / Fireblocks / Notabene
-  CUSTODY_API_BASE_URL: z.string().optional(),
-  CUSTODY_API_USER: z.string().optional(),
-  CUSTODY_API_SECRET: z.string().optional(),
+  KOMAINU_API_BASE_URL: z.string().optional(),
+  KOMAINU_API_USER: z.string().optional(),
+  KOMAINU_API_SECRET: z.string().optional(),
+  // JSON [{label, user, secretRef}] — secretRef names a KOMAINU_API_SECRET_<SUFFIX> env var (CONFIRM-API-SCOPE)
+  KOMAINU_API_CREDENTIALS: z.string().optional(),
   FIREBLOCKS_API_KEY: z.string().optional(),
   FIREBLOCKS_API_SECRET: z.string().optional(),
   NOTABENE_API_BASE_URL: z.string().optional(),
@@ -76,7 +75,7 @@ const envSchema = z.object({
   NOTABENE_VASP_DID: z.string().optional(),
 
   // AI
-  AI_PROVIDER: z.enum(["groq", "anthropic", "ollama"]).optional(),
+  AI_PROVIDER: z.enum(["none", "groq", "anthropic", "ollama"]).default("none"),
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -92,15 +91,34 @@ const envSchema = z.object({
 
   // Job runner
   SLACK_OPS_CHANNEL_ID: z.string().optional(),
-  JIRA_PROJECT_KEY: z.string().optional(),
 
   // Notification channels
   SLACK_OPS_CHANNEL: z.string().optional(),
   SLACK_COMPLIANCE_CHANNEL: z.string().optional(),
   COMPLIANCE_EMAIL_RECIPIENTS: z.string().optional(),
 
-  // Railway deployment
-  RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
+  // Build metadata
+  GIT_COMMIT_SHA: z.string().optional(),
+  // Which workload this process is (web | worker), recorded with credential use (spec §17.7)
+  KOM_WORKLOAD: z.enum(["web", "worker"]).optional(),
+
+  // Single sign-on (Entra ID)
+  AZURE_AD_TENANT_ID: z.string().optional(),
+  AZURE_AD_CLIENT_ID: z.string().optional(),
+  AZURE_AD_CLIENT_SECRET: z.string().optional(),
+  ROLE_GROUP_MAP: z.string().optional(),
+  ALLOW_LOCAL_LOGIN: z.enum(["true", "false", ""]).optional(),
+
+  // Microsoft Graph (spec §8.5)
+  GRAPH_TENANT_ID: z.string().optional(),
+  GRAPH_CLIENT_ID: z.string().optional(),
+  GRAPH_CLIENT_SECRET: z.string().optional(),
+  GRAPH_MAILBOXES: z.string().optional(), // JSON [{label, address, purpose}]
+  GRAPH_TEAMS_CHANNELS: z.string().optional(), // JSON [{label, teamId, channelId}]
+
+  // Egress allowlist
+  ATLASSIAN_BASE_URL: z.string().optional(),
+  EGRESS_EXTRA_HOSTS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -111,6 +129,7 @@ export type Env = z.infer<typeof envSchema>;
  */
 let _env: Env | null = null;
 let _validated = false;
+let _secrets: SecretSource | null = null;
 
 export function getEnv(): Env {
   if (_env) return _env;
@@ -124,11 +143,19 @@ export function getEnv(): Env {
     return _env;
   }
 
-  const result = envSchema.safeParse(process.env);
+  // Secrets come from the mounted directory (production) or, in development
+  // and test without SECRETS_DIR, from the environment. See src/lib/secrets.ts.
+  _secrets = loadSecrets(process.env);
+  const source = { ...nonSecretEnv(process.env), ..._secrets.values };
+  const result = envSchema.safeParse(source);
+  const leaked = _secrets.leakedEnvKeys.map((k) => ({
+    path: [k],
+    message: "secret-bearing environment variable is not allowed when secrets are read from SECRETS_DIR",
+  }));
 
-  if (!result.success) {
-    const formatted = result.error.issues
-      .map((i: z.ZodIssue) => `  - ${i.path.join(".")}: ${i.message}`)
+  if (!result.success || leaked.length) {
+    const formatted = [...(result.success ? [] : result.error.issues), ...leaked]
+      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
 
     console.error(
@@ -139,7 +166,9 @@ export function getEnv(): Env {
     // In development/test, warn but don't crash to allow partial setup
     if (process.env.NODE_ENV !== "production") {
       console.warn("⚠️  Continuing with invalid env in development mode.\n");
-      _env = process.env as unknown as Env;
+      // Environment mode keeps the live process.env view, as before; a secrets
+      // directory keeps the merged copy so secrets never enter process.env.
+      _env = (_secrets.source === "environment" ? process.env : source) as unknown as Env;
       return _env;
     }
 
@@ -149,6 +178,29 @@ export function getEnv(): Env {
   _env = result.data;
   _validated = true;
   return _env;
+}
+
+/**
+ * A secret by name, for keys not in the schema (per-user Komainu secrets named
+ * by KOMAINU_API_CREDENTIALS[].secretRef). Reads through the secret loader.
+ */
+export function secret(name: string): string | undefined {
+  getEnv();
+  if (_secrets?.source === "environment") return environmentSecret(name);
+  return _secrets?.values[name];
+}
+
+/** Where secrets were loaded from, for the readiness probe (never the values). */
+export function secretSourceInfo(): { source: SecretSource["source"]; dir: string | null; keys: string[] } | null {
+  getEnv();
+  return _secrets ? { source: _secrets.source, dir: _secrets.dir, keys: Object.keys(_secrets.values).sort() } : null;
+}
+
+/** Test hook: re-read the environment and secrets. */
+export function __resetEnvForTests(): void {
+  _env = null;
+  _validated = false;
+  _secrets = null;
 }
 
 /**

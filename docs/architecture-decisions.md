@@ -2,7 +2,7 @@
 
 ## ADR-001: Application Framework
 
-**Decision**: Next.js 14 (App Router) with TypeScript
+**Decision**: Next.js 15 (App Router, React 19) with TypeScript (upgraded from 14 on 2026-09-24: 14.x is out of support)
 
 **Context**: Need a full-stack framework that keeps frontend, backend, and auth in one deployable unit for a solo-to-small-team internal operations platform.
 
@@ -35,7 +35,7 @@
 
 **Decision**: PostgreSQL via Prisma ORM, migration-based schema management
 
-**Context**: Production runs on Railway PostgreSQL. Local development uses PostgreSQL (via Docker or native install).
+**Context**: Production runs on Azure Database for PostgreSQL (originally Railway PostgreSQL; superseded in Phase 12, H10). Local development uses PostgreSQL (via Docker or native install).
 
 **Rationale**:
 - PostgreSQL for production-grade reliability, JSON support, and full-text search capability
@@ -67,7 +67,7 @@
 
 ## ADR-005: Audit Model
 
-**Decision**: Append-only AuditLog table with JSON details
+**Decision**: Append-only AuditLog table with JSON details. Enforced in the database since migration 0037 (triggers reject UPDATE, DELETE and TRUNCATE; an insert trigger normalises the actor). Control-relevant actions are audited fail-closed via `auditedAction()` (requested → completed/failed, linked by `correlationId`).
 
 **Context**: Institutional ops platform requires full traceability of who did what and when.
 

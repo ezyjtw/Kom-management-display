@@ -9,7 +9,7 @@ export interface SlackStatus {
 
 export interface EmailStatus {
   configured: boolean;
-  inbox: string | null;
+  mailboxes: Array<{ label: string; purpose: string }>;
   smtpConfigured: boolean;
 }
 
@@ -49,6 +49,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
     channelName: "",
     channelType: "internal" as "client" | "service_provider" | "internal",
     linkedEntityId: "",
+    purpose: "",
   });
   const [registering, setRegistering] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -106,7 +107,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
       });
       const json = await res.json();
       setSyncResult(json.success
-        ? `Email sync complete: ${json.data.threadsSynced} threads from ${json.data.inbox}`
+        ? "Mail sync queued: the worker will run it shortly."
         : `Email sync error: ${json.error}`);
     } catch (err) {
       setSyncResult(`Sync failed: ${String(err)}`);
@@ -128,13 +129,14 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
           channelName: registerForm.channelName.trim(),
           channelType: registerForm.channelType,
           linkedEntityId: registerForm.linkedEntityId.trim() || undefined,
+          purpose: registerForm.purpose || undefined,
         }),
       });
       const json = await res.json();
       if (json.success) {
         setSyncResult(`Channel #${registerForm.channelName} registered successfully`);
         setShowRegisterModal(false);
-        setRegisterForm({ channelId: "", channelName: "", channelType: "internal", linkedEntityId: "" });
+        setRegisterForm({ channelId: "", channelName: "", channelType: "internal", linkedEntityId: "", purpose: "" });
         fetchRegisteredChannels();
       } else {
         setSyncResult(`Registration error: ${json.error}`);
@@ -357,6 +359,21 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1">Purpose</label>
+                <select
+                  value={registerForm.purpose}
+                  onChange={(e) => setRegisterForm((f) => ({ ...f, purpose: e.target.value }))}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground"
+                >
+                  <option value="">Automatic (from type)</option>
+                  <option value="client">Client questions</option>
+                  <option value="gx_notifications">GX notifications (risk signals; bot posts kept)</option>
+                  <option value="vendor">Vendor</option>
+                  <option value="internal_ops">Internal ops</option>
+                  <option value="alerts_out">Alerts out (KOMmand Centre posts here)</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">Linked Entity ID (optional)</label>
                 <input
                   type="text"
@@ -392,7 +409,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
           <div>
             <h3 className="text-lg font-semibold">Email Integration</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Connect an email inbox (IMAP) to automatically import emails as comms threads.
+              Microsoft Graph mailboxes (custody, FAB ICS, vendor notifications). Read-only; access is limited to the named mailboxes.
             </p>
           </div>
           <span className={`text-xs px-2 py-1 rounded-full ${
@@ -408,30 +425,26 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
           <div className="p-4 bg-muted/50 rounded-lg">
             <h4 className="text-sm font-semibold mb-2">Setup Instructions</h4>
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-              <li>For Gmail: Enable IMAP in Gmail settings, generate an App Password</li>
-              <li>For Outlook/Exchange: Use your email server&apos;s IMAP settings</li>
-              <li>Set these environment variables in <code className="text-xs bg-muted px-1 py-0.5 rounded">.env</code>:</li>
+              <li>IT creates an Entra app registration with application permissions Mail.Read and ChannelMessage.Read.All, restricted to the named mailboxes by an Exchange application access policy.</li>
+              <li>Set these environment variables:</li>
             </ol>
-            <pre className="mt-2 text-xs bg-background border border-border rounded-lg p-3 overflow-x-auto">{`IMAP_HOST=imap.gmail.com
-IMAP_PORT=993
-IMAP_USER=ops-inbox@yourcompany.com
-IMAP_PASSWORD=your-app-password
-IMAP_TLS=true
+            <pre className="mt-2 text-xs bg-background border border-border rounded-lg p-3 overflow-x-auto">{`GRAPH_TENANT_ID=
+GRAPH_CLIENT_ID=
+GRAPH_CLIENT_SECRET=
+GRAPH_MAILBOXES=[{"label":"custody","address":"...","purpose":"custody"}]
 
 # For sending notifications (optional):
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=ops-inbox@yourcompany.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM=ops@yourcompany.com`}</pre>
+SMTP_HOST=
+SMTP_USER=
+SMTP_PASSWORD=`}</pre>
             <p className="text-xs text-muted-foreground mt-2">Restart the server after setting these values.</p>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div>
-                <p className="text-xs text-muted-foreground">Connected inbox</p>
-                <p className="text-sm font-medium">{emailStatus.inbox}</p>
+                <p className="text-xs text-muted-foreground">Mailboxes</p>
+                <p className="text-sm font-medium">{emailStatus.mailboxes.map((m) => `${m.label} (${m.purpose})`).join(", ")}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">SMTP (outbound)</p>
@@ -494,18 +507,13 @@ SMTP_FROM=ops@yourcompany.com`}</pre>
                 <td className="px-3 py-2 text-center">Optional</td>
               </tr>
               <tr className="border-b border-border">
-                <td className="px-3 py-2 font-mono text-xs">IMAP_HOST</td>
-                <td className="px-3 py-2">IMAP server hostname</td>
+                <td className="px-3 py-2 font-mono text-xs">GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET</td>
+                <td className="px-3 py-2">Microsoft Graph app registration (mail and Teams, read-only)</td>
                 <td className="px-3 py-2 text-center">For Email</td>
               </tr>
               <tr className="border-b border-border">
-                <td className="px-3 py-2 font-mono text-xs">IMAP_USER</td>
-                <td className="px-3 py-2">IMAP login email</td>
-                <td className="px-3 py-2 text-center">For Email</td>
-              </tr>
-              <tr className="border-b border-border">
-                <td className="px-3 py-2 font-mono text-xs">IMAP_PASSWORD</td>
-                <td className="px-3 py-2">IMAP password / app password</td>
+                <td className="px-3 py-2 font-mono text-xs">GRAPH_MAILBOXES</td>
+                <td className="px-3 py-2">JSON list of mailboxes: label, address, purpose</td>
                 <td className="px-3 py-2 text-center">For Email</td>
               </tr>
               <tr className="border-b border-border">

@@ -21,6 +21,15 @@ process.stdin.on("end", () => {
   }
 
   const exceptions = JSON.parse(fs.readFileSync(exceptionsPath, "utf8"));
+
+  // An accepted exception is only valid until its reviewDate: an overdue review fails the check.
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = (exceptions.accepted || []).filter((e) => !e.reviewDate || e.reviewDate < today);
+  if (overdue.length > 0) {
+    console.error("Audit exceptions past their review date (re-assess, then update reviewDate or fix the dependency):");
+    for (const e of overdue) console.error(`  - ${e.package}: ${e.advisory} (review due ${e.reviewDate || "not set"})`);
+    process.exit(1);
+  }
   const acceptedAdvisories = new Set(
     (exceptions.accepted || []).map((e) => e.advisory)
   );

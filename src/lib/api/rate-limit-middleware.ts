@@ -4,10 +4,13 @@
  * Provides configurable per-route rate limiting using a sliding window.
  * Uses IP + user ID as the rate limit key for authenticated endpoints.
  *
- * For production at scale, replace the in-memory store with Redis.
+ * In-memory, per process: fine as a coarse guard on ordinary routes. Search,
+ * export and other expensive routes also use the shared, database-backed
+ * limiter in shared-rate-limit.ts, which holds across replicas.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "./response";
+import { clientIp } from "./client-ip";
 
 interface RateLimitWindow {
   count: number;
@@ -50,9 +53,8 @@ export const RATE_LIMIT_PRESETS = {
  * Uses X-Forwarded-For or falls back to a generic key.
  */
 function getClientKey(request: NextRequest, userId?: string): string {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || "unknown";
+  // The client-supplied left end of X-Forwarded-For is not trusted (see client-ip.ts).
+  const ip = clientIp(request);
   const path = new URL(request.url).pathname;
   return userId ? `${userId}:${path}` : `${ip}:${path}`;
 }

@@ -5,8 +5,9 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, apiConflictError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, updateThreadSchema } from "@/lib/validation";
+import { validateBody, patchThreadSchema } from "@/lib/validation";
 import type { ThreadPriority } from "@/types";
+import { legacyAlertKeys } from "@/lib/alert-keys";
 
 const THREAD_TRANSITIONS: Record<string, string[]> = {
   Unassigned: ["Assigned"],
@@ -21,8 +22,9 @@ const THREAD_TRANSITIONS: Record<string, string[]> = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -106,7 +108,23 @@ export async function GET(
       isOwner: isThreadOwnerOrCollaborator,
     });
 
-    return apiSuccess({ ...safeThread, slaStatus, secondaryOwners });
+    // Spec §9.7: "Raise incident / risk" from any message (deep link to the form).
+    const raiseLinks: Record<string, string> = {};
+    if (thread.source === "slack" && thread.slackChannelId) {
+      const channel = await prisma.slackChannel.findUnique({ where: { id: thread.slackChannelId }, select: { channelId: true } });
+      for (const m of thread.messages) {
+        if (channel && m.slackTs) raiseLinks[m.id] = `/client-incidents/new?kind=slack&channelId=${encodeURIComponent(channel.channelId)}&ts=${encodeURIComponent(m.slackTs)}`;
+      }
+    } else if (thread.source === "email") {
+      const mail = await prisma.sourceRecord.findFirst({
+        where: { source: "graph_mail", kind: "mail_message", fields: { path: ["message", "threadId"], equals: thread.id } },
+        orderBy: { occurredAt: "desc" },
+        select: { externalId: true },
+      });
+      if (mail) for (const m of thread.messages) raiseLinks[m.id] = `/client-incidents/new?kind=email&messageRecordId=${encodeURIComponent(mail.externalId)}`;
+    }
+
+    return apiSuccess({ ...safeThread, slaStatus, secondaryOwners, raiseLinks });
   } catch (error) {
     return handleApiError(error, "GET /api/comms/threads/[id]");
   }
@@ -114,8 +132,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -126,7 +145,9 @@ export async function PATCH(
   if (limited) return limited;
 
   try {
-    const body = await request.json();
+    const parsedBody = validateBody(patchThreadSchema, await request.json().catch(() => null));
+    if (!parsedBody.success) return apiValidationError(parsedBody.error);
+    const body = parsedBody.data;
     const { status, ownerUserId, priority, queue, linkedRecords, handoverNote } = body;
 
     const actorId = auth.id;
@@ -234,6 +255,7 @@ export async function PATCH(
         data: {
           threadId: params.id,
           type: "ownership_change",
+          ...legacyAlertKeys("ownership_change"),
           priority: thread.priority,
           message: `Ownership changed on: ${thread.subject}`,
           destination: "in_app",

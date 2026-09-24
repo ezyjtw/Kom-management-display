@@ -205,10 +205,10 @@ Alert Generation (if SLA thresholds breached)
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   Docker Host / Railway           │
+│                   Container host (Azure)          │
 │                                                   │
 │  ┌─────────────────────────────────────────────┐ │
-│  │         App Container (node:20-alpine)      │ │
+│  │         App Container (node:22-alpine (pinned by digest))      │ │
 │  │                                             │ │
 │  │  Next.js Standalone Server (port 3000)      │ │
 │  │  ├─ SSR Pages                               │ │
@@ -236,12 +236,12 @@ Alert Generation (if SLA thresholds breached)
 
 | Stage | Base Image | Purpose |
 |-------|-----------|---------|
-| `deps` | node:20-alpine | Install npm dependencies |
-| `builder` | node:20-alpine | Generate Prisma client, build Next.js, compile seed |
-| `runner` | node:20-alpine | Minimal production image with standalone output |
+| `deps` | node:22-alpine (pinned by digest) | Install npm dependencies |
+| `builder` | node:22-alpine (pinned by digest) | Generate Prisma client, build Next.js, compile seed |
+| `runner` | node:22-alpine (pinned by digest) | Minimal production image with standalone output |
 
 The production image runs as a non-root `nextjs` user (UID 1001) and exposes port 3000.
 
-### Railway Deployment
+### Azure Deployment
 
-Railway auto-detects the Dockerfile. Required environment variables are set via the Railway dashboard. The PostgreSQL database is provisioned as a Railway service with `DATABASE_URL` injected automatically.
+Production runs on the Azure runtime described in `deploy/azure/README.md`. Secrets come from Key Vault, mounted as tmpfs files in `SECRETS_DIR` (never environment variables). Azure services use managed identities. The database is Azure Database for PostgreSQL behind a private endpoint, and the database roles are in `docs/phase1/db-roles.sql`. There is no Railway configuration in the repository (H10).

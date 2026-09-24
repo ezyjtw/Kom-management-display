@@ -32,7 +32,7 @@ Ops Team Management Dashboard with integrated Communications & Ownership Hub.
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 15 (App Router, React 19)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Database**: PostgreSQL via Prisma ORM

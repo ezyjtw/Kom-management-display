@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { logger } from "@/lib/logger";
+import { recordDeniedForCurrentRequest } from "@/modules/security/record";
 
 export interface ApiSuccessResponse<T> {
   success: true;
@@ -100,6 +101,8 @@ export function apiAuthError(message = "Authentication required"): NextResponse 
  * Return a forbidden error (403).
  */
 export function apiForbiddenError(message = "Insufficient permissions"): NextResponse {
+  // Every 403 is a security event (spec §17.7), counted by ALR-SEC-01.
+  void recordDeniedForCurrentRequest(null, message);
   return apiError(message, 403, "FORBIDDEN");
 }
 
@@ -147,7 +150,10 @@ export function handleApiError(error: unknown, context?: string): NextResponse {
   let status = 500;
 
   if (error instanceof Error) {
-    if (error.message.includes("Unique constraint")) {
+    if (error.name === "AuditUnavailableError") {
+      message = "The audit trail could not be written, so nothing was changed. Try again shortly.";
+      status = 503;
+    } else if (error.message.includes("Unique constraint")) {
       message = "A record with this value already exists";
       status = 409;
     } else if (
@@ -163,7 +169,8 @@ export function handleApiError(error: unknown, context?: string): NextResponse {
       error.message.includes("column") &&
       error.message.includes("does not exist")
     ) {
-      message = "Database schema out of date — pending migrations need to be applied";
+      // Logged server-side above; the client only gets the generic message (spec §17.4 fail securely).
+      message = "An internal error occurred";
       status = 500;
     } else if (
       error.message.includes("Invalid `") ||

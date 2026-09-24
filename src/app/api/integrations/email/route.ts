@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncEmailInbox } from "@/lib/integrations/email";
 import { requireRole } from "@/lib/auth-user";
-import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { prisma } from "@/lib/prisma";
-import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, emailSyncSchema } from "@/lib/validation";
 import { env } from "@/lib/env";
+import { enqueueJob } from "@/lib/background-jobs";
+import { getMailboxes, isGraphConfigured } from "@/lib/integrations/graph/client";
 
 /**
  * POST /api/integrations/email
- * Trigger a sync of the configured email inbox. Admin only.
+ * Queue a Microsoft Graph mail sync (the worker runs it). Admin only.
  */
 export async function POST(request: NextRequest) {
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
@@ -19,33 +18,18 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
-  const authz = requireAuthorization(auth, "thread", "view");
-  if (authz instanceof NextResponse) return authz;
-
   try {
-    const body = await request.json();
-    const parsed = validateBody(emailSyncSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { queue } = body;
-
-    const result = await syncEmailInbox(queue);
-
-    // Audit: log integration sync
+    const jobId = await enqueueJob("sync_mail", {}, { deduplicationKey: "manual_sync_mail" });
     await prisma.auditLog.create({
       data: {
-        action: "integration_sync",
-        entityType: "email_inbox",
-        entityId: result.inbox || "default",
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({
-          inbox: result.inbox,
-          queue: queue || "Transaction Operations",
-          threadsSynced: result.threadsSynced,
-        }),
+        action: "integration_sync_requested",
+        entityType: "graph_mail",
+        entityId: "all",
+        userId: auth.employeeId ?? "system",
+        details: JSON.stringify({ jobId, actorUserId: auth.id }),
       },
     });
-
-    return apiSuccess(result);
+    return apiSuccess({ queued: true, jobId });
   } catch (error) {
     return handleApiError(error, "email sync");
   }
@@ -53,23 +37,16 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/integrations/email
- * Get current email integration status. Admin only.
+ * Mail integration status: Graph mailboxes (inbound) and SMTP (outbound). Admin only.
  */
 export async function GET() {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
 
-  const configured =
-    !!env("IMAP_HOST") &&
-    !!env("IMAP_USER") &&
-    !!env("IMAP_PASSWORD");
-
+  const mailboxes = getMailboxes().map((m) => ({ label: m.label, purpose: m.purpose }));
   return apiSuccess({
-    configured,
-    inbox: configured ? env("IMAP_USER") : null,
-    smtpConfigured:
-      !!env("SMTP_HOST") &&
-      !!env("SMTP_USER") &&
-      !!env("SMTP_PASSWORD"),
+    configured: isGraphConfigured() && mailboxes.length > 0,
+    mailboxes,
+    smtpConfigured: !!env("SMTP_HOST") && !!env("SMTP_USER") && !!env("SMTP_PASSWORD"),
   });
 }

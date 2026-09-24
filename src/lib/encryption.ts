@@ -129,7 +129,8 @@ export function decrypt(encryptedValue: string): string {
   const authTag = packed.subarray(packed.length - AUTH_TAG_LENGTH);
   const ciphertext = packed.subarray(IV_LENGTH, packed.length - AUTH_TAG_LENGTH);
 
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  // Pin the tag length: without it, a truncated (forgeable) tag would be accepted.
+  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(authTag);
 
   const decrypted = Buffer.concat([

@@ -5,6 +5,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, updateBrandingSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const MAX_LOGO_SIZE = 512 * 1024; // 512 KB max for base64 logo
 
@@ -51,57 +53,64 @@ export async function PATCH(request: NextRequest) {
   if (authz instanceof NextResponse) return authz;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateBrandingSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const validatedData = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "branding_updated", entityType: "branding_config", entityId: "branding", userId: auditActorInfo.userId, summary: "Update branding", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateBrandingSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const validatedData = parsed.data;
 
-    // Validate logo size if provided
-    if (validatedData.logoData && validatedData.logoData.length > MAX_LOGO_SIZE) {
-      return apiValidationError("Logo file is too large. Maximum size is 512 KB.");
-    }
+        // Validate logo size if provided
+        if (validatedData.logoData && validatedData.logoData.length > MAX_LOGO_SIZE) {
+          return apiValidationError("Logo file is too large. Maximum size is 512 KB.");
+        }
 
-    // Validate logo is a data URL — block SVG (XSS vector via embedded scripts)
-    if (validatedData.logoData) {
-      if (!validatedData.logoData.startsWith("data:image/")) {
-        return apiValidationError("Logo must be a valid image data URL.");
-      }
-      if (validatedData.logoData.startsWith("data:image/svg")) {
-        return apiValidationError("SVG uploads are not allowed for security reasons. Use PNG or JPEG.");
-      }
-    }
+        // Validate logo is a data URL — block SVG (XSS vector via embedded scripts)
+        if (validatedData.logoData) {
+          if (!validatedData.logoData.startsWith("data:image/")) {
+            return apiValidationError("Logo must be a valid image data URL.");
+          }
+          if (validatedData.logoData.startsWith("data:image/svg")) {
+            return apiValidationError("SVG uploads are not allowed for security reasons. Use PNG or JPEG.");
+          }
+        }
 
-    const updateData: Record<string, unknown> = {};
-    if (validatedData.appName !== undefined) updateData.appName = validatedData.appName;
-    if (validatedData.subtitle !== undefined) updateData.subtitle = validatedData.subtitle;
-    if (validatedData.logoData !== undefined) updateData.logoData = validatedData.logoData;
+        const updateData: Record<string, unknown> = {};
+        if (validatedData.appName !== undefined) updateData.appName = validatedData.appName;
+        if (validatedData.subtitle !== undefined) updateData.subtitle = validatedData.subtitle;
+        if (validatedData.logoData !== undefined) updateData.logoData = validatedData.logoData;
 
-    const config = await prisma.brandingConfig.upsert({
-      where: { id: "singleton" },
-      create: {
-        id: "singleton",
-        appName: (updateData.appName as string) || "KOMmand Centre",
-        subtitle: (updateData.subtitle as string) || "Ops Management & Comms Hub",
-        logoData: (updateData.logoData as string) || "",
+        const config = await prisma.brandingConfig.upsert({
+          where: { id: "singleton" },
+          create: {
+            id: "singleton",
+            appName: (updateData.appName as string) || "KOMmand Centre",
+            subtitle: (updateData.subtitle as string) || "Ops Management & Comms Hub",
+            logoData: (updateData.logoData as string) || "",
+          },
+          update: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "branding_updated",
+            entityType: "branding_config",
+            entityId: "singleton",
+            userId: auth.employeeId || auth.id,
+            details: JSON.stringify({
+              appName: config.appName,
+              subtitle: config.subtitle,
+              hasLogo: !!config.logoData,
+            }),
+          },
+        });
+
+        return apiSuccess(config);
       },
-      update: updateData,
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        action: "branding_updated",
-        entityType: "branding_config",
-        entityId: "singleton",
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({
-          appName: config.appName,
-          subtitle: config.subtitle,
-          hasLogo: !!config.logoData,
-        }),
-      },
-    });
-
-    return apiSuccess(config);
+    );
   } catch (error) {
     return handleApiError(error, "branding PATCH");
   }

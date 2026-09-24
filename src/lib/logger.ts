@@ -4,6 +4,8 @@
  * In development, falls back to readable console output.
  */
 
+import { redactString, redactValue } from "@/lib/log-redaction";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
@@ -50,11 +52,12 @@ function emit(entry: LogEntry) {
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {
+  const safeContext = context ? (redactValue(context) as Record<string, unknown>) : undefined;
   emit({
     level,
-    message,
+    message: redactString(message),
     timestamp: new Date().toISOString(),
-    ...context,
+    ...safeContext,
   });
 }
 

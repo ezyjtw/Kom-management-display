@@ -4,9 +4,10 @@ import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { validateBody } from "@/lib/validation";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-repository";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 // ─── Validation Schemas ───
 
@@ -19,6 +20,8 @@ const registerChannelSchema = z.object({
   channelName: z.string().min(1).max(200),
   channelType: z.enum(["client", "service_provider", "internal"]),
   linkedEntityId: z.string().max(200).optional(),
+  purpose: z.enum(["client", "gx_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
+  clientId: z.string().max(100).optional(),
 });
 
 /**
@@ -73,23 +76,30 @@ export async function POST(request: NextRequest) {
       return apiValidationError(validation.error);
     }
 
-    const { channelId, channelName, channelType, linkedEntityId } = validation.data;
+    const { channelId, channelName, channelType, linkedEntityId, purpose, clientId } = validation.data;
 
-    const channel = await slackChannelRepo.upsertChannel({
-      channelId,
-      channelName,
-      channelType,
-      linkedEntityId: linkedEntityId ?? null,
-    });
-
-    await createAuditEntry({
-      action: "slack_channel_register",
-      entityType: "slack_channel",
-      entityId: channel.id,
-      userId: auth.id,
-      summary: `Registered Slack channel #${channelName} (${channelId}) as ${channelType}`,
-      after: { channelId, channelName, channelType, linkedEntityId },
-    });
+    // Channel-to-client mapping is privileged configuration: fail-closed audit (spec §17.7).
+    const actor = auditActor(auth);
+    const channel = await auditedAction(
+      {
+        action: "slack_channel_register",
+        entityType: "slack_channel",
+        entityId: channelId,
+        userId: actor.userId,
+        summary: `Register Slack channel #${channelName} (${channelId})`,
+        after: { channelId, channelName, channelType, linkedEntityId, purpose, clientId: clientId ?? null },
+        metadata: actor.metadata,
+      },
+      () => slackChannelRepo.upsertChannel({
+        channelId,
+        channelName,
+        channelType,
+        linkedEntityId: linkedEntityId ?? null,
+        purpose,
+        clientId: clientId ?? null,
+      }),
+      (r) => ({ id: r.id, purpose: r.purpose, clientId: r.clientId }),
+    );
 
     return apiSuccess(channel, undefined, 201);
   } catch (error) {

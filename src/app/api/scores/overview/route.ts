@@ -11,8 +11,12 @@ import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization, applyScopeFilter } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { Category } from "@/types";
+import { featureGate } from "@/lib/feature-gate";
 
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("people.scoring");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

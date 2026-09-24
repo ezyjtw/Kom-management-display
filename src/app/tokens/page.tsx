@@ -132,7 +132,7 @@ export default function TokenReviewPage() {
   if (loading) return (<div className="flex items-center justify-center h-64 text-muted-foreground"><RefreshCw size={24} className="animate-spin mr-3" />Loading token registry...</div>);
   if (!data) return (<div className="text-center py-12"><AlertTriangle size={24} className="mx-auto mb-3 text-red-400" /><p className="text-muted-foreground">Failed to load token data.</p>{error && <p className="text-xs text-red-400 mt-1">{error}</p>}<button onClick={fetchData} className="mt-3 text-sm text-primary hover:underline">Retry</button></div>);
 
-  const tabs: { key: Tab; label: string }[] = [{ key: "pipeline", label: "Review Pipeline" }, { key: "live", label: `Live (${data.summary.live})` }, { key: "demand", label: "Demand Tracker" }, { key: "discover", label: "Discover" }];
+  const tabs: { key: Tab; label: string }[] = [{ key: "pipeline", label: "Review Pipeline" }, { key: "live", label: `Live (${data.summary.live})` }, { key: "demand", label: "Demand Tracker" }, ...(aiEnabled ? [{ key: "discover" as Tab, label: "Discover" }] : [])]; // AI discovery disabled unless ai.enabled (H3)
 
   return (
     <div className="space-y-6">
@@ -154,7 +154,7 @@ export default function TokenReviewPage() {
           </button>
         ))}
       </div>
-      {tab === "discover" && <AiSuggestions aiEnabled={aiEnabled} suggestions={suggestions} suggestLoading={suggestLoading} onSuggestTokens={handleSuggestTokens} onAdoptSuggestion={handleAdoptSuggestion} />}
+      {tab === "discover" && aiEnabled && <AiSuggestions aiEnabled={aiEnabled} suggestions={suggestions} suggestLoading={suggestLoading} onSuggestTokens={handleSuggestTokens} onAdoptSuggestion={handleAdoptSuggestion} />}
       <TokenTable
         tokens={data.tokens} tab={tab} filter={filter} expandedId={expandedId}
         showSignalForm={showSignalForm} researchResults={researchResults} researchLoading={researchLoading}

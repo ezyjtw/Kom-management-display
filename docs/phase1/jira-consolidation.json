@@ -1,0 +1,4 @@
+{
+  "_comment": "Issue types proposed for consolidation (spec §15). TODO(CONFIRM-JIRA-CONSOLIDATION): fill from the Jira rationalisation work, then re-run scripts/jira-inventory.ts to see which saved filters and dashboards would break. Example entry: {\"project\": \"TOPS\", \"issueType\": \"Sub-task\", \"mergeInto\": \"Task\", \"note\": \"...\"}",
+  "issueTypes": []
+}

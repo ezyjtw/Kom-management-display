@@ -2,8 +2,9 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth-options";
-import { isSessionRevoked, updateLastActive } from "@/lib/session-revocation";
+import { sessionState, updateLastActive } from "@/lib/session-revocation";
 import { logger } from "@/lib/logger";
+import { recordDeniedForCurrentRequest } from "@/modules/security/record";
 
 /** HTTP methods that change state — these get a fail-closed revocation policy. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -54,10 +55,16 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
   const jti = session.user.jti;
   if (session.user.id && jti) {
     try {
-      const revoked = await isSessionRevoked(jti);
-      if (revoked) {
+      const state = await sessionState(jti);
+      if (state === "revoked") {
         return NextResponse.json(
           { success: false, error: "Session has been revoked", code: "SESSION_REVOKED" },
+          { status: 401 }
+        );
+      }
+      if (state === "idle") {
+        return NextResponse.json(
+          { success: false, error: "Session expired after an hour without activity. Sign in again.", code: "SESSION_EXPIRED_IDLE" },
           { status: 401 }
         );
       }
@@ -69,7 +76,7 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
       // The HTTP method is forwarded by middleware as x-http-method.
       let method = "GET";
       try {
-        method = headers().get("x-http-method")?.toUpperCase() || "GET";
+        method = (await headers()).get("x-http-method")?.toUpperCase() || "GET";
       } catch {
         // headers() unavailable outside a request scope — treat as read.
       }
@@ -87,9 +94,9 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
     }
   }
 
-  // Update lastActiveAt for idle timeout tracking (non-blocking, fire-and-forget)
-  if (session.user.id) {
-    updateLastActive(session.user.id).catch(() => {});
+  // Update lastActiveAt for the idle timeout (this session only; non-blocking).
+  if (jti) {
+    updateLastActive(jti).catch(() => {});
   }
 
   return {
@@ -111,6 +118,7 @@ export async function requireRole(...roles: string[]): Promise<AuthUser | NextRe
   if (result instanceof NextResponse) return result;
 
   if (!roles.includes(result.role)) {
+    void recordDeniedForCurrentRequest(result, `requires ${roles.join("|")}`);
     return NextResponse.json(
       { success: false, error: "Insufficient permissions" },
       { status: 403 }

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   fetchPendingTransactions,
   fetchPendingRequests,
-  isCustodyConfigured,
-} from "@/lib/integrations/custody";
+  isKomainuConfigured,
+} from "@/lib/integrations/komainu-api/client";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const authz = requireAuthorization(auth, "transaction_confirmation", "view");
   if (authz instanceof NextResponse) return authz;
 
-  if (!isCustodyConfigured()) {
+  if (!isKomainuConfigured()) {
     return apiSuccess({
       pendingTransactions: [],
       pendingRequests: [],

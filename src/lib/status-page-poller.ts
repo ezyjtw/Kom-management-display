@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
+import { httpFetch } from "@/lib/http/client";
 
 interface StatusPageIncident {
   externalId: string;
@@ -198,7 +199,7 @@ async function pollAtlassianStatuspage(
   // Atlassian Statuspage API: /api/v2/incidents/unresolved.json
   const apiUrl = url.replace(/\/$/, "") + "/api/v2/incidents/unresolved.json";
 
-  const res = await fetch(apiUrl, {
+  const res = await httpFetch(apiUrl, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
@@ -232,7 +233,7 @@ async function pollAtlassianStatuspage(
 async function pollPagerDuty(url: string): Promise<StatusPageIncident[]> {
   const apiUrl = url.replace(/\/$/, "") + "/api/v1/incidents?statuses[]=triggered&statuses[]=acknowledged";
 
-  const res = await fetch(apiUrl, {
+  const res = await httpFetch(apiUrl, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
@@ -263,7 +264,7 @@ async function pollPagerDuty(url: string): Promise<StatusPageIncident[]> {
 }
 
 async function pollCustomEndpoint(url: string): Promise<StatusPageIncident[]> {
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });

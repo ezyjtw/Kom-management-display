@@ -4,11 +4,22 @@
 
 | Environment | Purpose | Database | Auth |
 |-------------|---------|----------|------|
-| Development | Local dev | Local PostgreSQL | Seeded users |
-| Staging | Pre-production testing | Staging PostgreSQL | Seeded + test users |
-| Production | Live ops | Production PostgreSQL | Real credentials |
+| Development | Local dev | Local PostgreSQL | Seeded users (`ALLOW_LOCAL_LOGIN=true`) |
+| Staging | Pre-production testing | Staging PostgreSQL | Entra ID SSO (+ local login if enabled) |
+| Production | Live ops | Production PostgreSQL | Entra ID SSO only |
+
+The target production runtime (web + worker containers, Key Vault, private
+networking, egress allowlist) is described in [`deploy/azure/README.md`](../deploy/azure/README.md).
 
 ## Environment Variables
+
+> **Production: secrets are files, not environment variables.** Every
+> secret-bearing key below (`NEXTAUTH_SECRET`, `CRON_SECRET`,
+> `ENCRYPTION_SECRET`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`) is read
+> from a file of the same name in `SECRETS_DIR` (Key Vault mounted on tmpfs). The
+> app refuses to start in production if one is set as an environment variable.
+> The `KEY=value` lists below are for **local development** (`.env`, no
+> `SECRETS_DIR`). See `docs/phase1/credentials.md` and `deploy/azure/README.md`.
 
 ### Required
 ```
@@ -17,29 +28,65 @@ NEXTAUTH_SECRET=<random-32-char-string>
 NEXTAUTH_URL=https://your-domain.com
 ```
 
+### Single sign-on (Entra ID)
+```
+AZURE_AD_TENANT_ID=<tenant-id>
+AZURE_AD_CLIENT_ID=<app-registration-client-id>
+AZURE_AD_CLIENT_SECRET=<client-secret>
+ROLE_GROUP_MAP={"<group-object-id>":"admin","<group-object-id>":"lead"}
+ALLOW_LOCAL_LOGIN=            # true only for local dev; ignored in production
+```
+
+The app registration must emit the `groups` claim (security group object IDs) in
+the ID token. A user is denied, and the denial audit-logged, if:
+- none of their groups appears in `ROLE_GROUP_MAP`;
+- Entra reports group overage (too many groups to fit in the token);
+- no active `Employee` record has their email address.
+
+If a user is in several mapped groups, the highest role wins (admin > lead > employee > auditor).
+Sessions last 12 hours.
+
+### Egress allowlist
+```
+ATLASSIAN_BASE_URL=https://komainu.atlassian.net   # default
+EGRESS_EXTRA_HOSTS=                                 # comma-separated extra hostnames
+```
+
+All outbound HTTP goes through `src/lib/http/client.ts`, which blocks any host
+not on the allowlist: the Komainu API host, the Atlassian site,
+`api.atlassian.com`, `slack.com`, `graph.microsoft.com`,
+`login.microsoftonline.com`, plus `EGRESS_EXTRA_HOSTS`. Switching on an optional
+module that calls another host also needs that host added, for example the
+market ticker (`module.market_ticker`): `api.coingecko.com,api.etherscan.io,mempool.space,open-api.coinglass.com`.
+The Slack SDK makes its own HTTP calls, but only to `slack.com`.
+
 ### Optional: Integrations
 ```
-JIRA_BASE_URL=https://your-org.atlassian.net
-JIRA_EMAIL=bot@your-org.com
-JIRA_API_TOKEN=<token>
+ATLASSIAN_EMAIL=<service-account@your-org.com>
+ATLASSIAN_API_TOKEN=<token>
 
 SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=<secret>
+SLACK_SIGNING_SECRET=<secret>       # required for the Events API (/api/webhooks/slack)
 
-IMAP_HOST=imap.gmail.com
-IMAP_PORT=993
-IMAP_USER=ops@your-org.com
-IMAP_PASSWORD=<app-password>
+GRAPH_TENANT_ID=<tenant-id>
+GRAPH_CLIENT_ID=<app-id>
+GRAPH_CLIENT_SECRET=<secret>
+GRAPH_MAILBOXES=[{"label":"custody","address":"...","purpose":"custody"}]
+GRAPH_TEAMS_CHANNELS=[{"label":"ops","teamId":"...","channelId":"..."}]
 
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=ops@your-org.com
 SMTP_PASSWORD=<app-password>
 
-CUSTODY_API_KEY=<key>
-CUSTODY_API_URL=https://api.custody-provider.com
+KOMAINU_API_BASE_URL=https://api-demo.komainu.io
+KOMAINU_API_USER=<api-user>
+KOMAINU_API_SECRET=<api-secret>
+# or several users: KOMAINU_API_CREDENTIALS=[{"label":"uk","user":"...","secretRef":"KOMAINU_API_SECRET_UK"}]
 
-NOTABENE_API_KEY=<key>
+# Notabene is disabled (H11)
+NOTABENE_API_BASE_URL=
+NOTABENE_API_TOKEN=<token>
 NOTABENE_VASP_DID=did:ethr:0x...
 
 FIREBLOCKS_API_KEY=<key>
@@ -50,7 +97,9 @@ FIREBLOCKS_API_SECRET=<secret>
 ```
 CRON_SECRET=<secret-for-cron-endpoints>
 LOG_LEVEL=info
-ANTHROPIC_API_KEY=<for-ai-assist>
+AI_PROVIDER=none              # AI is off by default (H3)
+ALLOW_SEED=                   # never seeds in production
+GIT_COMMIT_SHA=<build-sha>
 ```
 
 ### Environment Variable Reference
@@ -62,13 +111,22 @@ ANTHROPIC_API_KEY=<for-ai-assist>
 | `NEXTAUTH_URL` | Yes | Canonical URL of the application |
 | `CRON_SECRET` | No | Shared secret for cron-triggered endpoints (e.g., alert generation) |
 | `LOG_LEVEL` | No | Logging verbosity: `debug`, `info`, `warn`, `error` (default: `info`) |
-| `JIRA_*` | No | Jira Cloud integration credentials |
-| `SLACK_*` | No | Slack bot token and signing secret for webhook verification |
-| `IMAP_*` / `SMTP_*` | No | Email integration (IMAP for inbound, SMTP for outbound) |
-| `CUSTODY_*` | No | Custody API integration |
-| `NOTABENE_*` | No | Notabene travel rule integration |
+| `ATLASSIAN_EMAIL` / `ATLASSIAN_API_TOKEN` | No | Jira and JSM service account (with `ATLASSIAN_BASE_URL`) |
+| `SLACK_*` | No | Slack bot token; signing secret verifies Events API deliveries |
+| `GRAPH_*` | No | Microsoft Graph mail and Teams (read-only); replaces IMAP |
+| `SMTP_*` | No | Outbound email notifications |
+| `KOMAINU_API_CREDENTIALS` | No | Several read-only Komainu API users (JSON; secrets referenced by env var name) |
+| `AZURE_AD_TENANT_ID` / `AZURE_AD_CLIENT_ID` / `AZURE_AD_CLIENT_SECRET` | Prod: yes | Entra ID single sign-on |
+| `ROLE_GROUP_MAP` | Prod: yes | JSON map of Entra group object ID to role |
+| `ALLOW_LOCAL_LOGIN` | No | `true` enables username/password login outside production only |
+| `ATLASSIAN_BASE_URL` | No | Atlassian site; its host is on the egress allowlist (default `komainu.atlassian.net`) |
+| `EGRESS_EXTRA_HOSTS` | No | Extra comma-separated hosts for the egress allowlist |
+| `ALLOW_SEED` | No | `true` seeds on startup outside production; never seeds production |
+| `GIT_COMMIT_SHA` | No | Build version shown in deep health checks |
+| `KOMAINU_API_*` | No | Komainu API (read-only) |
+| `NOTABENE_*` | No | Notabene travel rule integration (disabled, H11) |
 | `FIREBLOCKS_*` | No | Fireblocks wallet/transaction integration |
-| `ANTHROPIC_API_KEY` | No | AI assistant features |
+| `AI_PROVIDER` / `*_API_KEY` | No | AI features; off unless set and flag `ai.enabled` is on (H3) |
 
 ## Docker Deployment
 
@@ -76,28 +134,46 @@ ANTHROPIC_API_KEY=<for-ai-assist>
 # Build
 docker build -t kommand-centre .
 
-# Run
+# Run (production mode: secrets from a mounted directory, never -e)
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://..." \
-  -e NEXTAUTH_SECRET="..." \
   -e NEXTAUTH_URL="https://..." \
+  -e SECRETS_DIR=/mnt/secrets \
+  --mount type=tmpfs,destination=/mnt/secrets \
   kommand-centre
+# (populate /mnt/secrets/NEXTAUTH_SECRET etc. from Key Vault; locally, a
+#  read-only bind mount of a directory of files works for testing)
 ```
 
 ### Docker Compose (full stack)
 
 ```bash
-# Start app + database
+# Start database, web app and worker
 docker compose up -d
 
 # View logs
-docker compose logs -f app
+docker compose logs -f app worker
 
 # Stop
 docker compose down
 ```
 
-The `docker-compose.yml` provisions PostgreSQL 16 with a persistent volume and health checks. The app container waits for the database to be ready before starting.
+The `docker-compose.yml` provisions PostgreSQL 16 with a persistent volume and
+health checks. The `app` container waits for the database and runs migrations;
+the `worker` container uses the same image, starts once `app` is healthy, and
+runs `npm run worker:prod`.
+
+### Background worker
+
+Alerts, SLA checks and integration syncs run in an always-on worker process
+(`src/worker/index.ts`; `npm run worker` in development). The image bundles it
+to `worker.js`, started with `npm run worker:prod`. It writes a heartbeat every
+30 seconds and drains the in-flight job for up to 25 seconds on SIGTERM.
+
+If no worker heartbeat is seen for 2 minutes, `/api/health` reports
+`"worker_alive": false` and `"status": "degraded"`, the web app shows a red
+banner, and alert `ALR-HB-WORKER` is raised. Point external monitoring at
+`worker_alive`.
 
 ## Database Setup
 
@@ -135,7 +211,7 @@ npx tsx prisma/seed.ts
 
 ### Post-deployment
 - [ ] Monitor application logs for errors (first 15 minutes)
-- [ ] Verify cron jobs are running (alert generation)
+- [ ] Verify the worker is alive: `GET /api/health` shows `"worker_alive": true`
 - [ ] Confirm audit log is recording events
 - [ ] Notify team of successful deployment
 
@@ -157,9 +233,6 @@ npx tsx prisma/seed.ts
 
 ### Application Rollback
 ```bash
-# Railway: revert to previous deployment
-railway rollback
-
 # Docker: redeploy previous image tag
 docker pull kommand-centre:<previous-tag>
 docker stop kommand-centre
@@ -210,7 +283,7 @@ The app container is configured with:
 - Retries: 3
 - Start period: 30s (grace period for startup)
 
-### Railway / Load Balancer
+### Load Balancer
 Point the health check to `/api/health/readiness`. This endpoint validates:
 - Database connectivity (Prisma query)
 - Required environment variables present

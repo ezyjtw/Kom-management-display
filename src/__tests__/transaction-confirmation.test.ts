@@ -1,68 +1,76 @@
 /**
- * Transaction confirmation flow tests.
+ * Transaction confirmation: read-only tracker of GX items awaiting action in GX (spec §5.2).
  */
-import { describe, it, expect } from "vitest";
-import { assessRiskLevel } from "@/lib/transaction-confirmation";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-describe("Transaction Risk Assessment", () => {
-  it("classifies small inbound transactions as low risk", () => {
-    const level = assessRiskLevel({ amount: 50_000, asset: "BTC", direction: "IN" });
-    expect(level).toBe("low");
+const prismaMock = vi.hoisted(() => ({
+  transactionConfirmation: {
+    findMany: vi.fn(),
+    update: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
+  },
+  auditLog: { create: vi.fn() },
+}));
+const komainu = vi.hoisted(() => ({
+  isKomainuConfigured: vi.fn(),
+  fetchRequest: vi.fn(),
+  fetchTransaction: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/integrations/komainu-api/client", () => komainu);
+vi.mock("@/lib/integrations/slack", () => ({ sendSlackNotification: vi.fn() }));
+
+import * as confirmation from "@/lib/transaction-confirmation";
+
+describe("Transaction confirmation — allowed actions only", () => {
+  it("exposes only take ownership, add note and link ticket as human actions", () => {
+    expect(typeof confirmation.takeOwnership).toBe("function");
+    expect(typeof confirmation.addNote).toBe("function");
+    expect(typeof confirmation.linkTicket).toBe("function");
+    for (const removed of ["assessRiskLevel", "signOffConfirmation", "acknowledgeConfirmation", "escalateConfirmation", "closeConfirmationInSource"]) {
+      expect(removed in confirmation, removed).toBe(false);
+    }
+  });
+});
+
+describe("syncConfirmationsWithSource", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    komainu.isKomainuConfigured.mockReturnValue(true);
   });
 
-  it("classifies outbound transactions as medium risk", () => {
-    const level = assessRiskLevel({ amount: 50_000, asset: "BTC", direction: "OUT" });
-    expect(level).toBe("medium");
+  it("closes items no longer PENDING in the Komainu API and keeps pending ones open", async () => {
+    prismaMock.transactionConfirmation.findMany.mockResolvedValue([
+      { id: "c1", transactionId: "tx1", requestId: "req1" },
+      { id: "c2", transactionId: "tx2", requestId: null },
+      { id: "c3", transactionId: "tx3", requestId: "req3" },
+    ]);
+    komainu.fetchRequest.mockImplementation(async (id: string) => ({ status: id === "req1" ? "APPROVED" : "PENDING" }));
+    komainu.fetchTransaction.mockResolvedValue({ status: "CONFIRMED" });
+
+    const closed = await confirmation.syncConfirmationsWithSource();
+
+    expect(closed).toBe(2);
+    const updatedIds = prismaMock.transactionConfirmation.update.mock.calls.map((c) => c[0].where.id);
+    expect(updatedIds.sort()).toEqual(["c1", "c2"]);
+    for (const call of prismaMock.transactionConfirmation.update.mock.calls) {
+      expect(call[0].data.status).toBe("closed_in_source");
+    }
   });
 
-  it("classifies moderate amounts as medium risk", () => {
-    const level = assessRiskLevel({ amount: 500_000, asset: "ETH", direction: "IN" });
-    expect(level).toBe("medium");
+  it("does nothing when the Komainu API is not configured", async () => {
+    komainu.isKomainuConfigured.mockReturnValue(false);
+    expect(await confirmation.syncConfirmationsWithSource()).toBe(0);
+    expect(prismaMock.transactionConfirmation.findMany).not.toHaveBeenCalled();
   });
+});
 
-  it("classifies large transactions as high risk", () => {
-    const level = assessRiskLevel({ amount: 5_000_000, asset: "BTC", direction: "OUT" });
-    expect(level).toBe("high");
-  });
-
-  it("classifies aged transactions as high risk", () => {
-    const level = assessRiskLevel({ amount: 10_000, asset: "USDC", direction: "IN", ageMinutes: 90 });
-    expect(level).toBe("high");
-  });
-
-  it("classifies very large transactions as critical", () => {
-    const level = assessRiskLevel({ amount: 15_000_000, asset: "BTC", direction: "OUT" });
-    expect(level).toBe("critical");
-  });
-
-  it("classifies aged collateral operations as critical", () => {
-    const level = assessRiskLevel({
-      amount: 100_000,
-      asset: "BTC",
-      direction: "OUT",
-      ageMinutes: 90,
-      type: "COLLATERAL_OPERATION_ONCHAIN",
-    });
-    expect(level).toBe("critical");
-  });
-
-  it("handles edge case at low threshold boundary", () => {
-    const level = assessRiskLevel({ amount: 100_000, asset: "BTC", direction: "IN" });
-    expect(level).toBe("low");
-  });
-
-  it("handles edge case at medium threshold boundary", () => {
-    const level = assessRiskLevel({ amount: 100_001, asset: "BTC", direction: "IN" });
-    expect(level).toBe("medium");
-  });
-
-  it("handles edge case at high threshold boundary", () => {
-    const level = assessRiskLevel({ amount: 1_000_001, asset: "BTC", direction: "IN" });
-    expect(level).toBe("high");
-  });
-
-  it("handles edge case at critical threshold boundary", () => {
-    const level = assessRiskLevel({ amount: 10_000_001, asset: "BTC", direction: "IN" });
-    expect(level).toBe("critical");
+describe("takeOwnership", () => {
+  it("sets status owned and records the owner", async () => {
+    await confirmation.takeOwnership("c1", "u1");
+    const data = prismaMock.transactionConfirmation.update.mock.calls.at(-1)![0].data;
+    expect(data.status).toBe("owned");
+    expect(data.ownedById).toBe("u1");
   });
 });

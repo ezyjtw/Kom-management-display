@@ -13,27 +13,55 @@
  * - poll_custody: Poll Custody API for new transactions/requests
  * - check_confirmations: Check for expired transaction confirmations
  * - cleanup_sessions: Clean up expired session metadata
+ *
+ * Processed by the always-on worker (src/worker/index.ts).
  */
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { CronExpressionParser } from "cron-parser";
 
 export type JobType =
-  | "sync_slack"
-  | "sync_email"
   | "sync_jira"
   | "check_sla"
   | "check_staking"
-  | "poll_custody"
   | "check_confirmations"
   | "cleanup_sessions"
-  | "sync_slack_channel"
+  | "sync_slack"
   | "sync_slack_replies"
+  | "slack_event"
   | "classify_thread"
   | "draft_client_comms"
   | "poll_status_pages"
-  | "score_vendor_reliability";
+  | "score_vendor_reliability"
+  | "komainu_poll_requests"
+  | "komainu_poll_transactions"
+  | "komainu_poll_collateral"
+  | "komainu_poll_audit_logs"
+  | "komainu_poll_eod_balances"
+  | "komainu_poll_staking"
+  | "komainu_poll_stakes"
+  | "sync_mail"
+  | "graph_teams_sync"
+  | "report_unticketed"
+  | "reconcile_tickets"
+  | "iai_overdue"
+  | "evaluate_alerts"
+  | "alert_digest"
+  | "poll_risk_signals"
+  | "generate_daily_checks"
+  | "collect_check_evidence"
+  | "mtd_autoclose"
+  | "poll_client_ticket_comments"
+  | "morning_handover"
+  | "gx_sprint_intake";
+
+/**
+ * Recurring job types that were replaced; their stored rows are removed on registration.
+ * Spec v2 §6.1: sync_slack_channel merged into sync_slack; graph_mail_sync (every 3 min) is now sync_mail (every 5 min).
+ */
+export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack_channel", "graph_mail_sync"] as const;
 
 /**
  * Job priority levels — lower number = higher priority.
@@ -62,21 +90,52 @@ export async function registerDefaultJobs(): Promise<void> {
     cronExpression: string;
     payload?: Record<string, unknown>;
   }> = [
-    { type: "sync_slack", cronExpression: "*/5 * * * *" },       // Every 5 mins
-    { type: "sync_email", cronExpression: "*/3 * * * *" },       // Every 3 mins
-    { type: "sync_jira", cronExpression: "*/10 * * * *" },       // Every 10 mins
-    { type: "check_sla", cronExpression: "*/1 * * * *" },        // Every minute
-    { type: "check_staking", cronExpression: "0 */6 * * *" },    // Every 6 hours
-    { type: "poll_custody", cronExpression: "*/2 * * * *" },     // Every 2 mins
-    { type: "check_confirmations", cronExpression: "*/5 * * * *" }, // Every 5 mins
-    { type: "cleanup_sessions", cronExpression: "0 2 * * *" },   // Daily at 2am
-    { type: "sync_slack_channel", cronExpression: "*/2 * * * *" }, // Every 2 mins
+    { type: "sync_jira", cronExpression: "*/2 * * * *" },          // spec §8.2: every 2 min, updated >= -5m
+    { type: "check_sla", cronExpression: "*/1 * * * *" },
+    { type: "check_staking", cronExpression: "0 */6 * * *" },
+    { type: "check_confirmations", cronExpression: "*/5 * * * *" },
+    { type: "cleanup_sessions", cronExpression: "0 2 * * *" },
+    // Spec §6.1: every registered Slack channel and shared mailbox, every 5 minutes, 24/7. Never paused out of hours.
+    { type: "sync_slack", cronExpression: "*/5 * * * *" },
+    { type: "sync_mail", cronExpression: "*/5 * * * *" },
+    { type: "komainu_poll_requests", cronExpression: "*/1 * * * *" },
+    { type: "komainu_poll_transactions", cronExpression: "*/2 * * * *" },
+    // Every 10 min; the per-window 60-second cadence comes with OesWindow in Phase 6.
+    { type: "komainu_poll_collateral", cronExpression: "*/10 * * * *" },
+    { type: "komainu_poll_audit_logs", cronExpression: "*/5 * * * *" },
+    { type: "komainu_poll_eod_balances", cronExpression: "0 7 * * *" },
+    { type: "komainu_poll_staking", cronExpression: "30 7 * * *" },
+    { type: "komainu_poll_stakes", cronExpression: "45 7 * * *" },
+    { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
+    { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
+    { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
+    { type: "reconcile_tickets", cronExpression: "15 * * * *" },   // spec §10.3: hourly
+    { type: "iai_overdue", cronExpression: "5 * * * *" },          // spec §10.4
+    { type: "evaluate_alerts", cronExpression: "*/1 * * * *" },    // spec §11.1: every 60 s; rules may declare their own cadence
+    { type: "alert_digest", cronExpression: "TZ=Europe/London 0 8 * * *" }, // spec §11.3: daily digest of medium config rules
+    { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
+    { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
+    { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
+    { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
+    { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
+    { type: "gx_sprint_intake", cronExpression: "20 * * * *" }, // spec §16.1: hourly check; full intake on gx.sprint_intake.cron or KMNC changes
+    { type: "morning_handover", cronExpression: "TZ=Europe/London */15 9-11 * * 1-5" }, // spec §14.3: from 09:00 UK post handovers, retry failed tickets, remind when missing
   ];
+
+  await prisma.backgroundJob.deleteMany({
+    where: { type: { in: [...RETIRED_JOB_TYPES] }, isRecurring: true },
+  });
 
   for (const job of defaultJobs) {
     const existing = await prisma.backgroundJob.findFirst({
       where: { type: job.type, isRecurring: true },
     });
+
+    if (existing && existing.cronExpression !== job.cronExpression) {
+      // A recurring job whose cadence changed (e.g. an older sync_slack row) is brought in line with the code.
+      await prisma.backgroundJob.update({ where: { id: existing.id }, data: { cronExpression: job.cronExpression } });
+      logger.job(job.type, `Recurring job cadence updated: ${job.cronExpression}`);
+    }
 
     if (!existing) {
       await prisma.backgroundJob.create({
@@ -133,9 +192,30 @@ export async function enqueueJob(
   return job.id;
 }
 
+/** A job still "running" after this long is assumed orphaned by a dead worker. */
+export const STALE_RUNNING_MS = 15 * 60_000;
+
 /**
- * Fetch and lock the next pending job for processing.
- * Uses an atomic update to prevent double-processing.
+ * Return orphaned "running" jobs to the queue so a crashed worker cannot
+ * block a recurring job forever. Returns the number recovered.
+ */
+export async function recoverStaleJobs(now = new Date()): Promise<number> {
+  const { count } = await prisma.backgroundJob.updateMany({
+    where: {
+      status: "running",
+      type: { not: "worker_heartbeat" },
+      startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
+    },
+    data: { status: "retrying", nextRunAt: now, error: "Recovered: worker stopped mid-run" },
+  });
+  if (count > 0) logger.warn("Recovered stale running jobs", { count });
+  return count;
+}
+
+/**
+ * Fetch and lock the next due job. Uses a conditional update to prevent
+ * double-processing. A recurring job is skipped (and rescheduled) while a
+ * previous run of the same type is still running, so runs never overlap.
  */
 export async function claimNextJob(): Promise<{
   id: string;
@@ -143,55 +223,62 @@ export async function claimNextJob(): Promise<{
   payload: unknown;
   attempts: number;
 } | null> {
-  // Find the highest-priority pending job that's due
-  // Priority ordering: 0=critical, 1=high, 2=normal, 3=low (ascending)
-  // Within same priority, oldest first (nextRunAt ascending)
-  const job = await prisma.backgroundJob.findFirst({
+  const now = new Date();
+  // Priority 0=critical … 3=low, then oldest first.
+  const candidates = await prisma.backgroundJob.findMany({
     where: {
       status: { in: ["pending", "retrying"] },
-      nextRunAt: { lte: new Date() },
-      deadLetteredAt: null, // Exclude dead-lettered jobs
+      nextRunAt: { lte: now },
+      deadLetteredAt: null,
     },
     orderBy: [{ priority: "asc" }, { nextRunAt: "asc" }],
+    take: 10,
   });
 
-  if (!job) return null;
+  for (const job of candidates) {
+    if (job.isRecurring) {
+      const overlapping = await prisma.backgroundJob.count({
+        where: { type: job.type, status: "running", id: { not: job.id } },
+      });
+      if (overlapping > 0) {
+        await prisma.backgroundJob.updateMany({
+          where: { id: job.id, status: job.status },
+          data: { nextRunAt: getNextCronRun(job.cronExpression ?? "", now) },
+        });
+        logger.job(job.type, "Skipped recurring run: previous run still in progress");
+        continue;
+      }
+    }
 
-  // Atomically claim the job
-  try {
-    await prisma.backgroundJob.update({
+    const claimed = await prisma.backgroundJob.updateMany({
       where: { id: job.id, status: job.status },
-      data: {
-        status: "running",
-        startedAt: new Date(),
-        attempts: job.attempts + 1,
-      },
+      data: { status: "running", startedAt: now, attempts: job.attempts + 1 },
     });
-  } catch {
-    // Another worker claimed it
-    return null;
+    if (claimed.count === 0) continue; // another worker got it
+
+    return { id: job.id, type: job.type, payload: job.payload, attempts: job.attempts + 1 };
   }
 
-  return {
-    id: job.id,
-    type: job.type,
-    payload: job.payload,
-    attempts: job.attempts + 1,
-  };
+  return null;
 }
 
 /**
  * Mark a job as completed.
  */
 export async function completeJob(jobId: string, result?: unknown): Promise<void> {
+  const now = new Date();
+  const json = result ? (JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue) : undefined;
   const job = await prisma.backgroundJob.update({
     where: { id: jobId },
     data: {
       status: "completed",
-      completedAt: new Date(),
-      result: result ? JSON.parse(JSON.stringify(result)) : undefined,
-      lastRunAt: new Date(),
+      completedAt: now,
+      result: json,
+      lastRunAt: now,
     },
+  });
+  await prisma.backgroundJobRun.create({
+    data: { jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: "succeeded", result: json },
   });
 
   // If recurring, schedule the next run
@@ -220,7 +307,18 @@ export async function failJob(jobId: string, error: string): Promise<void> {
   const job = await prisma.backgroundJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  if (job.attempts < job.maxAttempts) {
+  const now = new Date();
+  const exhausted = job.attempts >= job.maxAttempts;
+  // Durable run record first: it is never reset, so a dead-lettered run of a
+  // recurring job stays visible after the job is rescheduled.
+  await prisma.backgroundJobRun.create({
+    data: {
+      jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now,
+      status: exhausted ? "dead_lettered" : "retrying", error: error.slice(0, 4000),
+    },
+  });
+
+  if (!exhausted) {
     // Retry with exponential backoff: 30s, 60s, 120s, ...
     const backoffMs = Math.pow(2, job.attempts) * 30_000;
     await prisma.backgroundJob.update({
@@ -245,7 +343,7 @@ export async function failJob(jobId: string, error: string): Promise<void> {
       },
     });
 
-    // If recurring, still schedule the next regular run
+    // If recurring, schedule the next regular run. The dead-lettered run stays in BackgroundJobRun.
     if (job.isRecurring && job.cronExpression) {
       const nextRun = getNextCronRun(job.cronExpression);
       await prisma.backgroundJob.update({
@@ -293,9 +391,18 @@ export async function getJobQueueStatus() {
     },
   });
 
+  const since = new Date(Date.now() - 24 * 3_600_000);
+  const deadLettered24h = await prisma.backgroundJobRun.findMany({
+    where: { status: "dead_lettered", finishedAt: { gte: since } },
+    orderBy: { finishedAt: "desc" },
+    take: 100,
+    select: { type: true, finishedAt: true, error: true },
+  });
+
   return {
-    summary: { pending, running, failed, completed },
+    summary: { pending, running, failed, completed, deadLettered24h: deadLettered24h.length },
     recurringJobs: jobs,
+    deadLetteredRuns24h: deadLettered24h,
   };
 }
 
@@ -353,8 +460,30 @@ export async function isAnyWorkerAlive(thresholdMs = 120_000): Promise<boolean> 
   return alive > 0;
 }
 
+/** Drop old run records: successful runs after `okDays`, retrying/dead-lettered runs after `failDays`. */
+export async function pruneJobRuns(now = new Date(), okDays = 30, failDays = 400): Promise<number> {
+  const [ok, failed] = await Promise.all([
+    prisma.backgroundJobRun.deleteMany({ where: { status: "succeeded", finishedAt: { lt: new Date(now.getTime() - okDays * 86_400_000) } } }),
+    prisma.backgroundJobRun.deleteMany({ where: { status: { not: "succeeded" }, finishedAt: { lt: new Date(now.getTime() - failDays * 86_400_000) } } }),
+  ]);
+  return ok.count + failed.count;
+}
+
 /**
- * Get dead-lettered jobs for review/replay.
+ * Dead-lettered runs (durable, including recurring jobs that were rescheduled).
+ */
+export async function getDeadLetteredRuns(limit = 50, since?: Date) {
+  return prisma.backgroundJobRun.findMany({
+    where: { status: "dead_lettered", ...(since ? { finishedAt: { gte: since } } : {}) },
+    orderBy: { finishedAt: "desc" },
+    take: limit,
+    select: { id: true, jobId: true, type: true, attempt: true, startedAt: true, finishedAt: true, error: true },
+  });
+}
+
+/**
+ * Get dead-lettered one-off jobs for review/replay (recurring jobs reschedule;
+ * see getDeadLetteredRuns for their failed runs).
  */
 export async function getDeadLetterJobs(limit = 50) {
   return prisma.backgroundJob.findMany({
@@ -401,57 +530,21 @@ export async function replayDeadLetterJob(jobId: string): Promise<void> {
 }
 
 /**
- * Simple cron expression parser — returns the next run time.
- * Supports: "* /N * * * *" (every N minutes), "N * * * *" (at minute N), "0 N * * *" (at hour N).
+ * Next run time for a 5-field cron expression, evaluated in UTC.
+ * An invalid expression falls back to five minutes from now so the job
+ * keeps running instead of stalling; the error is logged.
  */
-function getNextCronRun(cron: string): Date {
-  const parts = cron.split(" ");
-  const now = new Date();
-  const next = new Date(now);
-
-  if (parts.length < 5) {
-    // Default: 5 minutes from now
-    next.setMinutes(next.getMinutes() + 5);
-    return next;
+/** Cron in UTC, or in a named zone with a `TZ=<zone> ` prefix (e.g. "TZ=Europe/London 30 8 * * *"). */
+export function getNextCronRun(cron: string, from: Date = new Date()): Date {
+  try {
+    const m = /^TZ=(\S+)\s+(.+)$/.exec(cron.trim());
+    const [tz, expr] = m ? [m[1], m[2]] : ["UTC", cron];
+    return CronExpressionParser.parse(expr, { currentDate: from, tz }).next().toDate();
+  } catch (error) {
+    logger.error("Invalid cron expression", {
+      cron,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Date(from.getTime() + 5 * 60_000);
   }
-
-  const [minute, hour] = parts;
-
-  // Every N minutes: */N * * * *
-  if (minute.startsWith("*/")) {
-    const interval = parseInt(minute.substring(2));
-    next.setMinutes(next.getMinutes() + interval);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    return next;
-  }
-
-  // Every N hours at minute 0: 0 */N * * *
-  if (minute === "0" && hour.startsWith("*/")) {
-    const interval = parseInt(hour.substring(2));
-    next.setHours(next.getHours() + interval);
-    next.setMinutes(0);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    return next;
-  }
-
-  // Specific hour: 0 N * * *
-  if (minute === "0" && !hour.includes("*")) {
-    const targetHour = parseInt(hour);
-    next.setHours(targetHour);
-    next.setMinutes(0);
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
-    }
-    return next;
-  }
-
-  // Fallback: 5 minutes from now
-  next.setMinutes(next.getMinutes() + 5);
-  next.setSeconds(0);
-  next.setMilliseconds(0);
-  return next;
 }

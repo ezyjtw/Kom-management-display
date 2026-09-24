@@ -1,82 +1,55 @@
 /**
- * Transaction confirmation flow — risk-level-based notifications.
+ * Read-only tracker of GX risk-flagged transactions awaiting human action in GX.
  *
- * Low risk:   Auto-logged, no notification required
- * Medium risk: Slack notification to ops channel requesting acknowledgment
- * High risk:  Slack + email to compliance requiring sign-off
- * Critical:   Slack + email + auto-escalation if not acknowledged within 15 mins
+ * KOMmand Centre never approves, signs or confirms transactions (H1). Risk levels
+ * come from GX only (H5); without one the level is "unknown". Humans may only
+ * take ownership, add a note or link a ticket. Closure is automatic once the
+ * Komainu API shows the item is no longer PENDING.
  */
 
 import { prisma } from "@/lib/prisma";
 import { sendSlackNotification } from "@/lib/integrations/slack";
+import {
+  fetchRequest,
+  fetchTransaction,
+  isKomainuConfigured,
+} from "@/lib/integrations/komainu-api/client";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
-import type { TransactionRiskLevel, ConfirmationStatus } from "@prisma/client";
+import type { TransactionRiskLevel } from "@prisma/client";
+import { formatAmount, type DecimalValue } from "@/lib/decimal";
 
 export interface TransactionForConfirmation {
   transactionId: string;
   requestId?: string;
   asset: string;
-  amount: number;
+  amount: DecimalValue;
   direction: string;
   account?: string;
   workspace?: string;
   riskLevel?: TransactionRiskLevel;
 }
 
-/**
- * Assess risk level of a transaction based on amount, asset, and age.
- */
-export function assessRiskLevel(tx: {
-  amount: number;
-  asset: string;
-  direction: string;
-  ageMinutes?: number;
-  type?: string;
-}): TransactionRiskLevel {
-  const { amount, asset, direction, ageMinutes = 0, type } = tx;
+const OPEN_STATUSES = ["pending", "owned", "escalated"] as const;
 
-  // Critical: very large amounts or aged collateral operations
-  if (amount > 10_000_000 || (type?.includes("COLLATERAL") && ageMinutes > 60)) {
-    return "critical";
-  }
-
-  // High: large transactions or old pending ones
-  if (amount > 1_000_000 || ageMinutes > 60) {
-    return "high";
-  }
-
-  // Medium: moderate amounts or outbound
-  if (amount > 100_000 || direction === "OUT") {
-    return "medium";
-  }
-
-  // Low: small inbound transactions
-  return "low";
+function isElevated(riskLevel: TransactionRiskLevel): boolean {
+  return riskLevel === "high" || riskLevel === "critical";
 }
 
-/**
- * Create a confirmation record and send appropriate notifications.
- */
 export async function createTransactionConfirmation(
   tx: TransactionForConfirmation,
 ): Promise<{ id: string; riskLevel: TransactionRiskLevel; notifications: string[] }> {
-  const riskLevel = tx.riskLevel ?? assessRiskLevel({
-    amount: tx.amount,
-    asset: tx.asset,
-    direction: tx.direction,
-  });
+  const riskLevel: TransactionRiskLevel = tx.riskLevel ?? "unknown";
 
   const notifications: string[] = [];
   const opsChannel = env("SLACK_OPS_CHANNEL") || "#ops-alerts";
   const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
   const complianceEmails = env("COMPLIANCE_EMAIL_RECIPIENTS") || "";
+  const channel = isElevated(riskLevel) ? complianceChannel : opsChannel;
 
-  // Calculate expiry based on risk level
   const expiryMinutes = riskLevel === "critical" ? 15 : riskLevel === "high" ? 60 : 240;
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
-  // Upsert the confirmation record
   const confirmation = await prisma.transactionConfirmation.upsert({
     where: { transactionId: tx.transactionId },
     update: {
@@ -98,32 +71,23 @@ export async function createTransactionConfirmation(
       account: tx.account || "",
       workspace: tx.workspace || "",
       expiresAt,
-      slackChannel: riskLevel === "high" || riskLevel === "critical" ? complianceChannel : opsChannel,
-      emailSentTo: riskLevel === "high" || riskLevel === "critical" ? complianceEmails : "",
+      slackChannel: channel,
+      emailSentTo: isElevated(riskLevel) ? complianceEmails : "",
     },
   });
 
-  // Send Slack notification for medium+ risk
   if (riskLevel !== "low") {
-    const emoji = riskLevel === "critical" ? "🚨" : riskLevel === "high" ? "⚠️" : "📋";
-    const urgency = riskLevel === "critical" ? "CRITICAL" : riskLevel === "high" ? "HIGH RISK" : "MEDIUM RISK";
-    const channel = riskLevel === "high" || riskLevel === "critical" ? complianceChannel : opsChannel;
-
+    const urgency = riskLevel === "unknown" ? "RISK UNKNOWN" : `${riskLevel.toUpperCase()} RISK`;
     const message = [
-      `${emoji} *${urgency} Transaction Confirmation Required*`,
+      `*${urgency}: transaction awaiting action in GX*`,
       "",
       `*Transaction:* \`${tx.transactionId}\``,
       `*Asset:* ${tx.asset}`,
-      `*Amount:* ${tx.amount.toLocaleString()}`,
+      `*Amount:* ${formatAmount(tx.amount, 18)}`,
       `*Direction:* ${tx.direction}`,
       tx.account ? `*Account:* ${tx.account}` : "",
       "",
-      `*Risk Level:* ${riskLevel.toUpperCase()}`,
-      `*Expires:* ${expiresAt.toISOString()}`,
-      "",
-      riskLevel === "critical" || riskLevel === "high"
-        ? "Please sign off on this transaction in the KOMmand Centre approvals page."
-        : "Please acknowledge this transaction in the KOMmand Centre approvals page.",
+      "Action it in GX. Take ownership in KOMmand Centre so the team knows who is handling it.",
     ].filter(Boolean).join("\n");
 
     try {
@@ -133,10 +97,6 @@ export async function createTransactionConfirmation(
         data: { slackNotifiedAt: new Date(), slackChannel: channel },
       });
       notifications.push("slack");
-      logger.integration("slack", `Transaction confirmation sent to ${channel}`, {
-        transactionId: tx.transactionId,
-        riskLevel,
-      });
     } catch (error) {
       logger.error("Failed to send Slack notification for transaction confirmation", {
         transactionId: tx.transactionId,
@@ -145,8 +105,7 @@ export async function createTransactionConfirmation(
     }
   }
 
-  // Send email notification for high/critical risk
-  if ((riskLevel === "high" || riskLevel === "critical") && complianceEmails) {
+  if (isElevated(riskLevel) && complianceEmails) {
     try {
       const { sendConfirmationEmail } = await import("@/lib/confirmation-email");
       await sendConfirmationEmail({
@@ -164,11 +123,6 @@ export async function createTransactionConfirmation(
         data: { emailNotifiedAt: new Date() },
       });
       notifications.push("email");
-      logger.integration("email", `Transaction confirmation email sent`, {
-        transactionId: tx.transactionId,
-        riskLevel,
-        recipients: complianceEmails,
-      });
     } catch (error) {
       logger.error("Failed to send email for transaction confirmation", {
         transactionId: tx.transactionId,
@@ -177,7 +131,6 @@ export async function createTransactionConfirmation(
     }
   }
 
-  // Log audit entry
   await prisma.auditLog.create({
     data: {
       action: "transaction_confirmation_created",
@@ -188,35 +141,19 @@ export async function createTransactionConfirmation(
     },
   });
 
-  logger.info("Transaction confirmation created", {
-    confirmationId: confirmation.id,
-    transactionId: tx.transactionId,
-    riskLevel,
-    notifications,
-  });
-
   return { id: confirmation.id, riskLevel, notifications };
 }
 
-/**
- * Acknowledge a transaction confirmation (for medium risk).
- */
-export async function acknowledgeConfirmation(
-  confirmationId: string,
-  userId: string,
-): Promise<void> {
+/** "I am handling this in GX." */
+export async function takeOwnership(confirmationId: string, userId: string): Promise<void> {
   await prisma.transactionConfirmation.update({
     where: { id: confirmationId },
-    data: {
-      status: "acknowledged",
-      acknowledgedById: userId,
-      acknowledgedAt: new Date(),
-    },
+    data: { status: "owned", ownedById: userId, ownedAt: new Date() },
   });
 
   await prisma.auditLog.create({
     data: {
-      action: "transaction_confirmation_acknowledged",
+      action: "transaction_confirmation_owned",
       entityType: "transaction_confirmation",
       entityId: confirmationId,
       userId,
@@ -224,99 +161,137 @@ export async function acknowledgeConfirmation(
   });
 }
 
-/**
- * Sign off on a transaction confirmation (for high/critical risk).
- */
-export async function signOffConfirmation(
-  confirmationId: string,
-  userId: string,
-): Promise<void> {
+export async function addNote(confirmationId: string, userId: string, note: string): Promise<void> {
+  const existing = await prisma.transactionConfirmation.findUniqueOrThrow({
+    where: { id: confirmationId },
+    select: { notes: true },
+  });
+  const entry = `[${new Date().toISOString()}] ${note}`;
+
   await prisma.transactionConfirmation.update({
     where: { id: confirmationId },
-    data: {
-      status: "signed_off",
-      signedOffById: userId,
-      signedOffAt: new Date(),
-    },
+    data: { notes: existing.notes ? `${existing.notes}\n${entry}` : entry },
   });
 
   await prisma.auditLog.create({
     data: {
-      action: "transaction_confirmation_signed_off",
+      action: "transaction_confirmation_note_added",
       entityType: "transaction_confirmation",
       entityId: confirmationId,
       userId,
+      details: JSON.stringify({ note }),
+    },
+  });
+}
+
+export async function linkTicket(confirmationId: string, userId: string, ticketRef: string): Promise<void> {
+  await prisma.transactionConfirmation.update({
+    where: { id: confirmationId },
+    data: { ticketRef },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "transaction_confirmation_ticket_linked",
+      entityType: "transaction_confirmation",
+      entityId: confirmationId,
+      userId,
+      details: JSON.stringify({ ticketRef }),
     },
   });
 }
 
 /**
- * Escalate a transaction confirmation.
+ * Close open confirmations whose request/transaction is no longer PENDING in
+ * the Komainu API. Returns the number closed.
  */
-export async function escalateConfirmation(
-  confirmationId: string,
-  userId: string,
-  reason: string,
-): Promise<void> {
-  await prisma.transactionConfirmation.update({
+export async function syncConfirmationsWithSource(): Promise<number> {
+  if (!isKomainuConfigured()) return 0;
+
+  const open = await prisma.transactionConfirmation.findMany({
+    where: { status: { in: [...OPEN_STATUSES] } },
+    select: { id: true, transactionId: true, requestId: true },
+    take: 200,
+  });
+
+  let closed = 0;
+  for (const conf of open) {
+    try {
+      const sourceStatus = conf.requestId
+        ? (await fetchRequest(conf.requestId)).status
+        : (await fetchTransaction(conf.transactionId)).status;
+      if (sourceStatus === "PENDING") continue;
+
+      await prisma.transactionConfirmation.update({
+        where: { id: conf.id },
+        data: { status: "closed_in_source", closedInSourceAt: new Date() },
+      });
+      await prisma.auditLog.create({
+        data: {
+          action: "transaction_confirmation_closed_in_source",
+          entityType: "transaction_confirmation",
+          entityId: conf.id,
+          userId: "system",
+          details: JSON.stringify({ sourceStatus }),
+        },
+      });
+      closed++;
+    } catch (error) {
+      logger.warn("Could not check confirmation against Komainu API", {
+        confirmationId: conf.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return closed;
+}
+
+/** System-only escalation, used when an elevated item expires unowned. */
+async function escalateConfirmation(confirmationId: string, reason: string): Promise<void> {
+  const confirmation = await prisma.transactionConfirmation.update({
     where: { id: confirmationId },
     data: {
       status: "escalated",
-      escalatedById: userId,
+      escalatedById: "system",
       escalatedAt: new Date(),
       escalationReason: reason,
     },
   });
 
-  // Notify compliance channel
-  const confirmation = await prisma.transactionConfirmation.findUnique({
-    where: { id: confirmationId },
-  });
-
-  if (confirmation) {
-    const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
-    await sendSlackNotification(
-      complianceChannel,
-      `🚨 *Transaction Escalated*\n\nTransaction \`${confirmation.transactionId}\` has been escalated.\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${confirmation.amount.toLocaleString()}`
-    ).catch(() => {});
-  }
+  const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
+  await sendSlackNotification(
+    complianceChannel,
+    `*Transaction awaiting action in GX has been escalated*\n\nTransaction \`${confirmation.transactionId}\`\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${formatAmount(confirmation.amount, 18)}`,
+  ).catch(() => {});
 
   await prisma.auditLog.create({
     data: {
       action: "transaction_confirmation_escalated",
       entityType: "transaction_confirmation",
       entityId: confirmationId,
-      userId,
+      userId: "system",
       details: JSON.stringify({ reason }),
     },
   });
 }
 
-/**
- * Check for expired confirmations and auto-escalate.
- */
+/** Expire unowned items past their deadline; escalate elevated ones. */
 export async function checkExpiredConfirmations(): Promise<number> {
   const expired = await prisma.transactionConfirmation.findMany({
-    where: {
-      status: "pending",
-      expiresAt: { lt: new Date() },
-    },
+    where: { status: "pending", expiresAt: { lt: new Date() } },
   });
 
   for (const conf of expired) {
-    await prisma.transactionConfirmation.update({
-      where: { id: conf.id },
-      data: { status: "expired" },
-    });
-
-    // Auto-escalate critical transactions
-    if (conf.riskLevel === "critical" || conf.riskLevel === "high") {
-      await escalateConfirmation(conf.id, "system", "Auto-escalated: confirmation expired without acknowledgment");
+    if (isElevated(conf.riskLevel)) {
+      await escalateConfirmation(conf.id, "Auto-escalated: nobody took ownership before expiry");
+    } else {
+      await prisma.transactionConfirmation.update({
+        where: { id: conf.id },
+        data: { status: "expired" },
+      });
     }
-
     logger.warn("Transaction confirmation expired", {
       confirmationId: conf.id,
-      transactionId: conf.transactionId,
       riskLevel: conf.riskLevel,
     });
   }

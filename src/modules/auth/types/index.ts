@@ -34,7 +34,12 @@ export type Resource =
   | "report"
   | "metrics"
   | "client_comms"
-  | "service_provider";
+  | "service_provider"
+  | "client"
+  | "sla_policy"
+  | "alert_rule"
+  | "work_item"
+  | "app_setting";
 
 export type Action =
   | "view"
@@ -77,15 +82,15 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign", "escalate"], scope: "all" },
     daily_check:      { actions: ["view", "create", "update"], scope: "all" },
     staking_wallet:   { actions: ["view", "create", "update"], scope: "all" },
-    settlement:       { actions: ["view", "create", "update", "approve"], scope: "all" },
+    settlement:       { actions: ["view", "create", "update"], scope: "all" },
     screening:        { actions: ["view", "create", "update"], scope: "all" },
-    usdc_ramp:        { actions: ["view", "create", "update", "approve"], scope: "all" },
-    token_review:     { actions: ["view", "create", "update", "approve"], scope: "all" },
+    usdc_ramp:        { actions: ["view", "create", "update"], scope: "all" },
+    token_review:     { actions: ["view", "create", "update"], scope: "all" },
     export:           { actions: ["view", "export"], scope: "all" },
     audit_log:        { actions: ["view"], scope: "all" },
     user:             { actions: ["view", "create", "update", "delete"], scope: "all" },
     branding:         { actions: ["view", "update"], scope: "all" },
-    transaction_confirmation: { actions: ["view", "create", "acknowledge", "approve", "escalate"], scope: "all" },
+    transaction_confirmation: { actions: ["view", "create", "acknowledge", "update"], scope: "all" },
     feature_flag:     { actions: ["view", "create", "update", "delete", "configure"], scope: "all" },
     session:          { actions: ["view", "delete"], scope: "all" },
     background_job:   { actions: ["view", "create", "configure"], scope: "all" },
@@ -93,6 +98,11 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view", "create", "update", "delete", "approve"], scope: "all" },
     service_provider: { actions: ["view", "create", "update", "delete"], scope: "all" },
+    client:           { actions: ["view", "create", "update"], scope: "all" },
+    sla_policy:       { actions: ["view", "configure"], scope: "all" },
+    alert_rule:       { actions: ["view", "configure"], scope: "all" },
+    work_item:        { actions: ["view", "create", "update", "assign", "resolve"], scope: "all" },
+    app_setting:      { actions: ["view", "configure"], scope: "all" },
   },
   lead: {
     employee:         { actions: ["view", "update"], scope: "team" },
@@ -106,15 +116,15 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     travel_rule_case: { actions: ["view", "create", "update", "resolve", "assign", "escalate"], scope: "team" },
     daily_check:      { actions: ["view", "create", "update"], scope: "team" },
     staking_wallet:   { actions: ["view", "update"], scope: "all" },
-    settlement:       { actions: ["view", "update", "approve"], scope: "all" },
+    settlement:       { actions: ["view", "update"], scope: "all" },
     screening:        { actions: ["view", "update"], scope: "all" },
-    usdc_ramp:        { actions: ["view", "update", "approve"], scope: "all" },
+    usdc_ramp:        { actions: ["view", "update"], scope: "all" },
     token_review:     { actions: ["view", "update"], scope: "all" },
     export:           { actions: ["view", "export"], scope: "team" },
     audit_log:        { actions: ["view"], scope: "team" },
     user:             { actions: ["view"], scope: "team" },
     branding:         { actions: ["view"], scope: "all" },
-    transaction_confirmation: { actions: ["view", "acknowledge", "approve", "escalate"], scope: "team" },
+    transaction_confirmation: { actions: ["view", "acknowledge", "update"], scope: "team" },
     feature_flag:     { actions: ["view"], scope: "all" },
     session:          { actions: ["view", "delete"], scope: "own" },
     background_job:   { actions: ["view"], scope: "all" },
@@ -122,6 +132,11 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view", "approve"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: ["view"], scope: "all" },
+    work_item:        { actions: ["view", "update", "assign", "resolve"], scope: "all" },
+    app_setting:      { actions: ["view"], scope: "all" },
   },
   employee: {
     employee:         { actions: ["view_own"], scope: "own" },
@@ -143,7 +158,7 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     audit_log:        { actions: [], scope: "none" },
     user:             { actions: [], scope: "none" },
     branding:         { actions: ["view"], scope: "all" },
-    transaction_confirmation: { actions: ["view", "acknowledge"], scope: "own" },
+    transaction_confirmation: { actions: ["view", "acknowledge", "update"], scope: "own" },
     feature_flag:     { actions: ["view"], scope: "all" },
     session:          { actions: ["view", "delete"], scope: "own" },
     background_job:   { actions: [], scope: "none" },
@@ -151,6 +166,11 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: [], scope: "none" },
     client_comms:     { actions: ["view"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: [], scope: "none" },
+    work_item:        { actions: ["view", "update", "resolve"], scope: "all" },
+    app_setting:      { actions: [], scope: "none" },
   },
   auditor: {
     employee:         { actions: ["view"], scope: "all" },
@@ -180,6 +200,11 @@ export const AUTHORIZATION_MATRIX: Record<Role, Partial<Record<Resource, Permiss
     metrics:          { actions: ["view"], scope: "all" },
     client_comms:     { actions: ["view"], scope: "all" },
     service_provider: { actions: ["view"], scope: "all" },
+    client:           { actions: ["view"], scope: "all" },
+    sla_policy:       { actions: ["view"], scope: "all" },
+    alert_rule:       { actions: ["view"], scope: "all" },
+    work_item:        { actions: ["view"], scope: "all" },
+    app_setting:      { actions: ["view"], scope: "all" },
   },
 };
 
@@ -212,4 +237,9 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   metrics: [],
   client_comms: [],
   service_provider: ["contactEmail"],
+  client: ["komainuAccountNos"],
+  sla_policy: [],
+  alert_rule: [],
+  work_item: [],
+  app_setting: [],
 };

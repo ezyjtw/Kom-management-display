@@ -1,10 +1,12 @@
 "use client";
 
+import { formatAmount } from "@/lib/decimal";
+
 interface TransactionDetailsProps {
   transactionId: string;
   txHash: string;
   direction: string;
-  amount: number;
+  amount: string;
   asset: string;
   senderAddress: string;
   receiverAddress: string;
@@ -42,7 +44,7 @@ export default function TransactionDetails(props: TransactionDetailsProps) {
         <div>
           <span className="text-xs text-muted-foreground block">Asset / Amount</span>
           <span className="font-mono text-foreground">
-            {props.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} {props.asset}
+            {formatAmount(props.amount, 8)} {props.asset}
           </span>
         </div>
         <div>

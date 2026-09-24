@@ -36,7 +36,7 @@ import { metrics, recordApiRequest } from "@/lib/metrics";
 import { getIdempotencyStats } from "@/lib/idempotency";
 import {
   createTransactionConfirmationSchema,
-  confirmationActionSchema,
+  transactionConfirmationPostSchema,
   upsertFeatureFlagSchema,
   searchQuerySchema,
   reportQuerySchema,
@@ -385,13 +385,13 @@ describe("Extended Validation Schemas", () => {
   });
 
   it("validates confirmation actions", () => {
-    const valid = validateBody(confirmationActionSchema, {
-      action: "acknowledge",
+    const valid = validateBody(transactionConfirmationPostSchema, {
+      action: "take_ownership",
       confirmationId: "conf-123",
     });
     expect(valid.success).toBe(true);
 
-    const invalid = validateBody(confirmationActionSchema, {
+    const invalid = validateBody(transactionConfirmationPostSchema, {
       action: "invalid_action",
       confirmationId: "conf-123",
     });
@@ -429,7 +429,7 @@ describe("Extended Validation Schemas", () => {
   });
 
   it("validates job enqueueing", () => {
-    const valid = validateBody(enqueueJobSchema, { type: "sync_slack" });
+    const valid = validateBody(enqueueJobSchema, { type: "sync_jira" });
     expect(valid.success).toBe(true);
 
     const invalid = validateBody(enqueueJobSchema, { type: "invalid_job" });

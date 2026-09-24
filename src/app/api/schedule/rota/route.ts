@@ -5,6 +5,8 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, createRotaSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/schedule/rota
@@ -166,59 +168,66 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createRotaSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { subTeamId, employeeId, role, startDate, endDate, rotationCycle, shiftType, isWfh, location } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "rota_changed", entityType: "rota_assignment", entityId: "rota", userId: auditActorInfo.userId, summary: "Change the rota (drives routing and cover)", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createRotaSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { subTeamId, employeeId, role, startDate, endDate, rotationCycle, shiftType, isWfh, location } = body;
 
-    if (!subTeamId || !employeeId || !startDate || !endDate) {
-      return apiValidationError("Missing required fields: subTeamId, employeeId, startDate, endDate");
-    }
+        if (!subTeamId || !employeeId || !startDate || !endDate) {
+          return apiValidationError("Missing required fields: subTeamId, employeeId, startDate, endDate");
+        }
 
-    const assignment = await prisma.rotaAssignment.upsert({
-      where: {
-        subTeamId_employeeId_startDate: {
-          subTeamId,
-          employeeId,
-          startDate: new Date(startDate),
-        },
-      },
-      update: {
-        role: role || "member",
-        endDate: new Date(endDate),
-        rotationCycle: rotationCycle || "weekly",
-        shiftType: shiftType || "standard",
-        isWfh: isWfh || false,
-        location: location || "London",
-      },
-      create: {
-        subTeamId,
-        employeeId,
-        role: role || "member",
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        rotationCycle: rotationCycle || "weekly",
-        shiftType: shiftType || "standard",
-        isWfh: isWfh || false,
-        location: location || "London",
-      },
-      include: {
-        employee: { select: { id: true, name: true } },
-        subTeam: { select: { id: true, name: true } },
-      },
-    });
+        const assignment = await prisma.rotaAssignment.upsert({
+          where: {
+            subTeamId_employeeId_startDate: {
+              subTeamId,
+              employeeId,
+              startDate: new Date(startDate),
+            },
+          },
+          update: {
+            role: role || "member",
+            endDate: new Date(endDate),
+            rotationCycle: rotationCycle || "weekly",
+            shiftType: shiftType || "standard",
+            isWfh: isWfh || false,
+            location: location || "London",
+          },
+          create: {
+            subTeamId,
+            employeeId,
+            role: role || "member",
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            rotationCycle: rotationCycle || "weekly",
+            shiftType: shiftType || "standard",
+            isWfh: isWfh || false,
+            location: location || "London",
+          },
+          include: {
+            employee: { select: { id: true, name: true } },
+            subTeam: { select: { id: true, name: true } },
+          },
+        });
 
-    await prisma.auditLog.create({
-      data: {
-        action: "rota_assigned",
-        entityType: "rota_assignment",
-        entityId: assignment.id,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({ subTeamId, employeeId, role, startDate, shiftType, location }),
-      },
-    });
+        await prisma.auditLog.create({
+          data: {
+            action: "rota_assigned",
+            entityType: "rota_assignment",
+            entityId: assignment.id,
+            userId: auth.employeeId || auth.id,
+            details: JSON.stringify({ subTeamId, employeeId, role, startDate, shiftType, location }),
+          },
+        });
 
-    return apiSuccess(assignment, undefined, 201);
+        return apiSuccess(assignment, undefined, 201);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "rota POST");
   }

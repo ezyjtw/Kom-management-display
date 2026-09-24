@@ -6,6 +6,8 @@ import { TRAVEL_RULE_SLA } from "@/lib/sla";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createTravelRuleCaseSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 interface BulkRow {
   transactionId: string;
@@ -41,227 +43,234 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createTravelRuleCaseSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { action, rows, caseIds, ownerUserId } = body;
-    const actorId = auth.employeeId || auth.id;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "travel_rule_cases_bulk_action", entityType: "travel_rule_case", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Bulk action on travel-rule cases", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createTravelRuleCaseSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { action, rows, caseIds, ownerUserId } = body;
+        const actorId = auth.employeeId || auth.id;
 
-    // Action-specific authorization — bulk mutations require elevated permissions
-    if (action === "create_cases") {
-      const createAuthz = checkAuthorization(auth, "travel_rule_case", "create");
-      if (!createAuthz.allowed) return apiForbiddenError(createAuthz.reason);
-    } else if (action === "assign") {
-      const assignAuthz = checkAuthorization(auth, "travel_rule_case", "assign");
-      if (!assignAuthz.allowed) return apiForbiddenError(assignAuthz.reason);
-    } else if (action === "mark_not_required") {
-      const resolveAuthz = checkAuthorization(auth, "travel_rule_case", "resolve");
-      if (!resolveAuthz.allowed) return apiForbiddenError(resolveAuthz.reason);
-    }
-
-    // create_cases: batch-create from reconciliation table rows.
-    // Skips rows that already have a case (deduplication via compound unique).
-    if (action === "create_cases") {
-      if (!Array.isArray(rows) || rows.length === 0) {
-        return apiValidationError("rows array is required for create_cases");
-      }
-
-      const created: string[] = [];
-      const skipped: string[] = [];
-
-      for (const row of rows as BulkRow[]) {
-        if (!row.transactionId || !row.matchStatus) continue;
-
-        const existing = await prisma.travelRuleCase.findUnique({
-          where: {
-            transactionId_matchStatus: {
-              transactionId: row.transactionId,
-              matchStatus: row.matchStatus,
-            },
-          },
-        });
-
-        if (existing) {
-          skipped.push(existing.id);
-          continue;
+        // Action-specific authorization — bulk mutations require elevated permissions
+        if (action === "create_cases") {
+          const createAuthz = checkAuthorization(auth, "travel_rule_case", "create");
+          if (!createAuthz.allowed) return apiForbiddenError(createAuthz.reason);
+        } else if (action === "assign") {
+          const assignAuthz = checkAuthorization(auth, "travel_rule_case", "assign");
+          if (!assignAuthz.allowed) return apiForbiddenError(assignAuthz.reason);
+        } else if (action === "mark_not_required") {
+          const resolveAuthz = checkAuthorization(auth, "travel_rule_case", "resolve");
+          if (!resolveAuthz.allowed) return apiForbiddenError(resolveAuthz.reason);
         }
 
-        const now = new Date();
-        const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
-
-        const travelCase = await prisma.travelRuleCase.create({
-          data: {
-            transactionId: row.transactionId,
-            txHash: row.txHash || "",
-            direction: row.direction || "",
-            asset: row.asset || "",
-            amount: row.amount || 0,
-            senderAddress: row.senderAddress || "",
-            receiverAddress: row.receiverAddress || "",
-            matchStatus: row.matchStatus,
-            notabeneTransferId: row.notabeneTransferId || null,
-            status: "Open",
-            slaDeadline,
-          },
-        });
-        created.push(travelCase.id);
-      }
-
-      await prisma.auditLog.create({
-        data: {
-          action: "travel_rule_bulk_action",
-          entityType: "travel_rule_case",
-          entityId: created[0] || "bulk",
-          userId: actorId,
-          details: JSON.stringify({
-            description: `Bulk created ${created.length} cases (${skipped.length} skipped as duplicates)`,
-            action: "create_cases",
-            createdIds: created,
-            skippedIds: skipped,
-          }),
-        },
-      });
-
-      return apiSuccess({ created: created.length, skipped: skipped.length, ids: created });
-    }
-
-    // assign: set ownerUserId and auto-transition status to "Investigating".
-    // Uses $transaction to apply all updates atomically.
-    if (action === "assign") {
-      if (!Array.isArray(caseIds) || caseIds.length === 0 || !ownerUserId) {
-        return apiValidationError("caseIds and ownerUserId required for assign");
-      }
-
-      // Verify each case is in the caller's scope before allowing bulk assign
-      const assignAuthzResult = checkAuthorization(auth, "travel_rule_case", "assign");
-      if (assignAuthzResult.scope !== "all") {
-        const casesToCheck = await prisma.travelRuleCase.findMany({
-          where: { id: { in: caseIds } },
-          select: { id: true, ownerUserId: true },
-        });
-        const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
-        const ownerTeams = ownerIds.length > 0
-          ? await prisma.employee.findMany({
-              where: { id: { in: ownerIds } },
-              select: { id: true, team: true },
-            })
-          : [];
-        const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
-
-        for (const c of casesToCheck) {
-          if (!c.ownerUserId) continue;
-          const inScope = isRecordInScope(auth, assignAuthzResult.scope, {
-            ownerId: c.ownerUserId,
-            team: teamMap.get(c.ownerUserId) ?? null,
-          });
-          if (!inScope) {
-            return apiForbiddenError(`Case ${c.id} is outside your scope`);
+        // create_cases: batch-create from reconciliation table rows.
+        // Skips rows that already have a case (deduplication via compound unique).
+        if (action === "create_cases") {
+          if (!Array.isArray(rows) || rows.length === 0) {
+            return apiValidationError("rows array is required for create_cases");
           }
-        }
-      }
 
-      await prisma.$transaction(
-        caseIds.map((id: string) =>
-          prisma.travelRuleCase.update({
-            where: { id },
-            data: {
-              ownerUserId,
-              status: "Investigating", // auto-transition
-            },
-          }),
-        ),
-      );
+          const created: string[] = [];
+          const skipped: string[] = [];
 
-      // Resolve name for audit
-      const emp = await prisma.employee.findUnique({
-        where: { id: ownerUserId },
-        select: { name: true },
-      });
+          for (const row of rows as BulkRow[]) {
+            if (!row.transactionId || !row.matchStatus) continue;
 
-      await prisma.auditLog.create({
-        data: {
-          action: "travel_rule_bulk_action",
-          entityType: "travel_rule_case",
-          entityId: caseIds[0],
-          userId: actorId,
-          details: JSON.stringify({
-            description: `Bulk assigned ${caseIds.length} cases to ${emp?.name || ownerUserId}`,
-            action: "assign",
-            caseIds,
-            ownerUserId,
-          }),
-        },
-      });
+            const existing = await prisma.travelRuleCase.findUnique({
+              where: {
+                transactionId_matchStatus: {
+                  transactionId: row.transactionId,
+                  matchStatus: row.matchStatus,
+                },
+              },
+            });
 
-      return apiSuccess({ updated: caseIds.length });
-    }
+            if (existing) {
+              skipped.push(existing.id);
+              continue;
+            }
 
-    // mark_not_required: close cases as "Not Required" (e.g. internal transfers,
-    // test transactions, or amounts below the travel rule threshold).
-    if (action === "mark_not_required") {
-      if (!Array.isArray(caseIds) || caseIds.length === 0) {
-        return apiValidationError("caseIds required for mark_not_required");
-      }
+            const now = new Date();
+            const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
 
-      // Verify each case is in the caller's scope
-      const resolveAuthzResult = checkAuthorization(auth, "travel_rule_case", "resolve");
-      if (resolveAuthzResult.scope !== "all") {
-        const casesToCheck = await prisma.travelRuleCase.findMany({
-          where: { id: { in: caseIds } },
-          select: { id: true, ownerUserId: true },
-        });
-        const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
-        const ownerTeams = ownerIds.length > 0
-          ? await prisma.employee.findMany({
-              where: { id: { in: ownerIds } },
-              select: { id: true, team: true },
-            })
-          : [];
-        const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
-
-        for (const c of casesToCheck) {
-          if (!c.ownerUserId) continue;
-          const inScope = isRecordInScope(auth, resolveAuthzResult.scope, {
-            ownerId: c.ownerUserId,
-            team: teamMap.get(c.ownerUserId) ?? null,
-          });
-          if (!inScope) {
-            return apiForbiddenError(`Case ${c.id} is outside your scope`);
+            const travelCase = await prisma.travelRuleCase.create({
+              data: {
+                transactionId: row.transactionId,
+                txHash: row.txHash || "",
+                direction: row.direction || "",
+                asset: row.asset || "",
+                amount: row.amount || 0,
+                senderAddress: row.senderAddress || "",
+                receiverAddress: row.receiverAddress || "",
+                matchStatus: row.matchStatus,
+                notabeneTransferId: row.notabeneTransferId || null,
+                status: "Open",
+                slaDeadline,
+              },
+            });
+            created.push(travelCase.id);
           }
-        }
-      }
 
-      await prisma.$transaction(
-        caseIds.map((id: string) =>
-          prisma.travelRuleCase.update({
-            where: { id },
+          await prisma.auditLog.create({
             data: {
-              status: "Resolved",
-              resolutionType: "not_required",
-              resolvedAt: new Date(),
+              action: "travel_rule_bulk_action",
+              entityType: "travel_rule_case",
+              entityId: created[0] || "bulk",
+              userId: actorId,
+              details: JSON.stringify({
+                description: `Bulk created ${created.length} cases (${skipped.length} skipped as duplicates)`,
+                action: "create_cases",
+                createdIds: created,
+                skippedIds: skipped,
+              }),
             },
-          }),
-        ),
-      );
+          });
 
-      await prisma.auditLog.create({
-        data: {
-          action: "travel_rule_bulk_action",
-          entityType: "travel_rule_case",
-          entityId: caseIds[0],
-          userId: actorId,
-          details: JSON.stringify({
-            description: `Bulk resolved ${caseIds.length} cases as "Not Required"`,
-            action: "mark_not_required",
-            caseIds,
-          }),
-        },
-      });
+          return apiSuccess({ created: created.length, skipped: skipped.length, ids: created });
+        }
 
-      return apiSuccess({ resolved: caseIds.length });
-    }
+        // assign: set ownerUserId and auto-transition status to "Investigating".
+        // Uses $transaction to apply all updates atomically.
+        if (action === "assign") {
+          if (!Array.isArray(caseIds) || caseIds.length === 0 || !ownerUserId) {
+            return apiValidationError("caseIds and ownerUserId required for assign");
+          }
 
-    return apiValidationError("Invalid action. Must be create_cases, assign, or mark_not_required");
+          // Verify each case is in the caller's scope before allowing bulk assign
+          const assignAuthzResult = checkAuthorization(auth, "travel_rule_case", "assign");
+          if (assignAuthzResult.scope !== "all") {
+            const casesToCheck = await prisma.travelRuleCase.findMany({
+              where: { id: { in: caseIds } },
+              select: { id: true, ownerUserId: true },
+            });
+            const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
+            const ownerTeams = ownerIds.length > 0
+              ? await prisma.employee.findMany({
+                  where: { id: { in: ownerIds } },
+                  select: { id: true, team: true },
+                })
+              : [];
+            const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
+
+            for (const c of casesToCheck) {
+              if (!c.ownerUserId) continue;
+              const inScope = isRecordInScope(auth, assignAuthzResult.scope, {
+                ownerId: c.ownerUserId,
+                team: teamMap.get(c.ownerUserId) ?? null,
+              });
+              if (!inScope) {
+                return apiForbiddenError(`Case ${c.id} is outside your scope`);
+              }
+            }
+          }
+
+          await prisma.$transaction(
+            caseIds.map((id: string) =>
+              prisma.travelRuleCase.update({
+                where: { id },
+                data: {
+                  ownerUserId,
+                  status: "Investigating", // auto-transition
+                },
+              }),
+            ),
+          );
+
+          // Resolve name for audit
+          const emp = await prisma.employee.findUnique({
+            where: { id: ownerUserId },
+            select: { name: true },
+          });
+
+          await prisma.auditLog.create({
+            data: {
+              action: "travel_rule_bulk_action",
+              entityType: "travel_rule_case",
+              entityId: caseIds[0],
+              userId: actorId,
+              details: JSON.stringify({
+                description: `Bulk assigned ${caseIds.length} cases to ${emp?.name || ownerUserId}`,
+                action: "assign",
+                caseIds,
+                ownerUserId,
+              }),
+            },
+          });
+
+          return apiSuccess({ updated: caseIds.length });
+        }
+
+        // mark_not_required: close cases as "Not Required" (e.g. internal transfers,
+        // test transactions, or amounts below the travel rule threshold).
+        if (action === "mark_not_required") {
+          if (!Array.isArray(caseIds) || caseIds.length === 0) {
+            return apiValidationError("caseIds required for mark_not_required");
+          }
+
+          // Verify each case is in the caller's scope
+          const resolveAuthzResult = checkAuthorization(auth, "travel_rule_case", "resolve");
+          if (resolveAuthzResult.scope !== "all") {
+            const casesToCheck = await prisma.travelRuleCase.findMany({
+              where: { id: { in: caseIds } },
+              select: { id: true, ownerUserId: true },
+            });
+            const ownerIds = casesToCheck.filter(c => c.ownerUserId).map(c => c.ownerUserId!);
+            const ownerTeams = ownerIds.length > 0
+              ? await prisma.employee.findMany({
+                  where: { id: { in: ownerIds } },
+                  select: { id: true, team: true },
+                })
+              : [];
+            const teamMap = new Map(ownerTeams.map(e => [e.id, e.team]));
+
+            for (const c of casesToCheck) {
+              if (!c.ownerUserId) continue;
+              const inScope = isRecordInScope(auth, resolveAuthzResult.scope, {
+                ownerId: c.ownerUserId,
+                team: teamMap.get(c.ownerUserId) ?? null,
+              });
+              if (!inScope) {
+                return apiForbiddenError(`Case ${c.id} is outside your scope`);
+              }
+            }
+          }
+
+          await prisma.$transaction(
+            caseIds.map((id: string) =>
+              prisma.travelRuleCase.update({
+                where: { id },
+                data: {
+                  status: "Resolved",
+                  resolutionType: "not_required",
+                  resolvedAt: new Date(),
+                },
+              }),
+            ),
+          );
+
+          await prisma.auditLog.create({
+            data: {
+              action: "travel_rule_bulk_action",
+              entityType: "travel_rule_case",
+              entityId: caseIds[0],
+              userId: actorId,
+              details: JSON.stringify({
+                description: `Bulk resolved ${caseIds.length} cases as "Not Required"`,
+                action: "mark_not_required",
+                caseIds,
+              }),
+            },
+          });
+
+          return apiSuccess({ resolved: caseIds.length });
+        }
+
+        return apiValidationError("Invalid action. Must be create_cases, assign, or mark_not_required");
+      },
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/cases/bulk");
   }

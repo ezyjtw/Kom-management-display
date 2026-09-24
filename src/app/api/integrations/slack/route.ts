@@ -7,6 +7,13 @@ import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/respon
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
+
+const channelQueueSchema = z.object({
+  channelId: z.string().min(1).max(50),
+  queue: z.string().max(50).optional(),
+});
 
 /**
  * POST /api/integrations/slack
@@ -23,33 +30,40 @@ export async function POST(request: NextRequest) {
   if (authz instanceof NextResponse) return authz;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
-    if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
-    const { channelId, queue } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "slack_channel_queue_set", entityType: "slack_channel", entityId: "mapping", userId: auditActorInfo.userId, summary: "Map a Slack channel to a queue", metadata: auditActorInfo.metadata },
+      async () => {
+        const _parsed = channelQueueSchema.safeParse(await request.json());
+        if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+        const body = _parsed.data;
+        const { channelId, queue } = body;
 
-    if (!channelId) {
-      return apiValidationError("channelId is required");
-    }
+        if (!channelId) {
+          return apiValidationError("channelId is required");
+        }
 
-    const result = await syncSlackChannel(channelId, queue);
+        const result = await syncSlackChannel(channelId, queue);
 
-    // Audit: log integration sync
-    await prisma.auditLog.create({
-      data: {
-        action: "integration_sync",
-        entityType: "slack_channel",
-        entityId: channelId,
-        userId: auth.employeeId || auth.id,
-        details: JSON.stringify({
-          channelId,
-          queue: queue || "Transaction Operations",
-          threadsSynced: result.threadsSynced,
-        }),
+        // Audit: log integration sync
+        await prisma.auditLog.create({
+          data: {
+            action: "integration_sync",
+            entityType: "slack_channel",
+            entityId: channelId,
+            userId: auth.employeeId || auth.id,
+            details: JSON.stringify({
+              channelId,
+              queue: queue || "Transaction Operations",
+              threadsSynced: result.threadsSynced,
+            }),
+          },
+        });
+
+        return apiSuccess(result);
       },
-    });
-
-    return apiSuccess(result);
+    );
   } catch (error) {
     return handleApiError(error, "slack sync");
   }

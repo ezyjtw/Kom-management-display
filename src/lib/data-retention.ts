@@ -5,13 +5,10 @@
  * Designed to run as a background job to purge data older than
  * the specified retention period.
  *
- * Retention periods:
- *   - Audit logs: 2 years (regulatory compliance)
- *   - Comms messages: 1 year
- *   - Resolved incidents: 2 years
- *   - Background job history: 30 days
- *   - Session metadata: 30 days
- *   - Alert history: 90 days
+ * Retention periods: see DEFAULT_RETENTION_POLICIES below. These are defined
+ * but not scheduled until the periods are agreed (TODO(CONFIRM-RETENTION),
+ * docs/phase1/data-inventory.md). Audit logs are never deleted here: AuditLog
+ * is append-only in the database (migration 0037, docs/phase1/db-roles.sql).
  *
  * All deletions are logged for audit purposes. Deletions are performed
  * in batches to avoid locking the database for extended periods.

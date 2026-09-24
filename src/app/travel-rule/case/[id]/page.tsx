@@ -7,6 +7,7 @@ import { ArrowLeft, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-reac
 import { EmailPreviewPanel } from "./EmailPreviewPanel";
 import { ActionSidebar } from "./ActionSidebar";
 import { StatusBanners } from "./StatusBanners";
+import { formatAmount } from "@/lib/decimal";
 
 /** Strip dangerous tags/attributes from HTML to prevent XSS */
 function sanitizeHtml(html: string): string {
@@ -34,7 +35,7 @@ interface CaseData {
   txHash: string;
   direction: string;
   asset: string;
-  amount: number;
+  amount: string;
   senderAddress: string;
   receiverAddress: string;
   matchStatus: string;
@@ -103,11 +104,6 @@ export default function CaseDetailPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  const [showApproveApi, setShowApproveApi] = useState(false);
-  const [requestId, setRequestId] = useState("");
-  const [submittingApproval, setSubmittingApproval] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(false);
-  const [approvalRequestId, setApprovalRequestId] = useState("");
   const [recheckLoading, setRecheckLoading] = useState(false);
   const [recheckResult, setRecheckResult] = useState<{
     previousMatchStatus: string;
@@ -200,27 +196,6 @@ export default function CaseDetailPage() {
     const json = await res.json();
     setAddingNote(false);
     if (json.success) { setNoteContent(""); fetchActivity(); }
-  }
-
-  async function handleApproveApi() {
-    if (!requestId.trim()) return;
-    setSubmittingApproval(true);
-    try {
-      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) });
-      const json = await res.json();
-      if (json.success) { setApprovalRequestId(requestId); setShowApproveApi(false); setRequestId(""); await refreshCase(); fetchActivity(); }
-    } catch (err) { console.error("API approval failed:", err); }
-    finally { setSubmittingApproval(false); }
-  }
-
-  async function handleCheckApprovalStatus() {
-    setCheckingStatus(true);
-    try {
-      const res = await fetch(`/api/travel-rule/cases/${params.id}/approve-api`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "check_status", requestId: approvalRequestId }) });
-      const json = await res.json();
-      if (json.success) { await refreshCase(); fetchActivity(); }
-    } catch (err) { console.error("Status check failed:", err); }
-    finally { setCheckingStatus(false); }
   }
 
   async function handleRecheckNotabene() {
@@ -318,7 +293,7 @@ export default function CaseDetailPage() {
               </div>
               <div>
                 <span className="text-xs text-muted-foreground block">Asset / Amount</span>
-                <span className="font-mono text-foreground">{caseData.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} {caseData.asset}</span>
+                <span className="font-mono text-foreground">{formatAmount(caseData.amount, 8)} {caseData.asset}</span>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground block">Originator Address</span>
@@ -356,8 +331,6 @@ export default function CaseDetailPage() {
           <StatusBanners
             caseData={caseData}
             recheckResult={recheckResult}
-            checkingStatus={checkingStatus}
-            onCheckApprovalStatus={handleCheckApprovalStatus}
             onDismissRecheck={() => setRecheckResult(null)}
           />
         </div>
@@ -383,12 +356,6 @@ export default function CaseDetailPage() {
           onEmailNameChange={setEmailName}
           onSelectVasp={(c) => { setEmailTo(c.email); setEmailName(c.vaspName); }}
           onPreviewEmail={handlePreviewEmail}
-          showApproveApi={showApproveApi}
-          requestId={requestId}
-          submittingApproval={submittingApproval}
-          onToggleApproveApi={setShowApproveApi}
-          onRequestIdChange={setRequestId}
-          onApproveApi={handleApproveApi}
           recheckLoading={recheckLoading}
           onRecheckNotabene={handleRecheckNotabene}
           showResolve={showResolve}

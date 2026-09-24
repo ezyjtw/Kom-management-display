@@ -11,6 +11,8 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { AlertType, AlertData } from "@/types";
+import { legacyAlertKeys } from "@/lib/alert-keys";
+import { acknowledgeBlocker } from "@/modules/alerting/acknowledge";
 
 // ─── Constants ───
 
@@ -161,6 +163,7 @@ export const alertService = {
     const alert = await prisma.alert.create({
       data: {
         type: input.type,
+        ...legacyAlertKeys(input.type),
         priority,
         message: input.message,
         status: "active",
@@ -490,6 +493,13 @@ async function transitionAlert(
       newStatus: currentStatus,
       error: `Invalid transition: ${currentStatus} -> ${targetStatus}`,
     };
+  }
+
+  if (targetStatus === "acknowledged") {
+    const blocker = await acknowledgeBlocker(alertId);
+    if (blocker) {
+      return { success: false, alert: alert as AlertRecord, previousStatus: currentStatus, newStatus: currentStatus, error: blocker };
+    }
   }
 
   const updateData: Record<string, unknown> = { status: targetStatus };

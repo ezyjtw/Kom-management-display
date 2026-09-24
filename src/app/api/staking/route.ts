@@ -5,6 +5,9 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createStakingWalletSchema, updateStakingPatchSchema } from "@/lib/validation";
+import { absDiff } from "@/lib/decimal";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 function computeRewardHealth(wallet: { expectedNextRewardAt: Date | null; lastRewardAt: Date | null }): string {
   if (!wallet.expectedNextRewardAt) return "no_data";
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
       try { tags = typeof w.tags === "string" ? JSON.parse(w.tags) : (w.tags as string[] ?? []); } catch { /* */ }
       const rewardHealth = computeRewardHealth(w);
       const varianceFlag = w.onChainBalance != null && w.platformBalance != null
-        ? Math.abs(w.onChainBalance - w.platformBalance) > w.varianceThreshold
+        ? absDiff(w.onChainBalance, w.platformBalance).gt(w.varianceThreshold)
         : false;
 
       return { ...w, tags, rewardHealth, varianceFlag };
@@ -87,33 +90,40 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createStakingWalletSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "staking_wallet_created", entityType: "staking_wallet", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Create a staking wallet record", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createStakingWalletSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const data = parsed.data;
 
-    const wallet = await prisma.stakingWallet.create({
-      data: {
-        walletAddress: data.walletAddress,
-        asset: data.asset,
-        rewardModel: data.rewardModel,
-        validator: data.validatorName ?? "",
-        stakedAmount: data.stakedAmount ?? 0,
-        clientName: data.clientName ?? "",
-        isColdStaking: data.isColdStaking ?? false,
-        isTestWallet: data.isTestWallet ?? false,
-        stakeDate: data.stakeDate ? new Date(data.stakeDate) : null,
-        expectedFirstRewardDate: data.expectedFirstRewardDate ? new Date(data.expectedFirstRewardDate) : null,
-        expectedNextRewardAt: data.expectedNextRewardAt ? new Date(data.expectedNextRewardAt) : null,
-        onChainBalance: data.onChainBalance ?? null,
-        platformBalance: data.platformBalance ?? null,
-        varianceThreshold: data.varianceThreshold ?? 0.01,
-        tags: JSON.stringify(data.tags ?? []),
-        notes: data.notes ?? "",
+        const wallet = await prisma.stakingWallet.create({
+          data: {
+            walletAddress: data.walletAddress,
+            asset: data.asset,
+            rewardModel: data.rewardModel,
+            validator: data.validatorName ?? "",
+            stakedAmount: data.stakedAmount ?? 0,
+            clientName: data.clientName ?? "",
+            isColdStaking: data.isColdStaking ?? false,
+            isTestWallet: data.isTestWallet ?? false,
+            stakeDate: data.stakeDate ? new Date(data.stakeDate) : null,
+            expectedFirstRewardDate: data.expectedFirstRewardDate ? new Date(data.expectedFirstRewardDate) : null,
+            expectedNextRewardAt: data.expectedNextRewardAt ? new Date(data.expectedNextRewardAt) : null,
+            onChainBalance: data.onChainBalance ?? null,
+            platformBalance: data.platformBalance ?? null,
+            varianceThreshold: data.varianceThreshold ?? 0.01,
+            tags: JSON.stringify(data.tags ?? []),
+            notes: data.notes ?? "",
+          },
+        });
+
+        return apiSuccess(wallet, undefined, 201);
       },
-    });
-
-    return apiSuccess(wallet, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "staking POST");
   }
@@ -131,29 +141,36 @@ export async function PATCH(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateStakingPatchSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { id, ...fields } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "staking_wallet_updated", entityType: "staking_wallet", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Update a staking wallet record", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateStakingPatchSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { id, ...fields } = parsed.data;
 
-    const updateData: Record<string, unknown> = {};
-    if (fields.validator !== undefined) updateData.validator = fields.validator;
-    if (fields.stakedAmount !== undefined) updateData.stakedAmount = fields.stakedAmount;
-    if (fields.clientName !== undefined) updateData.clientName = fields.clientName;
-    if (fields.isColdStaking !== undefined) updateData.isColdStaking = fields.isColdStaking;
-    if (fields.isTestWallet !== undefined) updateData.isTestWallet = fields.isTestWallet;
-    if (fields.lastRewardAt !== undefined) updateData.lastRewardAt = fields.lastRewardAt ? new Date(fields.lastRewardAt) : null;
-    if (fields.expectedNextRewardAt !== undefined) updateData.expectedNextRewardAt = fields.expectedNextRewardAt ? new Date(fields.expectedNextRewardAt) : null;
-    if (fields.actualFirstRewardDate !== undefined) updateData.actualFirstRewardDate = fields.actualFirstRewardDate ? new Date(fields.actualFirstRewardDate) : null;
-    if (fields.onChainBalance !== undefined) updateData.onChainBalance = fields.onChainBalance;
-    if (fields.platformBalance !== undefined) updateData.platformBalance = fields.platformBalance;
-    if (fields.varianceThreshold !== undefined) updateData.varianceThreshold = fields.varianceThreshold;
-    if (fields.tags !== undefined) updateData.tags = JSON.stringify(fields.tags);
-    if (fields.notes !== undefined) updateData.notes = fields.notes;
-    if (fields.status !== undefined) updateData.status = fields.status;
+        const updateData: Record<string, unknown> = {};
+        if (fields.validator !== undefined) updateData.validator = fields.validator;
+        if (fields.stakedAmount !== undefined) updateData.stakedAmount = fields.stakedAmount;
+        if (fields.clientName !== undefined) updateData.clientName = fields.clientName;
+        if (fields.isColdStaking !== undefined) updateData.isColdStaking = fields.isColdStaking;
+        if (fields.isTestWallet !== undefined) updateData.isTestWallet = fields.isTestWallet;
+        if (fields.lastRewardAt !== undefined) updateData.lastRewardAt = fields.lastRewardAt ? new Date(fields.lastRewardAt) : null;
+        if (fields.expectedNextRewardAt !== undefined) updateData.expectedNextRewardAt = fields.expectedNextRewardAt ? new Date(fields.expectedNextRewardAt) : null;
+        if (fields.actualFirstRewardDate !== undefined) updateData.actualFirstRewardDate = fields.actualFirstRewardDate ? new Date(fields.actualFirstRewardDate) : null;
+        if (fields.onChainBalance !== undefined) updateData.onChainBalance = fields.onChainBalance;
+        if (fields.platformBalance !== undefined) updateData.platformBalance = fields.platformBalance;
+        if (fields.varianceThreshold !== undefined) updateData.varianceThreshold = fields.varianceThreshold;
+        if (fields.tags !== undefined) updateData.tags = JSON.stringify(fields.tags);
+        if (fields.notes !== undefined) updateData.notes = fields.notes;
+        if (fields.status !== undefined) updateData.status = fields.status;
 
-    const wallet = await prisma.stakingWallet.update({ where: { id }, data: updateData });
-    return apiSuccess(wallet);
+        const wallet = await prisma.stakingWallet.update({ where: { id }, data: updateData });
+        return apiSuccess(wallet);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "staking PATCH");
   }

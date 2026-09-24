@@ -7,6 +7,7 @@ import {
   isNotabeneConfigured,
 } from "@/lib/integrations/notabene";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
+import { featureGate } from "@/lib/feature-gate";
 
 /**
  * GET /api/integrations/notabene/assets
@@ -18,6 +19,9 @@ import { apiSuccess, handleApiError } from "@/lib/api/response";
  * Returns the full asset list or a single asset when ?asset= is provided.
  */
 export async function GET(request: NextRequest) {
+  const gated = await featureGate("integration.notabene.enabled");
+  if (gated) return gated;
+
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

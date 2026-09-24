@@ -1,237 +1,26 @@
+/**
+ * GET /api/settlements?date=YYYY-MM-DD — read-only OES settlement matching
+ * view from the Komainu API snapshots (spec §12 CHK-10). The maker/checker
+ * "approval" actions were removed: settlement approvals happen in the
+ * platforms (H1). Notes: POST /api/settlements/notes.
+ */
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
-import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
-import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
-import { validateBody, createSettlementSchema, updateSettlementSchema } from "@/lib/validation";
+import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
+import { buildSettlementView } from "@/modules/settlements/matching-view";
+import { londonParts } from "@/modules/alerting/calendar";
 
-/**
- * GET /api/settlements
- *
- * List OES settlement instructions with optional filters:
- *   ?venue=okx&matchStatus=mismatch&cycle=2026-03-07&client=Acme
- */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
-
   const authz = requireAuthorization(auth, "settlement", "view");
   if (authz instanceof NextResponse) return authz;
-
   try {
-    const { searchParams } = new URL(request.url);
-    const venue = searchParams.get("venue");
-    const status = searchParams.get("status");
-    const matchStatus = searchParams.get("matchStatus");
-    const cycle = searchParams.get("cycle");
-    const client = searchParams.get("client");
-
-    const where: Record<string, unknown> = {};
-    if (venue) where.venue = venue;
-    if (status) where.status = status;
-    if (matchStatus) where.matchStatus = matchStatus;
-    if (cycle) where.settlementCycle = { contains: cycle };
-    if (client) where.clientName = { contains: client, mode: "insensitive" };
-
-    const settlements = await prisma.oesSettlement.findMany({
-      where,
-      orderBy: [
-        { status: "asc" },
-        { settlementCycle: "desc" },
-        { createdAt: "desc" },
-      ],
-    });
-
-    // Enrich with maker/checker names
-    const employeeIds = [
-      ...new Set([
-        ...settlements.map((s) => s.makerById).filter(Boolean),
-        ...settlements.map((s) => s.checkerById).filter(Boolean),
-      ]),
-    ] as string[];
-
-    const employees = employeeIds.length > 0
-      ? await prisma.employee.findMany({
-          where: { id: { in: employeeIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const nameMap = Object.fromEntries(employees.map((e) => [e.id, e.name]));
-
-    const summary = {
-      total: settlements.length,
-      pending: settlements.filter((s) => s.status === "pending").length,
-      confirmed: settlements.filter((s) => s.status === "confirmed").length,
-      completed: settlements.filter((s) => s.status === "completed").length,
-      escalated: settlements.filter((s) => s.status === "escalated").length,
-      failed: settlements.filter((s) => s.status === "failed").length,
-      matched: settlements.filter((s) => s.matchStatus === "matched").length,
-      mismatched: settlements.filter((s) => s.matchStatus === "mismatch").length,
-      missingTx: settlements.filter((s) => s.matchStatus === "missing_tx").length,
-      flagged: settlements.filter((s) => s.matchStatus === "flagged").length,
-      byVenue: {
-        okx: settlements.filter((s) => s.venue === "okx").length,
-        fireblocks: settlements.filter((s) => s.venue === "fireblocks").length,
-      },
-    };
-
-    const enriched = settlements.map((s) => ({
-      ...s,
-      makerByName: s.makerById ? nameMap[s.makerById] || null : null,
-      checkerByName: s.checkerById ? nameMap[s.checkerById] || null : null,
-    }));
-
-    return apiSuccess({ settlements: enriched, summary });
+    const date = new URL(request.url).searchParams.get("date") ?? londonParts(new Date()).date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return apiValidationError("date must be YYYY-MM-DD");
+    return apiSuccess(await buildSettlementView(date));
   } catch (error) {
     return handleApiError(error, "settlements GET");
-  }
-}
-
-/**
- * POST /api/settlements
- *
- * Create a new OES settlement record (from a settlement cycle instruction).
- */
-export async function POST(request: NextRequest) {
-  const auth = await requireAuth();
-  if (auth instanceof NextResponse) return auth;
-
-  const authz = requireAuthorization(auth, "settlement", "create");
-  if (authz instanceof NextResponse) return authz;
-
-  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
-  if (limited) return limited;
-
-  try {
-    const body = await request.json();
-    const parsed = validateBody(createSettlementSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
-
-    const settlement = await prisma.oesSettlement.create({
-      data: {
-        settlementRef: data.settlementRef,
-        venue: data.venue ?? "okx",
-        clientName: data.clientName,
-        clientAccount: data.clientAccount ?? "",
-        asset: data.asset,
-        amount: data.amount,
-        direction: data.direction,
-        settlementCycle: data.settlementCycle ?? "",
-        exchangeInstructionId: data.exchangeInstructionId ?? "",
-        collateralWallet: data.collateralWallet ?? "",
-        custodyWallet: data.custodyWallet ?? "",
-      },
-    });
-
-    return apiSuccess(settlement, undefined, 201);
-  } catch (error) {
-    return handleApiError(error, "settlements POST");
-  }
-}
-
-/**
- * PATCH /api/settlements
- *
- * Update a settlement — maker/checker confirm, match tx, flag, escalate.
- *
- * Body: { id, action: string, ...fields }
- *
- * Actions:
- *   match_tx         — link on-chain tx hash to this instruction
- *   maker_confirm    — maker verifies instruction matches on-chain
- *   checker_approve  — checker approves the match
- *   flag_mismatch    — flag a mismatch with note
- *   escalate         — escalate to exchange
- *   update_delegation — update OKX delegation status
- *   complete         — mark settlement as completed
- */
-export async function PATCH(request: NextRequest) {
-  const auth = await requireAuth();
-  if (auth instanceof NextResponse) return auth;
-
-  const authz = requireAuthorization(auth, "settlement", "update");
-  if (authz instanceof NextResponse) return authz;
-
-  const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
-  if (limited) return limited;
-
-  try {
-    const body = await request.json();
-    const parsed = validateBody(updateSettlementSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { id, action, ...fields } = parsed.data;
-
-    const actorId = auth.employeeId || auth.id;
-    const data: Record<string, unknown> = {};
-
-    switch (action) {
-      case "match_tx":
-        data.onChainTxHash = fields.onChainTxHash || "";
-        data.matchStatus = "matched";
-        break;
-
-      case "maker_confirm":
-        data.makerById = actorId;
-        data.makerAt = new Date();
-        data.status = "confirmed";
-        break;
-
-      case "checker_approve": {
-        const existing = await prisma.oesSettlement.findUnique({ where: { id }, select: { makerById: true } });
-        if (existing?.makerById === actorId) {
-          return apiForbiddenError("Checker cannot be the same person as the maker");
-        }
-        data.checkerById = actorId;
-        data.checkerAt = new Date();
-        data.status = "completed";
-        break;
-      }
-
-      case "flag_mismatch":
-        data.matchStatus = fields.matchStatus || "mismatch";
-        data.matchNote = fields.matchNote || "";
-        data.status = "escalated";
-        break;
-
-      case "escalate":
-        data.status = "escalated";
-        data.escalationNote = fields.escalationNote || "";
-        data.matchStatus = "flagged";
-        break;
-
-      case "update_delegation":
-        if (fields.delegationStatus) data.delegationStatus = fields.delegationStatus;
-        if (fields.delegatedAmount !== undefined) data.delegatedAmount = fields.delegatedAmount;
-        break;
-
-      case "complete": {
-        if (!fields.skipChecker) {
-          const settlement = await prisma.oesSettlement.findUnique({ where: { id }, select: { makerById: true } });
-          if (settlement?.makerById === actorId) {
-            return apiForbiddenError("Checker cannot be the same person as the maker");
-          }
-          data.checkerById = actorId;
-          data.checkerAt = new Date();
-        }
-        data.status = "completed";
-        break;
-      }
-
-      default:
-        if (fields.status) data.status = fields.status;
-        if (fields.matchStatus) data.matchStatus = fields.matchStatus;
-        if (fields.onChainTxHash !== undefined) data.onChainTxHash = fields.onChainTxHash;
-        if (fields.fireblockssTxId !== undefined) data.fireblockssTxId = fields.fireblockssTxId;
-        if (fields.oesSignerGroup !== undefined) data.oesSignerGroup = fields.oesSignerGroup;
-        if (fields.matchNote !== undefined) data.matchNote = fields.matchNote;
-        break;
-    }
-
-    const settlement = await prisma.oesSettlement.update({ where: { id }, data });
-    return apiSuccess(settlement);
-  } catch (error) {
-    return handleApiError(error, "settlements PATCH");
   }
 }

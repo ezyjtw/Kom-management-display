@@ -9,7 +9,7 @@ export interface StakingWalletEntry {
   walletAddress: string;
   asset: string;
   validator: string;
-  stakedAmount: number;
+  stakedAmount: string;
   rewardModel: StakingRewardModel;
   clientName: string;
   isColdStaking: boolean;
@@ -19,9 +19,9 @@ export interface StakingWalletEntry {
   actualFirstRewardDate: string | null;
   lastRewardAt: string | null;
   expectedNextRewardAt: string | null;
-  onChainBalance: number | null;
-  platformBalance: number | null;
-  varianceThreshold: number;
+  onChainBalance: string | null;
+  platformBalance: string | null;
+  varianceThreshold: string;
   tags: string[];
   notes: string;
   status: StakingStatus;

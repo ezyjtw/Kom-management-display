@@ -10,10 +10,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
-import { isAiEnabled } from "@/lib/ai";
+import { isAiActive } from "@/lib/ai";
 import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { env } from "@/lib/env";
 import { incidentService } from "@/modules/incidents/services/incident-service";
+import { httpFetch } from "@/lib/http/client";
 
 // ─── Types ───
 
@@ -45,7 +46,7 @@ async function classifyViaAi(
   systemPrompt: string,
   userMessage: string,
 ): Promise<string | null> {
-  if (!isAiEnabled()) return null;
+  if (!(await isAiActive())) return null;
 
   const breaker = CircuitBreaker.for("ai_classifier", {
     failureThreshold: 3,
@@ -60,7 +61,7 @@ async function classifyViaAi(
 
       if (provider === "anthropic") {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY") });
+        const client = new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), fetch: httpFetch });
         const response = await client.messages.create({
           model: env("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514",
           max_tokens: 512,
@@ -72,7 +73,7 @@ async function classifyViaAi(
       }
 
       if (provider === "groq") {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const res = await httpFetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -95,7 +96,7 @@ async function classifyViaAi(
 
       if (provider === "ollama") {
         const baseUrl = env("OLLAMA_BASE_URL") || "http://localhost:11434";
-        const res = await fetch(`${baseUrl}/api/chat`, {
+        const res = await httpFetch(`${baseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

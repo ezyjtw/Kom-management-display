@@ -20,6 +20,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// These tests exercise export mechanics on per-person resources, which exist only with people.scoring on.
+const scoring = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => k === "people.scoring" && scoring.on) }));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
@@ -406,5 +410,18 @@ describe("Export Governance", () => {
         /not permitted/,
       );
     });
+  });
+});
+
+describe("per-person exports (H4)", () => {
+  it("refuses employees and scores exports while people.scoring is off", async () => {
+    scoring.on = false;
+    try {
+      for (const resource of ["employees", "scores"]) {
+        await expect(exportService.exportData(makeRequest({ resource }), makeContext())).rejects.toThrow(/breaks results down by individual \(H4\)/);
+      }
+    } finally {
+      scoring.on = true;
+    }
   });
 });

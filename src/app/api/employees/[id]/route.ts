@@ -5,11 +5,14 @@ import { apiSuccess, apiNotFoundError, apiValidationError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { requireAuthorization, requireRecordAccess, maskSensitiveFields } from "@/modules/auth/services/authorization";
 import { validateBody, updateEmployeeSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -64,8 +67,9 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.sensitive);
   if (limited) return limited;
 
@@ -73,34 +77,41 @@ export async function PATCH(
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateEmployeeSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { name, role, team, region, active } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "employee_updated", entityType: "employee", entityId: (await params).id, userId: auditActorInfo.userId, summary: "Update an employee record", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateEmployeeSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { name, role, team, region, active } = body;
 
-    const data: Record<string, unknown> = {};
-    if (name !== undefined) data.name = name;
-    if (role !== undefined) data.role = role;
-    if (team !== undefined) data.team = team;
-    if (region !== undefined) data.region = region;
-    if (active !== undefined) data.active = active;
+        const data: Record<string, unknown> = {};
+        if (name !== undefined) data.name = name;
+        if (role !== undefined) data.role = role;
+        if (team !== undefined) data.team = team;
+        if (region !== undefined) data.region = region;
+        if (active !== undefined) data.active = active;
 
-    const employee = await prisma.employee.update({
-      where: { id: params.id },
-      data,
-    });
+        const employee = await prisma.employee.update({
+          where: { id: params.id },
+          data,
+        });
 
-    await prisma.auditLog.create({
-      data: {
-        action: "employee_updated",
-        entityType: "employee",
-        entityId: params.id,
-        userId: auth.id,
-        details: JSON.stringify(data),
+        await prisma.auditLog.create({
+          data: {
+            action: "employee_updated",
+            entityType: "employee",
+            entityId: params.id,
+            userId: auth.id,
+            details: JSON.stringify(data),
+          },
+        });
+
+        return apiSuccess(employee);
       },
-    });
-
-    return apiSuccess(employee);
+    );
   } catch (error) {
     return handleApiError(error, "employee PATCH");
   }

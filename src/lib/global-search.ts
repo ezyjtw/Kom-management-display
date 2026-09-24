@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { formatAmount } from "@/lib/decimal";
 
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
@@ -164,7 +165,7 @@ async function searchTravelRuleCases(q: string, limit: number): Promise<SearchRe
     id: c.id,
     module: "travel_rule",
     type: "case",
-    title: `${c.asset} ${c.amount} ${c.direction}`,
+    title: `${c.asset} ${formatAmount(c.amount, 8)} ${c.direction}`,
     subtitle: `TX: ${maskAddress(c.transactionId)} · ${c.status}`,
     url: `/travel-rule`,
     relevance: c.transactionId.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,
@@ -239,7 +240,7 @@ async function searchStakingWallets(q: string, limit: number): Promise<SearchRes
     module: "staking",
     type: "wallet",
     title: `${w.asset} — ${w.clientName || maskAddress(w.walletAddress)}`,
-    subtitle: `${w.stakedAmount.toLocaleString()} staked · ${w.status}`,
+    subtitle: `${formatAmount(w.stakedAmount, 8)} staked · ${w.status}`,
     url: `/staking`,
     relevance: w.walletAddress.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,
   }));
@@ -264,7 +265,7 @@ async function searchSettlements(q: string, limit: number): Promise<SearchResult
     id: s.id,
     module: "settlements",
     type: "settlement",
-    title: `${s.asset} ${s.amount.toLocaleString()} — ${s.clientName}`,
+    title: `${s.asset} ${formatAmount(s.amount, 8)} — ${s.clientName}`,
     subtitle: `${s.venue} · ${s.settlementRef} · ${s.status}`,
     url: `/settlements`,
     relevance: s.settlementRef.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,
@@ -314,7 +315,7 @@ async function searchScreeningEntries(q: string, limit: number): Promise<SearchR
     id: e.id,
     module: "screening",
     type: "screening_entry",
-    title: `${e.asset} ${e.amount} — ${e.classification}`,
+    title: `${e.asset} ${formatAmount(e.amount, 8)} — ${e.classification}`,
     subtitle: `TX: ${e.transactionId} · ${e.screeningStatus}`,
     url: `/screening`,
     relevance: e.transactionId.toLowerCase().includes(q.toLowerCase()) ? 10 : 5,

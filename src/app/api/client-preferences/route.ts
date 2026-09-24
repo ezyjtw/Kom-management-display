@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-user";
 import { checkAuthorization } from "@/modules/auth/services/authorization";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import {
   apiSuccess,
   apiValidationError,
@@ -13,6 +13,34 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
+import { auditActor } from "@/modules/core-data/audit-actor";
+
+const preferenceFields = {
+  displayName: z.string().max(200).optional(),
+  preferredChannel: z.enum(["email", "slack", "phone", "portal"]).optional(),
+  primaryEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
+  secondaryEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
+  slackChannel: z.string().max(100).optional(),
+  phoneNumber: z.string().max(50).optional(),
+  timezone: z.string().max(64).optional(),
+  businessHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  businessHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  businessDays: z.string().max(40).optional(),
+  language: z.string().max(10).optional(),
+  vaspDid: z.string().max(300).optional(),
+  travelRuleContact: z.string().max(300).optional(),
+  escalationEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
+  escalationPhone: z.string().max(50).optional(),
+  notes: z.string().max(5000).optional(),
+  tags: z.array(z.string().max(50)).max(50).optional(),
+};
+const createPreferenceSchema = z.object({ clientName: z.string().trim().min(1).max(200), ...preferenceFields });
+const updatePreferenceSchema = z.object({
+  id: z.string().min(1).max(100),
+  ...preferenceFields,
+  active: z.boolean().optional(),
+  lastContactedAt: z.string().max(40).nullable().optional(),
+});
 
 const VALID_CHANNELS = ["email", "slack", "phone", "portal"];
 
@@ -108,9 +136,9 @@ export async function POST(request: NextRequest) {
   if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = createPreferenceSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { clientName, preferredChannel } = body;
 
     if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
@@ -133,41 +161,47 @@ export async function POST(request: NextRequest) {
 
     const actorId = auth.employeeId || auth.id;
 
-    const preference = await prisma.clientContactPreference.create({
-      data: {
-        clientName: clientName.trim(),
-        displayName: body.displayName || "",
-        preferredChannel: preferredChannel || "email",
-        primaryEmail: body.primaryEmail || "",
-        secondaryEmail: body.secondaryEmail || "",
-        slackChannel: body.slackChannel || "",
-        phoneNumber: body.phoneNumber || "",
-        timezone: body.timezone || "UTC",
-        businessHoursStart: body.businessHoursStart || "09:00",
-        businessHoursEnd: body.businessHoursEnd || "17:00",
-        businessDays: body.businessDays || "mon,tue,wed,thu,fri",
-        language: body.language || "en",
-        vaspDid: body.vaspDid || "",
-        travelRuleContact: body.travelRuleContact || "",
-        escalationEmail: body.escalationEmail || "",
-        escalationPhone: body.escalationPhone || "",
-        notes: body.notes || "",
-        tags: JSON.stringify(body.tags || []),
-        createdById: actorId,
+    // Client contact details drive client communication: fail-closed audit.
+    const actor = auditActor(auth);
+    const preference = await auditedAction(
+      {
+        action: "client_preference_created",
+        entityType: "client_contact_preference",
+        entityId: "new",
+        userId: actor.userId,
+        summary: `Create contact preferences for ${clientName}`,
+        after: { clientName, preferredChannel: preferredChannel || "email" },
+        metadata: actor.metadata,
       },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-      },
-    });
-
-    await createAuditEntry({
-      action: "client_preference_created",
-      entityType: "client_contact_preference",
-      entityId: preference.id,
-      userId: actorId,
-      summary: `Created contact preferences for ${clientName}`,
-      after: { clientName, preferredChannel: preference.preferredChannel },
-    });
+      () => prisma.clientContactPreference.create({
+        data: {
+          clientName: clientName.trim(),
+          displayName: body.displayName || "",
+          preferredChannel: preferredChannel || "email",
+          primaryEmail: body.primaryEmail || "",
+          secondaryEmail: body.secondaryEmail || "",
+          slackChannel: body.slackChannel || "",
+          phoneNumber: body.phoneNumber || "",
+          timezone: body.timezone || "UTC",
+          businessHoursStart: body.businessHoursStart || "09:00",
+          businessHoursEnd: body.businessHoursEnd || "17:00",
+          businessDays: body.businessDays || "mon,tue,wed,thu,fri",
+          language: body.language || "en",
+          vaspDid: body.vaspDid || "",
+          travelRuleContact: body.travelRuleContact || "",
+          escalationEmail: body.escalationEmail || "",
+          escalationPhone: body.escalationPhone || "",
+          notes: body.notes || "",
+          tags: JSON.stringify(body.tags || []),
+          createdById: actorId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true } },
+        },
+      }),
+      undefined,
+      { entityId: (r) => r.id },
+    );
 
     return apiSuccess(
       {
@@ -199,9 +233,9 @@ export async function PATCH(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const _parsed = z.object({}).passthrough().safeParse(body);
+    const _parsed = updatePreferenceSchema.safeParse(await request.json());
     if (!_parsed.success) return apiValidationError(_parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const body = _parsed.data;
     const { id, ...fields } = body;
 
     if (!id) {
@@ -230,9 +264,10 @@ export async function PATCH(request: NextRequest) {
       "notes", "active",
     ];
 
+    const fieldValues = fields as Record<string, unknown>;
     for (const field of allowedFields) {
-      if (fields[field] !== undefined) {
-        updateData[field] = fields[field];
+      if (fieldValues[field] !== undefined) {
+        updateData[field] = fieldValues[field];
       }
     }
 
@@ -246,25 +281,26 @@ export async function PATCH(request: NextRequest) {
         : null;
     }
 
-    const actorId = auth.employeeId || auth.id;
-
-    const updated = await prisma.clientContactPreference.update({
-      where: { id },
-      data: updateData,
-      include: {
-        createdBy: { select: { id: true, name: true } },
+    const actor = auditActor(auth);
+    const updated = await auditedAction(
+      {
+        action: "client_preference_updated",
+        entityType: "client_contact_preference",
+        entityId: id,
+        userId: actor.userId,
+        summary: `Update contact preferences for ${existing.clientName}`,
+        before: { preferredChannel: existing.preferredChannel, active: existing.active },
+        after: updateData,
+        metadata: actor.metadata,
       },
-    });
-
-    await createAuditEntry({
-      action: "client_preference_updated",
-      entityType: "client_contact_preference",
-      entityId: id,
-      userId: actorId,
-      summary: `Updated contact preferences for ${existing.clientName}`,
-      before: { preferredChannel: existing.preferredChannel, active: existing.active },
-      after: updateData,
-    });
+      () => prisma.clientContactPreference.update({
+        where: { id },
+        data: updateData,
+        include: {
+          createdBy: { select: { id: true, name: true } },
+        },
+      }),
+    );
 
     return apiSuccess({
       ...updated,

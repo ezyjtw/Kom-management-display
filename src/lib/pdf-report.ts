@@ -9,12 +9,17 @@
  * - weekly_report: Weekly performance + metrics
  * - incident_report: Single incident detailed report
  * - compliance_summary: Travel rule + screening status
+ * - metrics_monthly: Monthly metrics pack (spec §13.3), team and client level only
+ *
+ * Reports never name or identify individuals (H4): the header records the
+ * generating role, not the person.
  */
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { escapeHtml as esc } from "@/lib/html-escape";
 
-export type ReportType = "daily_digest" | "weekly_report" | "incident_report" | "compliance_summary";
+export type ReportType = "daily_digest" | "weekly_report" | "incident_report" | "compliance_summary" | "metrics_monthly";
 
 export interface ReportData {
   type: ReportType;
@@ -29,10 +34,10 @@ export interface ReportData {
  */
 export async function generateReport(
   type: ReportType,
-  opts: { userId?: string; incidentId?: string; dateRange?: { start: Date; end: Date } } = {},
+  opts: { generatedByRole?: string; incidentId?: string; dateRange?: { start: Date; end: Date }; metricsHtml?: { title: string; html: string } } = {},
 ): Promise<ReportData> {
   const generatedAt = new Date().toISOString();
-  const generatedBy = opts.userId || "system";
+  const generatedBy = opts.generatedByRole || "system";
 
   let html: string;
   let title: string;
@@ -49,6 +54,10 @@ export async function generateReport(
       break;
     case "compliance_summary":
       ({ html, title } = await generateComplianceSummary());
+      break;
+    case "metrics_monthly":
+      if (!opts.metricsHtml) throw new Error("metrics_monthly needs precomputed metrics");
+      ({ html, title } = opts.metricsHtml);
       break;
     default:
       throw new Error(`Unknown report type: ${type}`);
@@ -160,8 +169,6 @@ async function generateIncidentReport(incidentId: string): Promise<{ html: strin
     where: { id: incidentId },
     include: {
       updates: { orderBy: { createdAt: "asc" } },
-      reportedBy: { select: { name: true } },
-      resolvedBy: { select: { name: true } },
     },
   });
 
@@ -169,35 +176,33 @@ async function generateIncidentReport(incidentId: string): Promise<{ html: strin
     return { html: "<p>Incident not found.</p>", title: "Incident Report — Not Found" };
   }
 
-  const title = `Incident Report — ${incident.title}`;
+  const title = `Incident Report — ${incident.title}`; // escaped where it is written into the page
   const html = `
     <h2>Incident Details</h2>
     <table class="stats-table">
-      <tr><td class="label">Title</td><td>${incident.title}</td></tr>
-      <tr><td class="label">Provider</td><td>${incident.provider}</td></tr>
-      <tr><td class="label">Severity</td><td class="${incident.severity}">${incident.severity.toUpperCase()}</td></tr>
-      <tr><td class="label">Status</td><td>${incident.status}</td></tr>
-      <tr><td class="label">Started</td><td>${incident.startedAt.toISOString()}</td></tr>
-      <tr><td class="label">Resolved</td><td>${incident.resolvedAt?.toISOString() || "Ongoing"}</td></tr>
-      <tr><td class="label">Reported By</td><td>${incident.reportedBy.name}</td></tr>
-      <tr><td class="label">Resolved By</td><td>${incident.resolvedBy?.name || "—"}</td></tr>
-      <tr><td class="label">RCA Status</td><td>${incident.rcaStatus}</td></tr>
+      <tr><td class="label">Title</td><td>${esc(incident.title)}</td></tr>
+      <tr><td class="label">Provider</td><td>${esc(incident.provider)}</td></tr>
+      <tr><td class="label">Severity</td><td class="${esc(incident.severity)}">${esc(incident.severity.toUpperCase())}</td></tr>
+      <tr><td class="label">Status</td><td>${esc(incident.status)}</td></tr>
+      <tr><td class="label">Started</td><td>${esc(incident.startedAt.toISOString())}</td></tr>
+      <tr><td class="label">Resolved</td><td>${esc(incident.resolvedAt?.toISOString() || "Ongoing")}</td></tr>
+      <tr><td class="label">RCA Status</td><td>${esc(incident.rcaStatus)}</td></tr>
     </table>
 
     <h3>Description</h3>
-    <p>${incident.description || "No description provided."}</p>
+    <p>${esc(incident.description || "No description provided.")}</p>
 
     <h3>Impact</h3>
-    <p>${incident.impact || "No impact assessment."}</p>
+    <p>${esc(incident.impact || "No impact assessment.")}</p>
 
     <h3>Timeline</h3>
     <table class="timeline-table">
       <tr><th>Time</th><th>Type</th><th>Details</th></tr>
       ${incident.updates.map((u) => `
         <tr>
-          <td>${u.createdAt.toISOString()}</td>
-          <td>${u.type}</td>
-          <td>${u.content}</td>
+          <td>${esc(u.createdAt.toISOString())}</td>
+          <td>${esc(u.type)}</td>
+          <td>${esc(u.content)}</td>
         </tr>
       `).join("")}
     </table>
@@ -257,10 +262,10 @@ async function renderActiveIncidents(): Promise<string> {
       <tr><th>Title</th><th>Provider</th><th>Severity</th><th>Started</th></tr>
       ${incidents.map((i) => `
         <tr>
-          <td>${i.title}</td>
-          <td>${i.provider}</td>
-          <td class="${i.severity}">${i.severity}</td>
-          <td>${i.startedAt.toISOString().split("T")[0]}</td>
+          <td>${esc(i.title)}</td>
+          <td>${esc(i.provider)}</td>
+          <td class="${esc(i.severity)}">${esc(i.severity)}</td>
+          <td>${esc(i.startedAt.toISOString().split("T")[0])}</td>
         </tr>
       `).join("")}
     </table>
@@ -286,10 +291,10 @@ async function renderSLABreaches(): Promise<string> {
       <tr><th>Subject</th><th>Priority</th><th>Status</th><th>Deadline</th></tr>
       ${breached.map((t) => `
         <tr>
-          <td>${t.subject}</td>
-          <td>${t.priority}</td>
-          <td>${t.status}</td>
-          <td class="critical">${t.ttoDeadline?.toISOString() || "—"}</td>
+          <td>${esc(t.subject)}</td>
+          <td>${esc(t.priority)}</td>
+          <td>${esc(t.status)}</td>
+          <td class="critical">${esc(t.ttoDeadline?.toISOString() || "—")}</td>
         </tr>
       `).join("")}
     </table>
@@ -301,7 +306,7 @@ function wrapInTemplate(title: string, generatedAt: string, generatedBy: string,
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>${title}</title>
+  <title>${esc(title)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; color: #1e293b; }
     h1 { color: #0f172a; border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
@@ -331,8 +336,8 @@ function wrapInTemplate(title: string, generatedAt: string, generatedBy: string,
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
-  <div class="meta">Generated: ${generatedAt} · By: ${generatedBy}</div>
+  <h1>${esc(title)}</h1>
+  <div class="meta">Generated: ${esc(generatedAt)} · By role: ${esc(generatedBy)}</div>
   ${body}
   <hr style="margin-top:40px;border:none;border-top:1px solid #e2e8f0;" />
   <p class="meta">KOMmand Centre — Confidential</p>
