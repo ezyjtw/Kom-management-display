@@ -21,6 +21,9 @@ export function isPublicPath(path: string, method: string): boolean {
   if (path === "/login" || path.startsWith("/login/")) return true;
   if (path.startsWith("/api/auth/")) return true;
   if (path === "/api/health/liveness" || path === "/api/health/readiness") return true;
+  // Basic health for platform health checks (Railway/Azure/compose probe /api/health).
+  // The route itself requires a session for ?deep=true and returns no internals otherwise.
+  if (path === "/api/health" && method === "GET") return true;
   if (path === "/api/branding" && method === "GET") return true; // login page branding
   return false;
 }
