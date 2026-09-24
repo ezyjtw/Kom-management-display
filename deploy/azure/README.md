@@ -8,7 +8,7 @@ description for review, not infrastructure code.
 | Component | What it runs | Notes |
 |---|---|---|
 | **web** container | The Docker image, default command (`sh start.sh`), `KOM_WORKLOAD=web` | Next.js on port 3000. Runs database migrations on start. Never seeds. |
-| **worker** container | The same image, command `npm run worker:prod` (sets `KOM_WORKLOAD=worker`) | Always-on job worker. Single replica is enough; more replicas are safe (jobs are claimed atomically). Needs a stop grace period of at least 30 s. |
+| **worker** container | The same image, command `node worker.js` with `KOM_WORKLOAD=worker` (the image has no npm) | Always-on job worker. Single replica is enough; more replicas are safe (jobs are claimed atomically). Needs a stop grace period of at least 30 s. |
 | **PostgreSQL** | Azure Database for PostgreSQL (Flexible Server) | Shared by web and worker. Private access only. Daily backups, 30-day retention. |
 | **Key Vault** | Third-party and signing secrets | Mounted into both containers as **files on an in-memory tmpfs volume** (e.g. the Secrets Store CSI driver with `tmpfs`), one file per key, in `SECRETS_DIR` (default `/mnt/secrets`). **Not** environment variables and **not** Kubernetes `Secret` objects: the app refuses to start if a secret-bearing environment variable is present (spec §17.3). No secrets in the image or repo (H7). |
 

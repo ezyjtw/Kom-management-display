@@ -41,10 +41,24 @@ describe("supply-chain-pinned", () => {
     for (const m of docker.matchAll(/^FROM\s+(\S+)/gm)) expect(m[1]).toBe("${NODE_IMAGE}");
   });
 
+  it("the runtime image ships no package manager, and nothing at runtime calls one", () => {
+    const docker = fs.readFileSync("Dockerfile", "utf8");
+    const runner = docker.slice(docker.lastIndexOf("FROM ${NODE_IMAGE}"));
+    expect(runner).toMatch(/rm -rf \/usr\/local\/lib\/node_modules\/npm/);
+    expect(runner).toMatch(/\/usr\/local\/bin\/npx/);
+    expect(fs.readFileSync("start.sh", "utf8")).not.toMatch(/\bnpx?\s/);
+    expect(fs.readFileSync("docker-compose.yml", "utf8")).not.toMatch(/"npm"/);
+  });
+
   it("CI runs SCA, secret detection, SAST, image scanning, SBOM and the blocking drift check", () => {
     const ci = workflows.find((w) => w.f === "ci.yml")!.src;
     expect(ci).toContain("npm audit --omit=dev");
     expect(ci).toContain("detect-secrets-hook --baseline .secrets.baseline");
+    // The tool pin lives in a requirements file: inside a YAML run block the keyword
+    // detector flags "detect-secrets==<version>" and an inline pragma cannot suppress it.
+    expect(ci).toContain("pip install --disable-pip-version-check --quiet -r .github/requirements/security-tools.txt");
+    expect(ci).not.toMatch(/detect-secrets==/);
+    expect(fs.readFileSync(".github/requirements/security-tools.txt", "utf8")).toMatch(/^detect-secrets==\d+\.\d+\.\d+ {2}# pragma: allowlist secret$/m);
     expect(ci).toContain("aquasecurity/trivy-action@");
     expect(ci).toContain("npm run sbom");
     expect(ci).toContain("scripts/check-migration-drift.ts");

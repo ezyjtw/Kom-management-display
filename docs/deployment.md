@@ -161,13 +161,13 @@ docker compose down
 The `docker-compose.yml` provisions PostgreSQL 16 with a persistent volume and
 health checks. The `app` container waits for the database and runs migrations;
 the `worker` container uses the same image, starts once `app` is healthy, and
-runs `npm run worker:prod`.
+runs `node worker.js` (with `KOM_WORKLOAD=worker`; the image has no npm).
 
 ### Background worker
 
 Alerts, SLA checks and integration syncs run in an always-on worker process
 (`src/worker/index.ts`; `npm run worker` in development). The image bundles it
-to `worker.js`, started with `npm run worker:prod`. It writes a heartbeat every
+to `worker.js`, started with `node worker.js` (`npm run worker:prod` outside the image). It writes a heartbeat every
 30 seconds and drains the in-flight job for up to 25 seconds on SIGTERM.
 
 If no worker heartbeat is seen for 2 minutes, `/api/health` reports

@@ -37,3 +37,13 @@ After the fixes, Semgrep still reports the pattern-level rules (items 1, 3 and 5
 - **CodeQL** (`security-extended`): first run on the pull request.
 - **The container image scan:** Trivy in CI now, Wiz once connected (TODO(CONFIRM-WIZ-CI)). The image can't be built in this environment, because the Alpine package mirror is blocked.
 - **The application penetration test** (`threat-model.md` §9).
+
+## First CI run on `main` (after PR #103), and follow-up (Phase 12h)
+
+| Check | Result | Cause | Fix |
+|---|---|---|---|
+| CodeQL (`security-extended`) | **Passed** | | |
+| Lint, type check, tests, build, schema validation (blocking drift check, live append-only test) | **Passed** | | |
+| detect-secrets | Failed: 2 findings in `ci.yml` | The baseline was generated before `ci.yml` was rewritten in 12c, and the hook was not rerun. Both findings were false positives: the keyword detector read the tool's own version pin (`detect-secrets==1.5.0`) and `PGPASSWORD=test` for the throwaway CI database as credentials. | The version pin moved to `.github/requirements/security-tools.txt` with an inline allowlist pragma (inside a YAML `run` block a pragma cannot take effect). The drift step uses the job's `DATABASE_URL` instead of `PGPASSWORD`. The baseline gained no new entries. `npm run secrets:check` runs the hook locally exactly as CI does; `supply-chain-pinned` guards the pin location. |
+| Image scan (Trivy) | Failed | High-severity CVEs (brace-expansion, ip-address, pacote, picomatch, sigstore) in the **npm CLI bundled with the Node base image**, not in the application's dependencies. | The runtime image ships no package manager: npm, npx, corepack and yarn are removed in the final stage; the web server, migrations and the worker run with `node` directly (compose and Azure: `node worker.js`). The same base with those removed scans clean locally (0 high or critical). The image itself builds in CI. |
+| Annotation | Warning | The pinned majors of `actions/checkout`, `docker/setup-buildx-action` and `docker/build-push-action` target Node.js 20, which is deprecated on runners. | Dependabot (github-actions) proposes the newer majors; review those PRs rather than bumping by hand. |

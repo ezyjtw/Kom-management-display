@@ -1,0 +1,3 @@
+# Security tools installed by CI (spec §17.6). Pinned; Dependabot does not track this file,
+# so update the version by hand when reviewing .secrets.baseline.
+detect-secrets==1.5.0  # pragma: allowlist secret
