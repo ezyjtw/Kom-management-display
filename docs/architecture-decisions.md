@@ -2,7 +2,7 @@
 
 ## ADR-001: Application Framework
 
-**Decision**: Next.js 14 (App Router) with TypeScript
+**Decision**: Next.js 15 (App Router, React 19) with TypeScript (upgraded from 14 on 2026-09-24: 14.x is out of support)
 
 **Context**: Need a full-stack framework that keeps frontend, backend, and auth in one deployable unit for a solo-to-small-team internal operations platform.
 

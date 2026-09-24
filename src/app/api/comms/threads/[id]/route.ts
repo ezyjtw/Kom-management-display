@@ -22,8 +22,9 @@ const THREAD_TRANSITIONS: Record<string, string[]> = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -131,8 +132,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: routeParams }: { params: Promise<{ id: string }> }
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

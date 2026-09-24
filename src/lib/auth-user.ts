@@ -69,7 +69,7 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
       // The HTTP method is forwarded by middleware as x-http-method.
       let method = "GET";
       try {
-        method = headers().get("x-http-method")?.toUpperCase() || "GET";
+        method = (await headers()).get("x-http-method")?.toUpperCase() || "GET";
       } catch {
         // headers() unavailable outside a request scope — treat as read.
       }

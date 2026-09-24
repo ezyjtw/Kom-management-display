@@ -114,9 +114,10 @@ jobs:
             echo "::error::Critical vulnerabilities found in production dependencies"
             exit 1
           }
-          npm audit --omit=dev --audit-level=high 2>&1 || {
-            echo "::warning::High-severity vulnerabilities in production dependencies"
-          }
+          # BLOCKING: every high advisory must be fixed or listed in .audit-exceptions.json
+          # with a mitigation and a reviewDate that has not passed.
+          npm audit --omit=dev --json > audit.json || true
+          node scripts/check-audit-exceptions.js < audit.json
 
       - name: Check for secrets in code
         run: |

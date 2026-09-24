@@ -12,8 +12,9 @@ import { validateBody, updateSecondariesSchema } from "@/lib/validation";
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params: routeParams }: { params: Promise<{ id: string }> },
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
@@ -66,8 +67,9 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params: routeParams }: { params: Promise<{ id: string }> },
 ) {
+  const params = await routeParams;
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 

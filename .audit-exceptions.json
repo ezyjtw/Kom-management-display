@@ -1,27 +1,51 @@
 {
-  "_comment": "Reviewed security audit exceptions. Each entry documents a known vulnerability that has been assessed and accepted with mitigations in place. Review quarterly or when upgrading major dependencies.",
-  "_lastReviewedAt": "2026-03-08",
-  "_reviewedBy": "Security team",
+  "_comment": "Reviewed security audit exceptions. Each entry documents a known high/critical vulnerability that has been assessed and accepted with mitigations in place. scripts/check-audit-exceptions.js fails CI when an entry's reviewDate has passed. Review quarterly or when upgrading major dependencies.",
+  "_lastReviewedAt": "2026-09-24",
+  "_reviewedBy": "Engineering (Next.js 15 upgrade); owner to confirm",
+  "_history": [
+    "2026-09-24: GHSA-9g9p-9gw9-jx7f and GHSA-h25m-26qc-wcjf (next) resolved by upgrading Next.js 14.2.35 -> 15.5.26 (Maintenance LTS); both entries removed.",
+    "2026-09-24: axios, form-data, nanoid, qs fixed by npm audit fix; nodemailer 7 -> 10."
+  ],
   "accepted": [
     {
-      "package": "next",
-      "advisory": "https://github.com/advisories/GHSA-9g9p-9gw9-jx7f",
+      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
       "severity": "high",
-      "title": "Next.js DoS via Image Optimizer remotePatterns",
-      "mitigation": "Our remotePatterns config uses explicit hostnames only (no wildcards). The vulnerable code path requires overly permissive patterns with protocol wildcards. Not exploitable in our configuration.",
-      "acceptedAt": "2026-03-08",
-      "fixAvailable": "next@16.x (breaking change — requires Next.js 16 migration)",
-      "reviewDate": "2026-06-08"
+      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
+      "acceptedAt": "2026-09-24",
+      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
+      "reviewDate": "2026-12-24",
+      "advisory": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+      "title": "PostCSS XSS via unescaped </style> in CSS stringify output"
     },
     {
-      "package": "next",
-      "advisory": "https://github.com/advisories/GHSA-h25m-26qc-wcjf",
+      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
       "severity": "high",
-      "title": "Next.js HTTP request deserialization DoS via insecure RSC",
-      "mitigation": "Requires 'insecure' React Server Components usage patterns. Our RSC usage follows Next.js recommended patterns with no user-controlled deserialization of arbitrary payloads. Rate limiting is in place at the infrastructure level.",
-      "acceptedAt": "2026-03-08",
-      "fixAvailable": "next@16.x (breaking change — requires Next.js 16 migration)",
-      "reviewDate": "2026-06-08"
+      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
+      "acceptedAt": "2026-09-24",
+      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
+      "reviewDate": "2026-12-24",
+      "advisory": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+      "title": "PostCSS arbitrary file read via attacker-controlled sourceMappingURL"
+    },
+    {
+      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
+      "severity": "high",
+      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
+      "acceptedAt": "2026-09-24",
+      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
+      "reviewDate": "2026-12-24",
+      "advisory": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
+      "title": "PostCSS incomplete fix of GHSA-6g55-p6wh-862q"
+    },
+    {
+      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
+      "severity": "high",
+      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
+      "acceptedAt": "2026-09-24",
+      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
+      "reviewDate": "2026-12-24",
+      "advisory": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+      "title": "PostCSS path traversal in previous source map auto-loading"
     }
   ]
 }
