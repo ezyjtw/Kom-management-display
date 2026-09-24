@@ -1,5 +1,5 @@
 /**
- * Transaction confirmation: read-only tracker of GX items awaiting action in GX (spec §5.2).
+ * Transaction confirmation: read-only tracker of Platform items awaiting action in Platform (spec §5.2).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -11,14 +11,14 @@ const prismaMock = vi.hoisted(() => ({
   },
   auditLog: { create: vi.fn() },
 }));
-const komainu = vi.hoisted(() => ({
-  isKomainuConfigured: vi.fn(),
+const custody = vi.hoisted(() => ({
+  isCustodyConfigured: vi.fn(),
   fetchRequest: vi.fn(),
   fetchTransaction: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/integrations/komainu-api/client", () => komainu);
+vi.mock("@/lib/integrations/custody-api/client", () => custody);
 vi.mock("@/lib/integrations/slack", () => ({ sendSlackNotification: vi.fn() }));
 
 import * as confirmation from "@/lib/transaction-confirmation";
@@ -37,17 +37,17 @@ describe("Transaction confirmation — allowed actions only", () => {
 describe("syncConfirmationsWithSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    komainu.isKomainuConfigured.mockReturnValue(true);
+    custody.isCustodyConfigured.mockReturnValue(true);
   });
 
-  it("closes items no longer PENDING in the Komainu API and keeps pending ones open", async () => {
+  it("closes items no longer PENDING in the custody API and keeps pending ones open", async () => {
     prismaMock.transactionConfirmation.findMany.mockResolvedValue([
       { id: "c1", transactionId: "tx1", requestId: "req1" },
       { id: "c2", transactionId: "tx2", requestId: null },
       { id: "c3", transactionId: "tx3", requestId: "req3" },
     ]);
-    komainu.fetchRequest.mockImplementation(async (id: string) => ({ status: id === "req1" ? "APPROVED" : "PENDING" }));
-    komainu.fetchTransaction.mockResolvedValue({ status: "CONFIRMED" });
+    custody.fetchRequest.mockImplementation(async (id: string) => ({ status: id === "req1" ? "APPROVED" : "PENDING" }));
+    custody.fetchTransaction.mockResolvedValue({ status: "CONFIRMED" });
 
     const closed = await confirmation.syncConfirmationsWithSource();
 
@@ -59,8 +59,8 @@ describe("syncConfirmationsWithSource", () => {
     }
   });
 
-  it("does nothing when the Komainu API is not configured", async () => {
-    komainu.isKomainuConfigured.mockReturnValue(false);
+  it("does nothing when the custody API is not configured", async () => {
+    custody.isCustodyConfigured.mockReturnValue(false);
     expect(await confirmation.syncConfirmationsWithSource()).toBe(0);
     expect(prismaMock.transactionConfirmation.findMany).not.toHaveBeenCalled();
   });

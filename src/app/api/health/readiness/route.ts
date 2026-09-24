@@ -63,7 +63,7 @@ export async function GET() {
     atlassian: ["ATLASSIAN_BASE_URL", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"],
     slack: ["SLACK_BOT_TOKEN"],
     graph: ["GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET"],
-    komainu_api: ["KOMAINU_API_BASE_URL"],
+    custody_api: ["CUSTODY_API_BASE_URL"],
     notabene: ["NOTABENE_API_TOKEN"],
   };
 

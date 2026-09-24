@@ -6,14 +6,14 @@ import {
   atlassianAdapter,
   graphMailAdapter,
   graphTeamsAdapter,
-  komainuAdapter,
+  custodyAdapter,
   notabeneAdapter,
   slackAdapter,
 } from "@/modules/integrations/adapters";
 import type { ConnectorId, IntegrationAdapter, IntegrationHealth } from "@/modules/integrations/types";
 
 const ADAPTERS: readonly IntegrationAdapter[] = [
-  komainuAdapter,
+  custodyAdapter,
   atlassianAdapter,
   slackAdapter,
   graphMailAdapter,

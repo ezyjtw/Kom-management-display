@@ -10,7 +10,7 @@
  *
  *   ATLASSIAN_BASE_URL=... ATLASSIAN_EMAIL=... ATLASSIAN_API_TOKEN=... \
  *   [DATABASE_URL=...] npx tsx scripts/jira-inventory.ts \
- *     [--projects OTC,TOPS] [--users a@x.com,b@x.com] \
+ *     [--projects OTC,OPS] [--users a@x.com,b@x.com] \
  *     [--consolidation docs/phase1/jira-consolidation.json] [--out docs/phase1/jira-inventory.md]
  *
  * Projects default to the JiraProjectConfig keys (when DATABASE_URL is set)
@@ -20,7 +20,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { collectInventory } from "@/modules/jira-inventory/collect";
 import { consolidationSchema, renderInventory } from "@/modules/jira-inventory/report";
 
-const SPEC_PROJECTS = ["OTC", "TOPS", "VSR", "GXS", "IAI", "KPR", "TOKENS", "FOA", "AO", "ITR", "RCM", "KMNC", "GXD", "AMTK"];
+const SPEC_PROJECTS = ["OTC", "OPS", "VND", "PDEF", "INC", "RLS", "TOKENS", "FIN", "AO", "EXT", "CHG", "PDEV", "PREL"];
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

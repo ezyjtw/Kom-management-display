@@ -2,7 +2,7 @@
  * SLA engine (spec §11.2, ALR-SLA-01..06): ownership, first response and
  * resolution clocks for every open WorkItem with an SlaPolicy. Warn at
  * `warnAtPct` (medium), breach at 100% (high; P0 and P1 critical). Clocks run
- * on the policy's calendar. A P0/P1 breach on a client request opens an IAI
+ * on the policy's calendar. A P0/P1 breach on a client request opens an INC
  * draft (spec §10.4).
  */
 
@@ -10,7 +10,7 @@ import type { SlaPolicy, WorkItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { businessMinutesWith, loadCalendar, nextBusinessDayEod, type BusinessCalendar } from "@/modules/alerting/calendar";
-import { createIaiDraft, IAI_TRIGGER_CLIENT_SLA_BREACH } from "@/modules/iai/drafts";
+import { createIncidentLogDraft, INCIDENT_LOG_TRIGGER_CLIENT_SLA_BREACH } from "@/modules/incident-log/drafts";
 import type { AlertCandidate, EvaluatorContext } from "@/modules/alerting/types";
 
 export type SlaClock = "ownership" | "first_response" | "resolution";
@@ -81,7 +81,7 @@ export function slaEvaluator(code: string) {
   };
 }
 
-/** Record the SlaEvent and, for P0/P1 client-request breaches, open an IAI draft. */
+/** Record the SlaEvent and, for P0/P1 client-request breaches, open an INC draft. */
 export function onSlaRaised(code: string) {
   const { clock, phase } = SLA_RULES[code];
   return async (_alertId: string, candidate: AlertCandidate): Promise<void> => {
@@ -90,7 +90,7 @@ export function onSlaRaised(code: string) {
       await prisma.slaEvent.create({ data: { workItemId: candidate.workItemId, kind: `${clock}_${phase}`, at: new Date() } });
       if (phase === "breach" && (candidate.priority === "P0" || candidate.priority === "P1")) {
         const item = await prisma.workItem.findUnique({ where: { id: candidate.workItemId }, select: { kind: true } });
-        if (item?.kind === "client_request") await createIaiDraft(candidate.workItemId, IAI_TRIGGER_CLIENT_SLA_BREACH);
+        if (item?.kind === "client_request") await createIncidentLogDraft(candidate.workItemId, INCIDENT_LOG_TRIGGER_CLIENT_SLA_BREACH);
       }
     } catch (error) {
       logger.warn("SLA event side effects failed", { code, error: error instanceof Error ? error.message : String(error) });

@@ -22,20 +22,20 @@ function files(dir: string): string[] {
 
 describe("allowed hosts", () => {
   const hosts = buildAllowedHosts({
-    KOMAINU_API_BASE_URL: "https://api-demo.komainu.io/",
+    CUSTODY_API_BASE_URL: "https://custody-demo.example.com/",
     EGRESS_EXTRA_HOSTS: " api.coingecko.com , ",
   });
 
   it("contains exactly the spec hosts plus configured extras", () => {
-    expect([...hosts].sort()).toEqual([
-      "api-demo.komainu.io",
+    expect([...hosts].sort()).toEqual(([
+      "custody-demo.example.com",
       "api.atlassian.com",
       "api.coingecko.com",
       "graph.microsoft.com",
-      "komainu.atlassian.net",
+      "example.atlassian.net",
       "login.microsoftonline.com",
       "slack.com",
-    ]);
+    ] as string[]).sort());
   });
 
   it("uses ATLASSIAN_BASE_URL when set", () => {

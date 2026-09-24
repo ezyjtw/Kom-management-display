@@ -9,7 +9,7 @@ KOMmand Centre runs in one of three **deployment tiers** (`KOM_ENVIRONMENT`, `sr
 | Sign-in | Local username/password if `ALLOW_LOCAL_LOGIN=true`; Entra if configured | Entra ID only; any other sign-in raises ALR-SEC-04 |
 | Data | Seeded with synthetic data if `ALLOW_SEED=true`; the database is marked as demo | Never seeded; **refuses to start on a database marked as demo** |
 | Banner | "DEMO environment: synthetic data only" on every page | None |
-| APIs | Mocks or `api-demo.komainu.io` only; never live systems (H9) | The live, read-only integrations |
+| APIs | Mocks or `custody-demo.example.com` only; never live systems (H9) | The live, read-only integrations |
 
 A production build is the production tier unless `KOM_ENVIRONMENT=demo` is set. The tier can only be relaxed by naming the demo tier, never by leaving something out.
 
@@ -31,8 +31,10 @@ SEED_LEAD_PASSWORD=<strong, demo only>
 
 - **Health check path:** `/api/health` (public; `/api/health/liveness` also works).
 - **Service name:** rename the Railway service from `production` to `demo`, so nobody mistakes it for the live system.
-- **Integration variables:** leave them unset, or point them at mocks or `api-demo.komainu.io`. Never set live credentials on the demo.
+- **Integration variables:** leave them unset, or point them at mocks or `custody-demo.example.com`. Never set live credentials on the demo.
 - **What you'll see:** on start, the logs show `Deployment tier: demo` and the seed runs. Sign in with the seeded accounts.
+
+**Upgrading a demo database from before the Phase 12l baseline.** The migration history was consolidated into `0001_baseline`, so a demo database built with the old history cannot take it. On the demo tier, `start.sh` runs `prisma/demo-legacy-reset.cjs` first: if the database has the old history and carries the demo-data marker, it drops and recreates the schema, then migrates and reseeds the same synthetic data. A demo database seeded before the marker existed is refused with a message; set `KOM_DEMO_RESET_LEGACY=true` once, deploy, then remove it. The script never acts outside the demo tier.
 
 There is no Railway configuration in the repository (H10). The settings above live in the Railway dashboard, and Railway is never the production host.
 
@@ -48,7 +50,7 @@ Going live means **a fresh database**, not cleaning the demo one. The demo datab
    - private networking and the egress allowlist.
 2. **Apply the database roles** (`db-roles.sql`) after the first migration.
 3. **Connect every integration** with its live, read-only credential (`credentials.md`):
-   - Komainu API;
+   - custody API;
    - Jira and JSM;
    - Confluence;
    - Slack;
@@ -68,7 +70,7 @@ Going live means **a fresh database**, not cleaning the demo one. The demo datab
    - Entra and `ROLE_GROUP_MAP` are set;
    - there is no local login and no seeding;
    - `NEXTAUTH_URL` is https;
-   - every integration is connected, and Komainu is not the demo host;
+   - every integration is connected, and the custody provider is not the demo host;
    - AI is off;
    - all migrations are applied;
    - the database has no demo marker and no seeded identities;

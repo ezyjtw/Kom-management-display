@@ -72,11 +72,11 @@ describe("client channel validation", () => {
 describe("/api/admin/clients", () => {
   it("lets a lead view clients but masks account numbers", async () => {
     state.user = user("lead");
-    prismaMock.client.findMany.mockResolvedValue([{ id: "c1", displayName: "A", komainuAccountNos: ["ACC123456"], channels: [] }]);
+    prismaMock.client.findMany.mockResolvedValue([{ id: "c1", displayName: "A", custodyAccountNos: ["ACC123456"], channels: [] }]);
     const res = await clientsRoute.GET(req("GET"));
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.data[0].komainuAccountNos[0]).not.toBe("ACC123456");
+    expect(json.data[0].custodyAccountNos[0]).not.toBe("ACC123456");
   });
 
   it("forbids a lead from creating clients", async () => {

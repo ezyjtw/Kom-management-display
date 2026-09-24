@@ -25,12 +25,12 @@ async function main() {
       d.ticketProject,
       DEFINITION_BY_CODE[d.code]?.collector ? "automated" : "manual",
       confluence,
-      [d.requiredFlag ?? "", d.restricted ? "kps:view" : ""].filter(Boolean).join(", ") || "-",
+      [d.requiredFlag ?? "", d.restricted ? "realisation:view" : ""].filter(Boolean).join(", ") || "-",
     ].map((v) => cell(String(v))).join(" | ")} |`);
   }
   console.log(`# Daily work coverage (${defs.length} definitions)\n`);
   console.log(lines.join("\n"));
   console.log(`\nDue-time alert ALR-CHK-01 enabled: ${rules.get("ALR-CHK-01") ? "yes" : "no (ships disabled)"}.`);
-  console.log("Numbering gap: CHK-14 and CHK-18..20 not found in TOP (CONFIRM-CHECK-GAPS).");
+  console.log("Numbering gaps in the checklist are tracked as CONFIRM-CHECK-GAPS.");
 }
 main().then(() => prisma.$disconnect()).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });

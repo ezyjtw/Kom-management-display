@@ -18,6 +18,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { httpFetch } from "@/lib/http/client";
+import { licensedJurisdictionList } from "@/lib/licensed-jurisdictions";
 
 // ─── Provider types ─────────────────────────────────────────────────────────
 
@@ -309,13 +310,9 @@ export async function researchToken(token: {
   demandSignals?: Array<{ signalType: string; source: string; description: string }>;
 }): Promise<Record<string, unknown> | null> {
   const text = await complete({
-    system: `You are a senior compliance and research analyst on the token onboarding team at KMR, an institutional-grade digital asset custodian. You hold direct responsibility for recommending whether tokens should be approved for custody.
+    system: `You are a senior compliance and research analyst on the token onboarding team at the firm, an institutional-grade digital asset custodian. You hold direct responsibility for recommending whether tokens should be approved for custody.
 
-The firm holds custodian licenses in four jurisdictions:
-- **UK**: FCA-registered cryptoasset business
-- **EU**: Licensed under MiCA framework
-- **Jersey**: JFSC-registered virtual currency exchange business
-- **UAE (Dubai)**: VARA-licensed virtual asset service provider
+The firm's licensed jurisdictions (deployment configuration): ${licensedJurisdictionList()}. Mark each of these as LICENSED JURISDICTION in your analysis and assess whether the token is permissible under that licence.
 
 You ARE the compliance and research function — give definitive assessments, not hedged suggestions. Do not tell the reader to "consult legal counsel" or "seek external advice". If you need more information to make a determination, state exactly what data is missing and what the conservative position should be in the interim. Your analysis directly informs the token committee's go/no-go decision.
 
@@ -329,15 +326,13 @@ Analyse the token and provide a structured assessment covering:
    {
      "overall": "Brief overall regulatory risk summary",
      "jurisdictions": {
-       "UK": "FCA classification (exchange/utility/security token), financial promotion rules, whether it's a specified investment under RAO — LICENSED JURISDICTION, assess if token is permissible under the firm's FCA registration",
-       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), CASP obligations, white paper requirements — LICENSED JURISDICTION, assess compatibility with the firm's MiCA authorization",
-       "Jersey": "JFSC classification under AML/CFT Handbook, whether the token raises concerns under Sound Business Practice Policy — LICENSED JURISDICTION, assess if custodying this token is within the firm's JFSC registration scope",
-       "UAE": "VARA classification and licensing requirements for Dubai, ADGM/FSRA considerations — LICENSED JURISDICTION, assess if token is permissible under the firm's VARA license",
+       "UK": "FCA classification (exchange/utility/security token), financial promotion rules, whether it's a specified investment under RAO",
+       "EU": "MiCA classification (e-money token, asset-referenced token, crypto-asset), CASP obligations, white paper requirements",
+       "UAE": "ADGM/FSRA and emirate-level virtual asset classification and licensing requirements",
        "US": "SEC/CFTC classification risk, Howey test analysis, any enforcement actions",
        "Switzerland": "FINMA token classification (payment, utility, asset), Swiss DLT framework status",
        "Singapore": "MAS classification under Payment Services Act, Digital Payment Token status",
-       "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status",
-       "Hong_Kong": "SFC classification, whether it's a virtual asset under the new regime"
+       "Japan": "JFSA classification, whether listed on registered exchanges, JVCEA status"
      },
      "sanctionsExposure": "Any sanctions-related concerns (OFAC, EU sanctions lists)",
      "keyRisks": ["risk1", "risk2"]
@@ -570,14 +565,14 @@ export async function suggestTokensToOnboard(context: {
 }): Promise<Array<Record<string, unknown>> | null> {
   const text = await complete({
     system: `You are a digital asset strategy analyst for an institutional-grade custody firm.
-The firm holds custodian licenses in the UK (FCA), EU (MiCA), Jersey (JFSC), and UAE/Dubai (VARA).
-Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported. Prioritise tokens that are permissible under the firm's four licensed jurisdictions.
+The firm's licensed jurisdictions (deployment configuration): ${licensedJurisdictionList()}.
+Your job is to identify tokens and chain combinations that institutional clients are likely to demand but are NOT yet supported. Prioritise tokens that are permissible under the firm's licensed jurisdictions.
 
 Given the list of tokens already in the registry, suggest 5-8 popular token/chain combinations worth evaluating. Focus on:
 
 1. **Institutional demand**: Tokens with existing ETFs/ETPs, significant institutional fund allocations, or growing OTC markets
 2. **Chain diversity**: Major L1s, important L2s, and multi-chain deployments (e.g. USDT on Tron, stablecoins on multiple chains)
-3. **Competitor gap**: Tokens supported by competing custodians (BitGo, Anchorage, Coinbase Custody, Copper) but not yet listed
+3. **Competitor gap**: Tokens supported by competing custodians (other institutional custodians) but not yet listed
 4. **Emerging institutional assets**: RWA tokens, liquid staking derivatives, and tokenized assets gaining traction
 5. **Staking opportunities**: Tokens where custody clients would benefit from staking yield
 

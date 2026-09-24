@@ -3,9 +3,9 @@ import { requireAuth } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
 import {
   fetchPendingTransactions,
-  isKomainuConfigured,
-} from "@/lib/integrations/komainu-api/client";
-import type { KomainuTransaction } from "@/lib/integrations/komainu-api/types";
+  isCustodyConfigured,
+} from "@/lib/integrations/custody-api/client";
+import type { CustodyTransaction } from "@/lib/integrations/custody-api/types";
 import {
   fetchTransfers,
   isNotabeneEnabled,
@@ -66,7 +66,7 @@ function buildNotabeneIndex(transfers: NotabeneTransfer[]) {
 }
 
 function findMatch(
-  tx: KomainuTransaction,
+  tx: CustodyTransaction,
   index: ReturnType<typeof buildNotabeneIndex>,
 ): NotabeneTransfer | null {
   // Primary: match by tx hash
@@ -114,20 +114,20 @@ export async function GET(request: NextRequest) {
   if (authz instanceof NextResponse) return authz;
 
   try {
-    const custodyConfigured = isKomainuConfigured();
+    const custodyConfigured = isCustodyConfigured();
     const notabeneConfigured = await isNotabeneEnabled();
 
     // Fetch data from both sources in parallel
     const [custodyResult, notabeneResult] = await Promise.allSettled([
       custodyConfigured
         ? fetchPendingTransactions({ pageSize: 200 })
-        : Promise.resolve({ data: [] as KomainuTransaction[] }),
+        : Promise.resolve({ data: [] as CustodyTransaction[] }),
       notabeneConfigured
         ? fetchTransfers({ perPage: 200 })
         : Promise.resolve({ transfers: [] as NotabeneTransfer[], total: 0 }),
     ]);
 
-    const transactions: KomainuTransaction[] =
+    const transactions: CustodyTransaction[] =
       custodyResult.status === "fulfilled"
         ? ("data" in custodyResult.value
             ? custodyResult.value.data

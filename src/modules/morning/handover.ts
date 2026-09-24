@@ -3,7 +3,7 @@
  * covers the day (not WFH) or when absence is toggled manually. An absent lead
  * selects a covering member and writes a handover note before 09:00 UK. The
  * note posts as an internal comment on each of the lead's open tickets. If it
- * is missing at 09:00, the lead and the Head of Transaction Operations (role
+ * is missing at 09:00, the lead and the head of operations (role
  * admin) are notified. Informational only: links, no actions.
  */
 
@@ -245,8 +245,8 @@ export async function retryHandover(input: z.infer<typeof retrySchema>, actor: {
 }
 
 /**
- * In-app, Slack DM and email to the lead and every admin (Head of Transaction
- * Operations). Each channel is attempted independently and its outcome
+ * In-app, Slack DM and email to the lead and every admin (the head of
+ * operations). Each channel is attempted independently and its outcome
  * recorded; nothing is counted as sent without the channel accepting it.
  */
 export async function notifyLeadAndHead(leadId: string, title: string, body: string, now = new Date()): Promise<ReminderResult[]> {
@@ -285,7 +285,7 @@ export async function notifyLeadAndHead(leadId: string, title: string, body: str
 /**
  * From 09:00 UK on business days (every 15 minutes until noon): post saved
  * handovers for absent leads and retry failed tickets; where the note is
- * missing, remind the lead and the Head of Transaction Operations. The
+ * missing, remind the lead and the head of operations. The
  * reminder counts as done only when every recipient was reached on at least
  * one channel; otherwise the next run tries again.
  */

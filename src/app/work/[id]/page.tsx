@@ -61,20 +61,20 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
     }
   }
   async function loadDefectDraft() {
-    const json = await fetch(`/api/gx-sprints/defect/${id}`).then((r) => r.json()).catch(() => null);
+    const json = await fetch(`/api/platform-sprints/defect/${id}`).then((r) => r.json()).catch(() => null);
     if (json?.success) setDefect({ summary: json.data.summary, description: json.data.description, confirm: false });
     else setMessage({ ok: false, text: json?.error ?? "Could not draft the defect." });
   }
   async function createDefect() {
     if (!defect) return;
     setBusy(true);
-    const res = await fetch(`/api/gx-sprints/defect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: defect.summary, description: defect.description, confirm: true }) });
+    const res = await fetch(`/api/platform-sprints/defect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: defect.summary, description: defect.description, confirm: true }) });
     const json = await res.json().catch(() => null);
     setBusy(false);
     if (res.ok) {
       setDefectKey(json.data.key);
       setDefect(null);
-      setMessage({ ok: true, text: `GXS defect ${json.data.key} created and linked.` });
+      setMessage({ ok: true, text: `PDEF defect ${json.data.key} created and linked.` });
     } else setMessage({ ok: false, text: json?.error ?? "Could not create the defect." });
   }
   const form = (fn: (f: FormData) => void) => (e: React.FormEvent<HTMLFormElement>) => {
@@ -179,7 +179,7 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
       )}
       {panel === "link" && (
         <form className="flex gap-2 items-center" onSubmit={form((f) => act(`work-items/${id}/links`, { key: f.get("key") }, "Ticket linked."))}>
-          <input name="key" aria-label="Ticket key" required placeholder="TOPS-123" className={`${input} w-40`} />
+          <input name="key" aria-label="Ticket key" required placeholder="OPS-123" className={`${input} w-40`} />
           <button disabled={busy} className={button}>Link</button>
         </form>
       )}
@@ -213,21 +213,21 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
           </div>
           {item.kind === "uat_task" && (
             <div className="space-y-2 rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">UAT outcome (tested in GX UAT). A fail needs a linked GXS defect.</p>
+              <p className="text-xs text-muted-foreground">UAT outcome (tested in Platform UAT). A fail needs a linked PDEF defect.</p>
               <div className="flex gap-2 flex-wrap">
                 <select name="uatOutcome" aria-label="UAT outcome" required className={input} value={uatOutcome} onChange={(e) => setUatOutcome(e.target.value)}>
                   <option value="">Outcome…</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="not_applicable">Not applicable</option><option value="blocked">Blocked</option>
                 </select>
                 <input name="uatEvidence" aria-label="UAT evidence" required placeholder="Evidence (screenshot link or reference)" className={`${input} w-80`} />
-                {uatOutcome === "fail" && <input aria-label="GXS defect key" placeholder="GXS-123" value={defectKey} onChange={(e) => setDefectKey(e.target.value.toUpperCase())} className={`${input} w-32`} />}
-                {uatOutcome === "fail" && !defectKey && <button type="button" className={button} onClick={() => void loadDefectDraft()}>Draft GXS defect</button>}
+                {uatOutcome === "fail" && <input aria-label="PDEF defect key" placeholder="PDEF-123" value={defectKey} onChange={(e) => setDefectKey(e.target.value.toUpperCase())} className={`${input} w-32`} />}
+                {uatOutcome === "fail" && !defectKey && <button type="button" className={button} onClick={() => void loadDefectDraft()}>Draft PDEF defect</button>}
               </div>
               {defect && (
                 <div className="space-y-2">
                   <input aria-label="Defect summary" value={defect.summary} onChange={(e) => setDefect({ ...defect, summary: e.target.value })} className={`${input} w-full`} />
                   <textarea aria-label="Defect description" rows={6} value={defect.description} onChange={(e) => setDefect({ ...defect, description: e.target.value })} className="w-full rounded-md border border-border bg-background p-2 text-sm" />
-                  <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={defect.confirm} onChange={(e) => setDefect({ ...defect, confirm: e.target.checked })} /> I have reviewed this defect and want it created in GXS</label>
-                  <button type="button" disabled={busy || !defect.confirm} className={button} onClick={() => void createDefect()}>Create GXS defect</button>
+                  <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={defect.confirm} onChange={(e) => setDefect({ ...defect, confirm: e.target.checked })} /> I have reviewed this defect and want it created in PDEF</label>
+                  <button type="button" disabled={busy || !defect.confirm} className={button} onClick={() => void createDefect()}>Create PDEF defect</button>
                 </div>
               )}
             </div>

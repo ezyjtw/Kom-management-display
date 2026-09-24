@@ -4,12 +4,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const envVars = vi.hoisted(() => ({
-  ATLASSIAN_BASE_URL: "https://komainu.atlassian.net",
+  ATLASSIAN_BASE_URL: "https://example.atlassian.net",
   ATLASSIAN_EMAIL: "svc@example.com",
   ATLASSIAN_API_TOKEN: "t",
 } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 
 const prismaMock = vi.hoisted(() => ({
   jiraIssueEvent: { findUnique: vi.fn(), create: vi.fn() },
@@ -85,18 +85,18 @@ describe("allowlist", () => {
 describe("inbound sync", () => {
   const issue = (over: Record<string, unknown> = {}) => ({
     id: "1",
-    key: "VSR-7",
+    key: "VND-7",
     fields: {
       summary: "Vendor issue",
       status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
       assignee: { accountId: "acc", emailAddress: "ops@example.com" },
       created: "2026-09-20T09:00:00.000Z",
       updated: "2026-09-23T09:00:00.000Z",
-      project: { key: "VSR" },
+      project: { key: "VND" },
       ...over,
     },
   });
-  const cfg = { kind: "jira", defaultWorkItemKind: "vendor_ticket", defaultTeam: "All", defaultTaskCode: "JIRA-VSR" };
+  const cfg = { kind: "jira", defaultWorkItemKind: "vendor_ticket", defaultTeam: "All", defaultTaskCode: "JIRA-VND" };
 
   it("maps status category to state", () => {
     expect(stateFromIssue(issue() as never)).toBe("owned");
@@ -105,7 +105,7 @@ describe("inbound sync", () => {
   });
 
   it("builds a JQL window over enabled projects and drops unsafe keys", () => {
-    expect(buildJql(["OTC", "VSR", "x) OR 1=1"])).toBe("project in (OTC, VSR) AND updated >= -5m ORDER BY updated ASC");
+    expect(buildJql(["OTC", "VND", "x) OR 1=1"])).toBe("project in (OTC, VND) AND updated >= -5m ORDER BY updated ASC");
   });
 
   it("creates a WorkItem once per (key, updated) and records history", async () => {
@@ -117,7 +117,7 @@ describe("inbound sync", () => {
 
     expect(await applyIssue(issue() as never, cfg)).toBe("created");
     const data = prismaMock.workItem.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ kind: "vendor_ticket", sourceSystem: "jira", sourceId: "VSR-7", ticketKey: "VSR-7", state: "owned", ownerEmployeeId: "emp-1" });
+    expect(data).toMatchObject({ kind: "vendor_ticket", sourceSystem: "jira", sourceId: "VND-7", ticketKey: "VND-7", state: "owned", ownerEmployeeId: "emp-1" });
     expect(data.clockStartedAt.toISOString()).toBe("2026-09-20T09:00:00.000Z");
     expect(prismaMock.jiraIssueEvent.create).toHaveBeenCalledTimes(1);
 
@@ -128,7 +128,7 @@ describe("inbound sync", () => {
 
   it("never reopens a WorkItem closed with a write-up in KOMmand Centre", async () => {
     prismaMock.jiraIssueEvent.findUnique.mockResolvedValue(null);
-    prismaMock.workItem.findFirst.mockResolvedValue({ id: "wi-1", state: "closed", title: "t", ownerEmployeeId: null, ownedAt: null, resolvedAt: null, ticketSystem: "jira", ticketKey: "VSR-7", ticketUrl: "u" });
+    prismaMock.workItem.findFirst.mockResolvedValue({ id: "wi-1", state: "closed", title: "t", ownerEmployeeId: null, ownedAt: null, resolvedAt: null, ticketSystem: "jira", ticketKey: "VND-7", ticketUrl: "u" });
     prismaMock.employee.findFirst.mockResolvedValue(null);
     prismaMock.workItem.update.mockResolvedValue({ id: "wi-1" });
     await applyIssue(issue() as never, cfg);

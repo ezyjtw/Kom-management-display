@@ -35,7 +35,7 @@ export type IngestOutcome = "skipped" | "risk_signal" | "thread" | "thread_with_
 
 /**
  * Route one Slack message by channel purpose (spec §8.4):
- * - gx_notifications: bot messages are NOT skipped; stored raw for the Risk
+ * - platform_notifications: bot messages are NOT skipped; stored raw for the Risk
  *   Signal parser (TODO(CONFIRM-RISK-SOURCE));
  * - alerts_out: our own outbound channel, never ingested;
  * - everything else: root messages become CommsThreads, replies are synced
@@ -48,7 +48,7 @@ export async function ingestChannelMessage(
 ): Promise<IngestOutcome> {
   if (!msg.ts || slackChannel.purpose === "alerts_out") return "skipped";
 
-  if (slackChannel.purpose === "gx_notifications") {
+  if (slackChannel.purpose === "platform_notifications") {
     if (msg.subtype && msg.subtype !== "bot_message" && SKIP_SUBTYPES.has(msg.subtype)) return "skipped";
     await upsertSourceRecords("slack", "risk_signal_raw", [{
       externalId: `${slackChannel.channelId}:${msg.ts}`,

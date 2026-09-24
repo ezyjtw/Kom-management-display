@@ -50,7 +50,7 @@ export default function OtcPage() {
           {(data?.items ?? []).map((i) => (
             <tr key={i.id} className="border-t border-border/50">
               <td className="px-4 py-2 text-xs">{i.ticketUrl ? <a href={i.ticketUrl} target="_blank" rel="noreferrer" className="text-primary inline-flex items-center gap-1">{i.ticketKey} <ExternalLink size={10} /></a> : i.ticketKey}</td>
-              <td className="text-xs">{i.title}{i.kind === "mtd_break" && <span className="ml-2 text-amber-400">GX status vs chain unverified (CF-18)</span>}</td>
+              <td className="text-xs">{i.title}{i.kind === "mtd_break" && <span className="ml-2 text-amber-400">Platform status vs chain unverified</span>}</td>
               <td className="text-xs">{i.owner?.name ?? <span className="text-amber-400">unassigned</span>}</td>
               <td className="text-xs">{i.state}</td>
               <td className={`text-xs ${i.overdue ? "text-red-400" : ""}`}>{new Date(i.clockStartedAt).toLocaleDateString()}</td>

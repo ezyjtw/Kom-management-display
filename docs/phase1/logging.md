@@ -65,12 +65,12 @@ In production each line is one JSON object:
 | Sign-in, sign-out | `login_success`, `login_failed`, `sso_login_denied`, `logout` (session) |
 | Permission denied | `permission_denied` (route; `entityId` = "METHOD /path") |
 | Role change | `role_changed` (user; `metadata.source` = `sso_group` \| `admin`), `user_created` |
-| Alert rule or SLA policy change | `alert_rule_updated` (alert_rule), `sla_policy_updated` (sla_policy), `reference_<table>_upserted` / `_deleted` (reference_data, including GX impact rules), `app_setting` changes, feature flag changes |
+| Alert rule or SLA policy change | `alert_rule_updated` (alert_rule), `sla_policy_updated` (sla_policy), `reference_<table>_upserted` / `_deleted` (reference_data, including Platform impact rules), `app_setting` changes, feature flag changes |
 | Client or channel mapping change | `client_created`, `client_updated` (client), `slack_channel_register`, `slack_channel_update`, `slack_channel_queue_set` (slack_channel), `client_preference_*` |
 | Export | `export`, `report_generated`, `export_cap_exceeded` |
 | Client-visible content posted | `client_comms_approved`, `client_message_sent`, `client_ticket_created`, `client_update_submitted` (work_item) |
 | Compliance-sensitive withholding and override | `client_incident_raised` / `client_risk_raised` with `outcome.withheld`, `client_ticket_released_after_compliance_decision` (work_item; spec §9.7) |
-| Komainu API credential use | `integration_credential_used` (integration_credential; `entityId` = `komainu_api:<label>`, `metadata.workload`) |
+| custody API credential use | `integration_credential_used` (integration_credential; `entityId` = `custody_api:<label>`, `metadata.workload`) |
 | Integration credential failure | `integration_auth_failure` (integration_host) |
 | Break-glass / non-SSO access | `non_sso_login` (session), which also raises ALR-SEC-04 |
 
@@ -99,7 +99,7 @@ SecOps owns the rules; these are proposals.
 2. An export volume spike, or an export by a user who does not normally export (`export`, `export_cap_exceeded`; ALR-SEC-03).
 3. An alert rule or SLA policy changed outside change hours (`alert_rule_updated`, `sla_policy_updated`; ALR-SEC-02).
 4. A client mapping changed and then immediately used to raise a client ticket (`slack_channel_*` or `client_updated`, followed by `client_incident_raised` / `client_risk_raised` for the same client).
-5. The Komainu API credential used from an unexpected workload (`integration_credential_used` whose `metadata.workload` is not `worker`).
+5. The custody API credential used from an unexpected workload (`integration_credential_used` whose `metadata.workload` is not `worker`).
 6. The worker heartbeat lost while alerts remain unacknowledged (ALR-HB-*).
 7. A production sign-in not through Entra (`non_sso_login`; ALR-SEC-04). Correlate with Entra sign-in logs by user and time.
 

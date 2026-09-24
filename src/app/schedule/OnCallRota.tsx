@@ -24,8 +24,8 @@ const SHIFT_BADGES: Record<string, { label: string; color: string; icon: typeof 
 
 const LOCATION_COLORS: Record<string, string> = {
   London: "text-blue-400",
-  "Hong Kong": "text-emerald-400",
-  Jersey: "text-amber-400",
+  Singapore: "text-emerald-400",
+  Dublin: "text-amber-400",
 };
 
 function formatPeriod(start: string, end: string) {

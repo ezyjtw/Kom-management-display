@@ -4,7 +4,7 @@
  * metrics sections, which carry no person fields.
  */
 
-import { clientIncidentComms, clientsSection, gxSprintUat, hygiene, operationsHealth, pollingHealthSection, responsiveness, type Period } from "@/modules/metrics/service";
+import { clientIncidentComms, clientsSection, platformSprintUat, hygiene, operationsHealth, pollingHealthSection, responsiveness, type Period } from "@/modules/metrics/service";
 
 export interface MetricRow {
   section: string;
@@ -20,15 +20,15 @@ type Pack = {
   hygiene: Awaited<ReturnType<typeof hygiene>>;
   clientIncidents: Awaited<ReturnType<typeof clientIncidentComms>>;
   polling: Awaited<ReturnType<typeof pollingHealthSection>>;
-  gxUat: Awaited<ReturnType<typeof gxSprintUat>>;
+  platformUat: Awaited<ReturnType<typeof platformSprintUat>>;
 };
 
 export async function buildPack(period: Period, now = new Date()): Promise<Pack> {
-  const [r, c, o, h, ci, pl, gx] = await Promise.all([
+  const [r, c, o, h, ci, pl, platform] = await Promise.all([
     responsiveness(period, now), clientsSection(period, now), operationsHealth(period, now), hygiene(period, now),
-    clientIncidentComms(period, now), pollingHealthSection(period, now), gxSprintUat(period, now),
+    clientIncidentComms(period, now), pollingHealthSection(period, now), platformSprintUat(period, now),
   ]);
-  return { responsiveness: r, clients: c, operations: o, hygiene: h, clientIncidents: ci, polling: pl, gxUat: gx };
+  return { responsiveness: r, clients: c, operations: o, hygiene: h, clientIncidents: ci, polling: pl, platformUat: platform };
 }
 
 export function packRows(p: Pack): MetricRow[] {
@@ -93,13 +93,13 @@ export function packRows(p: Pack): MetricRow[] {
     push("polling", source, "failed", v.failed);
   }
 
-  for (const s of p.gxUat.sprints) {
-    push("gx_uat", `sprint:${s.sprint}`, "change_items", s.changeItems);
-    push("gx_uat", `sprint:${s.sprint}`, "uat_tickets", s.uatTickets);
-    push("gx_uat", `sprint:${s.sprint}`, "completed_before_prod_pct", s.completedBeforeProdPct);
-    push("gx_uat", `sprint:${s.sprint}`, "fails", s.fails);
-    push("gx_uat", `sprint:${s.sprint}`, "defects_raised", s.defectsRaised);
-    push("gx_uat", `sprint:${s.sprint}`, "added_after_sign_off", s.addedAfterSignOff);
+  for (const s of p.platformUat.sprints) {
+    push("platform_uat", `sprint:${s.sprint}`, "change_items", s.changeItems);
+    push("platform_uat", `sprint:${s.sprint}`, "uat_tickets", s.uatTickets);
+    push("platform_uat", `sprint:${s.sprint}`, "completed_before_prod_pct", s.completedBeforeProdPct);
+    push("platform_uat", `sprint:${s.sprint}`, "fails", s.fails);
+    push("platform_uat", `sprint:${s.sprint}`, "defects_raised", s.defectsRaised);
+    push("platform_uat", `sprint:${s.sprint}`, "added_after_sign_off", s.addedAfterSignOff);
   }
   return rows;
 }
@@ -119,11 +119,11 @@ const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "
 
 const TITLES: Record<string, string> = {
   responsiveness: "Responsiveness", clients: "Clients", operations: "Operations", hygiene: "Hygiene",
-  client_incidents: "Client incident communication", polling: "Polling health", gx_uat: "GX sprint UAT",
+  client_incidents: "Client incident communication", polling: "Polling health", platform_uat: "Platform sprint UAT",
 };
 
 export function toHtml(month: string, p: Pack, rows: MetricRow[]): { title: string; html: string } {
-  const sections = ["responsiveness", "clients", "operations", "hygiene", "client_incidents", "polling", "gx_uat"];
+  const sections = ["responsiveness", "clients", "operations", "hygiene", "client_incidents", "polling", "platform_uat"];
   const stale = p.responsiveness.freshness.sources.filter((s) => s.status !== "ok").map((s) => s.source);
   const html = `
     <p class="meta">Team and client level only. Effort is logged effort; volume is volume, not effort. Data as of ${esc(p.responsiveness.freshness.asOf)}${stale.length ? `; sources not current: ${esc(stale.join(", "))}` : ""}.</p>

@@ -172,7 +172,7 @@ export const updateBrandingSchema = z.object({
 
 export const createSettlementSchema = z.object({
   settlementRef: z.string().min(1).max(200),
-  venue: z.enum(["okx", "fireblocks"]).default("okx"),
+  venue: z.enum(["exchange", "fireblocks"]).default("exchange"),
   clientName: z.string().min(1).max(200),
   clientAccount: z.string().max(200).default(""),
   asset: z.string().min(1).max(50),
@@ -360,11 +360,11 @@ const jobTypeSchema = z.enum([
   "sync_jira", "check_sla", "check_staking", "check_confirmations", "cleanup_sessions",
   "sync_slack", "sync_slack_replies", "slack_event",
   "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
-  "komainu_poll_requests", "komainu_poll_transactions", "komainu_poll_collateral",
-  "komainu_poll_audit_logs", "komainu_poll_eod_balances", "komainu_poll_staking", "komainu_poll_stakes",
+  "custody_poll_requests", "custody_poll_transactions", "custody_poll_collateral",
+  "custody_poll_audit_logs", "custody_poll_eod_balances", "custody_poll_staking", "custody_poll_stakes",
   "sync_mail", "graph_teams_sync",
-  "report_unticketed", "reconcile_tickets", "iai_overdue", "evaluate_alerts", "alert_digest", "poll_risk_signals",
-  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments", "morning_handover", "gx_sprint_intake",
+  "report_unticketed", "reconcile_tickets", "incident_log_overdue", "evaluate_alerts", "alert_digest", "poll_risk_signals",
+  "generate_daily_checks", "collect_check_evidence", "mtd_autoclose", "poll_client_ticket_comments", "morning_handover", "platform_sprint_intake",
 ]);
 
 export const enqueueJobSchema = z.object({
@@ -818,13 +818,13 @@ export const clientChannelSchema = z.discriminatedUnion("kind", [
 
 const clientFields = {
   displayName: z.string().trim().min(1).max(200),
-  komainuOrgId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
-  komainuAccountNos: z.array(z.string().trim().min(1).max(100)).max(200).default([]),
+  custodyOrgId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  custodyAccountNos: z.array(z.string().trim().min(1).max(100)).max(200).default([]),
   jsmOrganizationId: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
   jurisdiction: z.enum(["", "UK", "JE", "AE", "EU"]).default(""),
   isActive: z.boolean().default(true),
   channels: z.array(clientChannelSchema).max(100).default([]),
-  /** Spec §12 CHK-05: client-attested inbound threshold and its last review (CF-31). */
+  /** Spec §12 CHK-05: client-attested inbound threshold and its last review. */
   inboundThresholdUsd: usdAmount({ min: "positive" }).nullable().optional(),
   thresholdReviewedAt: z.string().datetime({ offset: true }).nullable().optional().transform((v) => (v ? new Date(v) : v)),
 };

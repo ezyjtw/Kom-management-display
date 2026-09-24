@@ -228,7 +228,7 @@ async function handle(msg: IntakeMessage): Promise<IntakeOutcome> {
     return "commented";
   }
   if (msg.author.kind === "staff" && !request.firstResponseAt) {
-    await commentInternal(request.id, withPermalink("First Komainu response recorded.", msg.permalink));
+    await commentInternal(request.id, withPermalink("First the custody provider response recorded.", msg.permalink));
     await prisma.workItem.update({ where: { id: request.id }, data: { firstResponseAt: msg.at } });
     return "first_response";
   }

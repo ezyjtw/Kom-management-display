@@ -14,24 +14,24 @@ function str(payload: Payload, key: string): string {
   return typeof v === "string" ? v : "";
 }
 
-type KomainuJob =
-  | "komainu_poll_requests" | "komainu_poll_transactions" | "komainu_poll_collateral"
-  | "komainu_poll_audit_logs" | "komainu_poll_eod_balances" | "komainu_poll_staking" | "komainu_poll_stakes";
+type CustodyJob =
+  | "custody_poll_requests" | "custody_poll_transactions" | "custody_poll_collateral"
+  | "custody_poll_audit_logs" | "custody_poll_eod_balances" | "custody_poll_staking" | "custody_poll_stakes";
 
-function komainuHandlers(): Record<KomainuJob, Handler> {
-  const run = (fn: (p: typeof import("@/modules/integrations/komainu/pollers")) => Promise<unknown>): Handler => async () => {
-    const { isKomainuConfigured } = await import("@/lib/integrations/komainu-api/client");
-    if (!isKomainuConfigured()) return { skipped: true, reason: "Komainu API not configured" };
-    return fn(await import("@/modules/integrations/komainu/pollers"));
+function custodyHandlers(): Record<CustodyJob, Handler> {
+  const run = (fn: (p: typeof import("@/modules/integrations/custody/pollers")) => Promise<unknown>): Handler => async () => {
+    const { isCustodyConfigured } = await import("@/lib/integrations/custody-api/client");
+    if (!isCustodyConfigured()) return { skipped: true, reason: "custody API not configured" };
+    return fn(await import("@/modules/integrations/custody/pollers"));
   };
   return {
-    komainu_poll_requests: run((p) => p.pollRequests()),
-    komainu_poll_transactions: run((p) => p.pollTransactions()),
-    komainu_poll_collateral: run((p) => p.pollCollateral()),
-    komainu_poll_audit_logs: run((p) => p.pollAuditLogs()),
-    komainu_poll_eod_balances: run((p) => p.pollEodBalances()),
-    komainu_poll_staking: run((p) => p.pollStakingRewards()),
-    komainu_poll_stakes: run((p) => p.pollStakes()),
+    custody_poll_requests: run((p) => p.pollRequests()),
+    custody_poll_transactions: run((p) => p.pollTransactions()),
+    custody_poll_collateral: run((p) => p.pollCollateral()),
+    custody_poll_audit_logs: run((p) => p.pollAuditLogs()),
+    custody_poll_eod_balances: run((p) => p.pollEodBalances()),
+    custody_poll_staking: run((p) => p.pollStakingRewards()),
+    custody_poll_stakes: run((p) => p.pollStakes()),
   };
 }
 
@@ -163,7 +163,7 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return processSlackEvent(payload);
   },
 
-  ...komainuHandlers(),
+  ...custodyHandlers(),
 
   /** Spec §6.1: every configured shared mailbox every 5 minutes, 24/7, via Graph delta queries. */
   async sync_mail() {
@@ -180,8 +180,8 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return syncGraphTeams();
   },
 
-  async gx_sprint_intake() {
-    const { runScheduledIntake } = await import("@/modules/gx-sprints/intake");
+  async platform_sprint_intake() {
+    const { runScheduledIntake } = await import("@/modules/platform-sprints/intake");
     return runScheduledIntake();
   },
 
@@ -200,9 +200,9 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return reconcileTickets();
   },
 
-  async iai_overdue() {
-    const { checkOverdueIaiDrafts } = await import("@/modules/iai/overdue-job");
-    return checkOverdueIaiDrafts();
+  async incident_log_overdue() {
+    const { checkOverdueIncidentLogDrafts } = await import("@/modules/incident-log/overdue-job");
+    return checkOverdueIncidentLogDrafts();
   },
 
   async evaluate_alerts() {

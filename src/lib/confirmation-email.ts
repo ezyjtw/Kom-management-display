@@ -46,7 +46,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
         <h2 style="margin:0;">KOMmand Centre — Transaction Confirmation Required</h2>
       </div>
       <div style="border:1px solid #e2e8f0;border-top:none;padding:24px;border-radius:0 0 8px 8px;">
-        <p>A ${data.riskLevel} risk transaction flagged in GX is awaiting action in GX. KOMmand Centre does not approve transactions.</p>
+        <p>A ${data.riskLevel} risk transaction flagged in Platform is awaiting action in Platform. KOMmand Centre does not approve transactions.</p>
 
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr>
@@ -92,7 +92,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
     </div>
   `;
 
-  const subject = `[${data.riskLevel.toUpperCase()}] Awaiting action in GX: ${data.asset} ${formatAmount(data.amount, 18)} ${data.direction}`;
+  const subject = `[${data.riskLevel.toUpperCase()}] Awaiting action in Platform: ${data.asset} ${formatAmount(data.amount, 18)} ${data.direction}`;
 
   try {
     await transporter.sendMail({

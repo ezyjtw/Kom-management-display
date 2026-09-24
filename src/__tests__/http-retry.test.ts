@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["api-demo.komainu.io"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["custody-demo.example.com"]) }));
 
 import { httpFetchWithRetry, rateLimitRemaining } from "@/lib/http/client";
 
@@ -20,7 +20,7 @@ describe("httpFetchWithRetry", () => {
     const sleep = vi.fn().mockResolvedValue(undefined);
     const onRateLimit = vi.fn();
 
-    const r = await httpFetchWithRetry("https://api-demo.komainu.io/v1/requests", undefined, { sleep, onRateLimit });
+    const r = await httpFetchWithRetry("https://custody-demo.example.com/v1/requests", undefined, { sleep, onRateLimit });
     expect(r.status).toBe(200);
     expect(sleep).toHaveBeenCalledWith(2000);
     expect(onRateLimit).toHaveBeenCalledWith(41);
@@ -29,7 +29,7 @@ describe("httpFetchWithRetry", () => {
   it("backs off exponentially and gives up after maxAttempts", async () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => res(503)));
     const sleep = vi.fn().mockResolvedValue(undefined);
-    const r = await httpFetchWithRetry("https://api-demo.komainu.io/x", undefined, { sleep, maxAttempts: 3, baseDelayMs: 100 });
+    const r = await httpFetchWithRetry("https://custody-demo.example.com/x", undefined, { sleep, maxAttempts: 3, baseDelayMs: 100 });
     expect(r.status).toBe(503);
     expect(sleep.mock.calls.map((c) => c[0])).toEqual([100, 200]);
   });
@@ -37,7 +37,7 @@ describe("httpFetchWithRetry", () => {
   it("does not retry client errors", async () => {
     const fetchMock = vi.fn().mockResolvedValue(res(404));
     vi.stubGlobal("fetch", fetchMock);
-    await httpFetchWithRetry("https://api-demo.komainu.io/x", undefined, { sleep: vi.fn() });
+    await httpFetchWithRetry("https://custody-demo.example.com/x", undefined, { sleep: vi.fn() });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

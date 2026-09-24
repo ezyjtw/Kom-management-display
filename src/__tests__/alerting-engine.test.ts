@@ -3,7 +3,7 @@
  * trigger, no trigger below threshold, dedupe, auto-resolve after two clean
  * runs (or stays open for rules that never auto-resolve), ticket created or
  * linked, and routing in and out of business hours. Frozen clocks
- * (vi.setSystemTime) and Komainu API snapshot fixtures in an in-memory store.
+ * (vi.setSystemTime) and custody API snapshot fixtures in an in-memory store.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -15,15 +15,15 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 const envVars = vi.hoisted(() => ({
-  ATLASSIAN_BASE_URL: "https://komainu.atlassian.net",
+  ATLASSIAN_BASE_URL: "https://example.atlassian.net",
   ATLASSIAN_EMAIL: "svc@example.com",
   ATLASSIAN_API_TOKEN: "t",
   NEXTAUTH_URL: "https://kommand.example",
 } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
-const flagState = vi.hoisted(() => ({ fab: true }));
-vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => k === "module.fab" && flagState.fab) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
+const flagState = vi.hoisted(() => ({ bank: true }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => k === "module.bank" && flagState.bank) }));
 
 const slack = vi.hoisted(() => ({
   posts: [] as Array<{ channel: string; text: string }>,
@@ -44,7 +44,7 @@ import { RULE_CATALOGUE } from "@/modules/alerting/catalogue";
 import { raiseAlert } from "@/modules/alerting/raise";
 import { runEscalations, runAlertDigest } from "@/modules/alerting/routing";
 import { businessMinutesWith, isBusinessTime, loadCalendar } from "@/modules/alerting/calendar";
-import { SlackGxNotificationSource } from "@/modules/risk/signal-source";
+import { SlackPlatformNotificationSource } from "@/modules/risk/signal-source";
 
 type Row = Record<string, unknown>;
 const p = () => db.client;
@@ -83,11 +83,11 @@ const mins = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
 async function add(model: string, data: Row) {
   return p()[model].create({ data });
 }
-async function komainu(kind: string, externalId: string, data: Row) {
-  return add("sourceRecord", { source: "komainu_api", kind, externalId, ...data });
+async function custody(kind: string, externalId: string, data: Row) {
+  return add("sourceRecord", { source: "custody_api", kind, externalId, ...data });
 }
 async function signal(externalId: string, fields: Row, at: Date) {
-  return add("sourceRecord", { source: "gx", kind: "risk_signal", externalId, occurredAt: at, fields });
+  return add("sourceRecord", { source: "platform", kind: "risk_signal", externalId, occurredAt: at, fields });
 }
 async function update(model: string, where: Row, data: Row) {
   await p()[model].updateMany({ where, data });
@@ -95,10 +95,10 @@ async function update(model: string, where: Row, data: Row) {
 
 async function baseSeed() {
   await syncRuleCatalogue();
-  for (const key of ["TOPS", "KPR", "AO", "VSR", "IAI"]) {
+  for (const key of ["OPS", "RLS", "AO", "VND", "INC"]) {
     await add("jiraProjectConfig", { key, name: key, kind: "jira", enabled: true, issueTypeIds: { _default: "10001" }, syncInbound: true, allowedCustomFields: [] });
   }
-  await add("appSetting", { key: "alerts.defaultTicketProject", value: "TOPS" });
+  await add("appSetting", { key: "alerts.defaultTicketProject", value: "OPS" });
   await add("slackChannel", { channelId: "C-ALERTS", channelName: "alerts", channelType: "internal", purpose: "alerts_out", isActive: true });
   const lead = await add("employee", { name: "Lead", email: "lead@k.com", role: "Lead", team: "TransactionOperations", active: true });
   await add("employee", { name: "Settlements lead", email: "settlements-lead@k.com", role: "Lead", team: "Settlements", active: true });
@@ -147,24 +147,24 @@ const clientRequest = async (startMinsAgo: number, now: Date) => {
   return "wi-cr";
 };
 const pendingRequest = (id: string, minsAgo: number, now: Date, fields: Row = {}) =>
-  komainu("request", id, { status: "PENDING", occurredAt: mins(now, -minsAgo), fields: { type: "CREATE_TRANSACTION", organization: "Acme", workspace: "hot", ...fields } });
+  custody("request", id, { status: "PENDING", occurredAt: mins(now, -minsAgo), fields: { type: "CREATE_TRANSACTION", organization: "Acme", workspace: "hot", ...fields } });
 const oes01Alert = async (firedAt: Date, state = "owned") => {
-  await add("workItem", { id: "wi-oes", kind: "oes_settlement", title: "Settlement failed", taskCode: "OES", sourceSystem: "alert", sourceId: "x", ticketKey: "TOPS-900", ticketSystem: "jira", state, exposureUsd: 500000, clockStartedAt: firedAt });
+  await add("workItem", { id: "wi-oes", kind: "oes_settlement", title: "Settlement failed", taskCode: "OES", sourceSystem: "alert", sourceId: "x", ticketKey: "OPS-900", ticketSystem: "jira", state, exposureUsd: 500000, clockStartedAt: firedAt });
   await add("alert", { id: "al-oes", type: "ALR-OES-01", ruleCode: "ALR-OES-01", dedupeKey: "set-1", message: "Settlement failed", severity: "critical", workItemId: "wi-oes", firstFiredAt: firedAt, lastFiredAt: firedAt });
 };
 
-const fabInstruction = (data: Row) => add("fabInstruction", {
+const bankInstruction = (data: Row) => add("bankInstruction", {
   messageType: "STL_INS", reference: "F-1", instructionType: "OPEN", direction: "RECEIVE", asset: "USDC", amount: 1000,
   valueDate: "2026-09-23", receivedAt: mins(BUSINESS, -45), ackStatus: "none", correctedByRef: null, notes: "", ...data,
 });
-const fabLog = (data: Row) => add("fabSettlementLog", { id: "log-7", reference: "F-1", status: "RECEIVED", kytStatus: "none", occurredAt: mins(BUSINESS, -10), notes: "", ...data });
+const bankLog = (data: Row) => add("bankSettlementLog", { id: "log-7", reference: "F-1", status: "RECEIVED", kytStatus: "none", occurredAt: mins(BUSINESS, -10), notes: "", ...data });
 
 const SCENARIOS: Scenario[] = [
   {
     code: "ALR-CLI-02",
     params: { cadenceMins: { P0: 30, P1: 60, P2: 240, P3: 480 } },
-    trigger: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "TOPS-501", ticketSystem: "jira", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -90).toISOString() } }); return "wi-ci"; },
-    below: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "TOPS-501", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -30).toISOString() } }); },
+    trigger: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "OPS-501", ticketSystem: "jira", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -90).toISOString() } }); return "wi-ci"; },
+    below: async (now) => { await add("workItem", { id: "wi-ci", kind: "client_incident", title: "Client incident", taskCode: "CLIENT-INCIDENT", sourceSystem: "client_entry", sourceId: "ci-1", priority: "P1", ticketKey: "OPS-501", clientTicketKey: "CS-9", clockStartedAt: mins(now, -200), metadata: { lastClientUpdateAt: mins(now, -30).toISOString() } }); },
     clear: async (now) => update("workItem", { id: "wi-ci" }, { metadata: { lastClientUpdateAt: mins(now, 60).toISOString() } }),
   },
   {
@@ -182,21 +182,21 @@ const SCENARIOS: Scenario[] = [
   {
     code: "ALR-UAT-02",
     trigger: async (now) => {
-      await add("gxSprint", { id: "gx-1", sprint: "9.99", prodPlannedAt: mins(now, 24 * 60) });
-      await add("gxChange", { sprintId: "gx-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
+      await add("platformSprint", { id: "plat-1", sprint: "9.99", prodPlannedAt: mins(now, 24 * 60) });
+      await add("platformChange", { sprintId: "plat-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
       return "9.99";
     },
     below: async (now) => {
-      await add("gxSprint", { id: "gx-1", sprint: "9.99", prodPlannedAt: mins(now, 14 * 24 * 60) });
-      await add("gxChange", { sprintId: "gx-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
+      await add("platformSprint", { id: "plat-1", sprint: "9.99", prodPlannedAt: mins(now, 14 * 24 * 60) });
+      await add("platformChange", { sprintId: "plat-1", section: "S", itemType: "staking_change", summary: "x", detail: {}, rowHash: "h1", qualifies: true });
     },
-    clear: async () => update("gxChange", { sprintId: "gx-1" }, { uatOutcome: "pass" }),
+    clear: async () => update("platformChange", { sprintId: "plat-1" }, { uatOutcome: "pass" }),
   },
   {
-    code: "ALR-HB-GXNOTES",
-    trigger: async (now) => { await add("gxSprint", { sprint: "9.98", kmncKeys: ["KMNC-1"], createdAt: mins(now, -48 * 60) }); return "9.98"; },
-    below: async (now) => { await add("gxSprint", { sprint: "9.98", kmncKeys: ["KMNC-1"], createdAt: mins(now, -60) }); },
-    clear: async () => update("gxSprint", { sprint: "9.98" }, { pageVersion: 3 }),
+    code: "ALR-HB-RELNOTES",
+    trigger: async (now) => { await add("platformSprint", { sprint: "9.98", changeKeys: ["CHG-1"], createdAt: mins(now, -48 * 60) }); return "9.98"; },
+    below: async (now) => { await add("platformSprint", { sprint: "9.98", changeKeys: ["CHG-1"], createdAt: mins(now, -60) }); },
+    clear: async () => update("platformSprint", { sprint: "9.98" }, { pageVersion: 3 }),
   },
   {
     code: "ALR-AUD-01",
@@ -235,82 +235,82 @@ const SCENARIOS: Scenario[] = [
     clear: async (now) => update("client", { id: "cl-1" }, { thresholdReviewedAt: now }),
   },
   {
-    code: "ALR-FAB-01",
-    trigger: async () => { await fabInstruction({ sourceMessageId: "<m1@fab>" }); return "<m1@fab>"; },
-    below: async () => { await fabInstruction({ ackStatus: "ACK" }); },
-    clear: async () => update("fabInstruction", { reference: "F-1" }, { ackStatus: "ACK" }),
+    code: "ALR-BANK-01",
+    trigger: async () => { await bankInstruction({ sourceMessageId: "<m1@bank>" }); return "<m1@bank>"; },
+    below: async () => { await bankInstruction({ ackStatus: "ACK" }); },
+    clear: async () => update("bankInstruction", { reference: "F-1" }, { ackStatus: "ACK" }),
   },
   {
-    code: "ALR-FAB-02",
+    code: "ALR-BANK-02",
     params: { ackMins: 30 },
-    trigger: async (now) => { await fabInstruction({ receivedAt: mins(now, -45) }); return "F-1"; },
-    below: async (now) => { await fabInstruction({ receivedAt: mins(now, -10) }); },
-    clear: async () => update("fabInstruction", { reference: "F-1" }, { ackStatus: "NACK" }),
+    trigger: async (now) => { await bankInstruction({ receivedAt: mins(now, -45) }); return "F-1"; },
+    below: async (now) => { await bankInstruction({ receivedAt: mins(now, -10) }); },
+    clear: async () => update("bankInstruction", { reference: "F-1" }, { ackStatus: "NACK" }),
   },
   {
-    code: "ALR-FAB-03",
-    trigger: async () => { await fabInstruction({ receivedAt: new Date("2026-09-22T15:30:00Z") }); return "F-1"; }, // 16:30 London
-    below: async () => { await fabInstruction({ receivedAt: new Date("2026-09-22T13:00:00Z") }); }, // 14:00 London
-    clear: async () => update("fabInstruction", { reference: "F-1" }, { receivedAt: new Date("2026-09-22T13:00:00Z") }),
+    code: "ALR-BANK-03",
+    trigger: async () => { await bankInstruction({ receivedAt: new Date("2026-09-22T15:30:00Z") }); return "F-1"; }, // 16:30 London
+    below: async () => { await bankInstruction({ receivedAt: new Date("2026-09-22T13:00:00Z") }); }, // 14:00 London
+    clear: async () => update("bankInstruction", { reference: "F-1" }, { receivedAt: new Date("2026-09-22T13:00:00Z") }),
   },
   {
-    code: "ALR-FAB-04",
-    trigger: async () => { await fabInstruction({ ackStatus: "NACK" }); return "F-1"; },
-    below: async () => { await fabInstruction({ ackStatus: "ACK" }); },
-    clear: async () => update("fabInstruction", { reference: "F-1" }, { correctedByRef: "F-2" }),
+    code: "ALR-BANK-04",
+    trigger: async () => { await bankInstruction({ ackStatus: "NACK" }); return "F-1"; },
+    below: async () => { await bankInstruction({ ackStatus: "ACK" }); },
+    clear: async () => update("bankInstruction", { reference: "F-1" }, { correctedByRef: "F-2" }),
   },
   {
-    code: "ALR-FAB-05",
-    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "FAILED" }); return "F-1"; },
-    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "COMPLETED" }); },
-    clear: async () => update("fabSettlementLog", { id: "log-7" }, { status: "COMPLETED" }),
+    code: "ALR-BANK-05",
+    trigger: async () => { await bankInstruction({ ackStatus: "ACK" }); await bankLog({ status: "FAILED" }); return "F-1"; },
+    below: async () => { await bankInstruction({ ackStatus: "ACK" }); await bankLog({ status: "COMPLETED" }); },
+    clear: async () => update("bankSettlementLog", { id: "log-7" }, { status: "COMPLETED" }),
   },
   {
-    code: "ALR-FAB-06",
+    code: "ALR-BANK-06",
     params: { valueDateCutoffLocal: "09:30" }, // BUSINESS is 10:00 London
-    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); return "F-1"; },
-    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ status: "RECEIVED" }); },
-    clear: async () => { await fabLog({ status: "RECEIVED" }); },
+    trigger: async () => { await bankInstruction({ ackStatus: "ACK" }); return "F-1"; },
+    below: async () => { await bankInstruction({ ackStatus: "ACK" }); await bankLog({ status: "RECEIVED" }); },
+    clear: async () => { await bankLog({ status: "RECEIVED" }); },
   },
   {
-    code: "ALR-FAB-07",
-    trigger: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ kytStatus: "fail" }); return "log-7"; },
-    below: async () => { await fabInstruction({ ackStatus: "ACK" }); await fabLog({ kytStatus: "none" }); },
-    clear: async () => update("fabSettlementLog", { id: "log-7" }, { kytStatus: "cleared" }),
+    code: "ALR-BANK-07",
+    trigger: async () => { await bankInstruction({ ackStatus: "ACK" }); await bankLog({ kytStatus: "fail" }); return "log-7"; },
+    below: async () => { await bankInstruction({ ackStatus: "ACK" }); await bankLog({ kytStatus: "none" }); },
+    clear: async () => update("bankSettlementLog", { id: "log-7" }, { kytStatus: "cleared" }),
   },
   {
-    code: "ALR-FAB-08",
+    code: "ALR-BANK-08",
     params: { thresholds: { ETH: 1 } },
-    trigger: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 0.5, recordedAt: mins(now, -5) }); return "fee-1"; },
-    below: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 2, recordedAt: mins(now, -5) }); },
-    clear: async (now) => { await add("fabFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 3, recordedAt: mins(now, 1) }); },
+    trigger: async (now) => { await add("bankFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 0.5, recordedAt: mins(now, -5) }); return "fee-1"; },
+    below: async (now) => { await add("bankFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 2, recordedAt: mins(now, -5) }); },
+    clear: async (now) => { await add("bankFeeBalance", { walletRef: "fee-1", asset: "ETH", balance: 3, recordedAt: mins(now, 1) }); },
   },
   {
     code: "ALR-OES-01",
-    trigger: async (now) => { await komainu("settlement", "set-1", { status: "FAILED", mappedStatus: "failed", occurredAt: mins(now, -30), fields: { exchange: "okx" } }); return "set-1"; },
-    below: async (now) => { await komainu("settlement", "set-1", { status: "DONE", mappedStatus: "completed", occurredAt: mins(now, -30) }); },
+    trigger: async (now) => { await custody("settlement", "set-1", { status: "FAILED", mappedStatus: "failed", occurredAt: mins(now, -30), fields: { exchange: "exch-a" } }); return "set-1"; },
+    below: async (now) => { await custody("settlement", "set-1", { status: "DONE", mappedStatus: "completed", occurredAt: mins(now, -30) }); },
     clear: async () => update("sourceRecord", { externalId: "set-1" }, { mappedStatus: "completed" }),
   },
   {
     code: "ALR-OES-02",
-    trigger: async (now) => { await komainu("settlement", "set-2", { status: "RUNNING", mappedStatus: "in_progress", occurredAt: mins(now, -61) }); return "set-2"; },
-    below: async (now) => { await komainu("settlement", "set-2", { status: "RUNNING", mappedStatus: "in_progress", occurredAt: mins(now, -30) }); },
+    trigger: async (now) => { await custody("settlement", "set-2", { status: "RUNNING", mappedStatus: "in_progress", occurredAt: mins(now, -61) }); return "set-2"; },
+    below: async (now) => { await custody("settlement", "set-2", { status: "RUNNING", mappedStatus: "in_progress", occurredAt: mins(now, -30) }); },
     clear: async () => update("sourceRecord", { externalId: "set-2" }, { mappedStatus: "completed" }),
   },
   {
     code: "ALR-OES-03",
     now: new Date("2026-09-23T09:45:00Z"),
     trigger: async () => {
-      await add("oesWindow", { exchange: "okx", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
-      await komainu("portfolio", "pf-1", { status: "ACTIVE", fields: { exchange: "okx", type: "OES" } });
+      await add("oesWindow", { exchange: "exch-a", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
+      await custody("portfolio", "pf-1", { status: "ACTIVE", fields: { exchange: "exch-a", type: "OES" } });
       return "pf-1:2026-09-23T09:00:00.000Z";
     },
     below: async () => {
-      await add("oesWindow", { exchange: "okx", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
-      await komainu("portfolio", "pf-1", { status: "ACTIVE", fields: { exchange: "okx", type: "OES" } });
-      await komainu("settlement", "set-3", { status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:05:00Z"), fields: { portfolio_id: "pf-1", exchange: "okx" } });
+      await add("oesWindow", { exchange: "exch-a", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
+      await custody("portfolio", "pf-1", { status: "ACTIVE", fields: { exchange: "exch-a", type: "OES" } });
+      await custody("settlement", "set-3", { status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:05:00Z"), fields: { portfolio_id: "pf-1", exchange: "exch-a" } });
     },
-    clear: async () => { await komainu("settlement", "set-3", { status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:50:00Z"), fields: { portfolio_id: "pf-1", exchange: "okx" } }); },
+    clear: async () => { await custody("settlement", "set-3", { status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:50:00Z"), fields: { portfolio_id: "pf-1", exchange: "exch-a" } }); },
   },
   {
     code: "ALR-OES-04",
@@ -322,7 +322,7 @@ const SCENARIOS: Scenario[] = [
     code: "ALR-OES-05",
     trigger: async (now) => { await oes01Alert(mins(now, -130)); return "al-oes"; },
     below: async (now) => { await oes01Alert(mins(now, -60)); },
-    clear: async () => { jira.contacted.add("TOPS-900"); },
+    clear: async () => { jira.contacted.add("OPS-900"); },
   },
   {
     code: "ALR-OES-06",
@@ -333,8 +333,8 @@ const SCENARIOS: Scenario[] = [
   },
   {
     code: "ALR-OES-07",
-    trigger: async (now) => { await komainu("collateral_operation", "op-7", { status: "FAILED", mappedStatus: "failed", occurredAt: mins(now, -10) }); return "op-7"; },
-    below: async (now) => { await komainu("collateral_operation", "op-7", { status: "DONE", mappedStatus: "completed", occurredAt: mins(now, -10) }); },
+    trigger: async (now) => { await custody("collateral_operation", "op-7", { status: "FAILED", mappedStatus: "failed", occurredAt: mins(now, -10) }); return "op-7"; },
+    below: async (now) => { await custody("collateral_operation", "op-7", { status: "DONE", mappedStatus: "completed", occurredAt: mins(now, -10) }); },
     clear: async () => update("sourceRecord", { externalId: "op-7" }, { mappedStatus: "completed" }),
   },
   {
@@ -347,7 +347,7 @@ const SCENARIOS: Scenario[] = [
   {
     code: "ALR-RSK-02",
     params: { pendingMins: 30 },
-    // GX said low, but rule 7 is High under the current approved flow (RiskRuleTier).
+    // Platform said low, but rule 7 is High under the current approved flow (RiskRuleTier).
     trigger: async (now) => { await add("riskRuleTier", { rule: 7, tier: "high" }); await pendingRequest("req-r2", 40, now); await signal("s2", { requestId: "req-r2", level: "low", rules: [7], reasons: ["new address"] }, mins(now, -39)); return "req-r2"; },
     below: async (now) => { await add("riskRuleTier", { rule: 7, tier: "high" }); await pendingRequest("req-r2", 10, now); await signal("s2", { requestId: "req-r2", level: "low", rules: [7], reasons: [] }, mins(now, -9)); },
     clear: async () => update("sourceRecord", { externalId: "req-r2" }, { status: "APPROVED" }),
@@ -372,8 +372,8 @@ const SCENARIOS: Scenario[] = [
   },
   {
     code: "ALR-RSK-06",
-    trigger: async (now) => { await komainu("transaction", "tx-6", { status: "BROADCASTED", occurredAt: mins(now, -20) }); await signal("s6", { transactionId: "tx-6", level: "high", rules: [5], reasons: ["KYT"] }, mins(now, -5)); return "tx-6"; },
-    below: async (now) => { await komainu("transaction", "tx-6", { status: "PENDING", occurredAt: mins(now, -20) }); await signal("s6", { transactionId: "tx-6", level: "high", rules: [5], reasons: ["KYT"] }, mins(now, -5)); },
+    trigger: async (now) => { await custody("transaction", "tx-6", { status: "BROADCASTED", occurredAt: mins(now, -20) }); await signal("s6", { transactionId: "tx-6", level: "high", rules: [5], reasons: ["KYT"] }, mins(now, -5)); return "tx-6"; },
+    below: async (now) => { await custody("transaction", "tx-6", { status: "PENDING", occurredAt: mins(now, -20) }); await signal("s6", { transactionId: "tx-6", level: "high", rules: [5], reasons: ["KYT"] }, mins(now, -5)); },
     clear: async () => update("sourceRecord", { externalId: "s6" }, { fields: { transactionId: "tx-6", level: "high", rules: [1], reasons: [] } }),
   },
   {
@@ -399,26 +399,26 @@ const SCENARIOS: Scenario[] = [
   {
     code: "ALR-CFG-01",
     params: { eventPatterns: ["whitelist", "tap[_ ]rule"] },
-    trigger: async (now) => { await komainu("audit_log", "au-1", { status: "ADMINISTRATION", occurredAt: mins(now, -5), fields: { event: "WHITELIST_ADDRESS_ADDED" } }); return "au-1"; },
-    below: async (now) => { await komainu("audit_log", "au-1", { status: "ADMINISTRATION", occurredAt: mins(now, -5), fields: { event: "USER_LOGIN" } }); },
+    trigger: async (now) => { await custody("audit_log", "au-1", { status: "ADMINISTRATION", occurredAt: mins(now, -5), fields: { event: "WHITELIST_ADDRESS_ADDED" } }); return "au-1"; },
+    below: async (now) => { await custody("audit_log", "au-1", { status: "ADMINISTRATION", occurredAt: mins(now, -5), fields: { event: "USER_LOGIN" } }); },
     clear: async () => update("sourceRecord", { externalId: "au-1" }, { fields: { event: "USER_LOGIN" } }),
   },
   {
-    code: "ALR-KPS-01",
-    trigger: async (now) => { await add("workItem", { id: "wi-kps", kind: "kps_case", title: "K4 realisation", taskCode: "KPS", sourceSystem: "jira", sourceId: "KPR-1", ticketKey: "KPR-1", ticketSystem: "jira", exposureUsd: 2_000_000, clockStartedAt: now }); return "wi-kps"; },
-    below: async (now) => { await add("workItem", { id: "wi-kps", kind: "kps_case", title: "K4 realisation", taskCode: "KPS", sourceSystem: "jira", sourceId: "KPR-1", ticketKey: "KPR-1", exposureUsd: 500_000, clockStartedAt: now }); },
-    clear: async () => { await add("ticketLink", { workItemId: "wi-kps", system: "jira", key: "RISKCO-1", url: "https://x/RISKCO-1", role: "riskco_approval" }); },
+    code: "ALR-RLS-01",
+    trigger: async (now) => { await add("workItem", { id: "wi-realisations", kind: "realisation_case", title: "Asset realisation", taskCode: "RLS", sourceSystem: "jira", sourceId: "RLS-1", ticketKey: "RLS-1", ticketSystem: "jira", exposureUsd: 2_000_000, clockStartedAt: now }); return "wi-realisations"; },
+    below: async (now) => { await add("workItem", { id: "wi-realisations", kind: "realisation_case", title: "Asset realisation", taskCode: "RLS", sourceSystem: "jira", sourceId: "RLS-1", ticketKey: "RLS-1", exposureUsd: 500_000, clockStartedAt: now }); },
+    clear: async () => { await add("ticketLink", { workItemId: "wi-realisations", system: "jira", key: "RISK-COMMITTEE-1", url: "https://x/RISK-COMMITTEE-1", role: "risk_committee_approval" }); },
   },
   {
     code: "ALR-TX-01",
-    trigger: async (now) => { await komainu("transaction", "tx-1", { status: "FAILED", occurredAt: mins(now, -10), fields: { asset: "ETH" } }); return "tx-1"; },
-    below: async (now) => { await komainu("transaction", "tx-1", { status: "PENDING", occurredAt: mins(now, -10), fields: { asset: "ETH" } }); },
+    trigger: async (now) => { await custody("transaction", "tx-1", { status: "FAILED", occurredAt: mins(now, -10), fields: { asset: "ETH" } }); return "tx-1"; },
+    below: async (now) => { await custody("transaction", "tx-1", { status: "PENDING", occurredAt: mins(now, -10), fields: { asset: "ETH" } }); },
     clear: async () => update("sourceRecord", { externalId: "tx-1" }, { status: "CONFIRMED" }),
   },
   {
     code: "ALR-TX-02",
-    trigger: async (now) => { await add("assetThreshold", { asset: "BTC", stuckMins: 60 }); await komainu("transaction", "tx-2", { status: "PENDING", occurredAt: mins(now, -90), fields: { asset: "BTC" } }); return "tx-2"; },
-    below: async (now) => { await add("assetThreshold", { asset: "BTC", stuckMins: 60 }); await komainu("transaction", "tx-2", { status: "PENDING", occurredAt: mins(now, -30), fields: { asset: "BTC" } }); },
+    trigger: async (now) => { await add("assetThreshold", { asset: "BTC", stuckMins: 60 }); await custody("transaction", "tx-2", { status: "PENDING", occurredAt: mins(now, -90), fields: { asset: "BTC" } }); return "tx-2"; },
+    below: async (now) => { await add("assetThreshold", { asset: "BTC", stuckMins: 60 }); await custody("transaction", "tx-2", { status: "PENDING", occurredAt: mins(now, -30), fields: { asset: "BTC" } }); },
     clear: async () => update("sourceRecord", { externalId: "tx-2" }, { status: "CONFIRMED" }),
   },
   {
@@ -435,22 +435,22 @@ const SCENARIOS: Scenario[] = [
   { code: "ALR-SLA-06", trigger: async (now) => clientRequest(500, now), below: async (now) => { await clientRequest(300, now); }, clear: async (now) => update("workItem", { id: "wi-cr" }, { resolvedAt: now }) },
   {
     code: "ALR-CHK-01",
-    trigger: async () => { await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck transactions", team: "Team 1", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "TOPS", confluenceUrl: "", isActive: true }); return "CHK-01:2026-09-23"; },
-    below: async () => { await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck transactions", team: "Team 1", frequency: "daily", dueByLocal: "23:00", evidenceSpec: {}, ticketProject: "TOPS", confluenceUrl: "", isActive: true }); },
+    trigger: async () => { await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck transactions", team: "Team 1", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "OPS", confluenceUrl: "", isActive: true }); return "CHK-01:2026-09-23"; },
+    below: async () => { await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck transactions", team: "Team 1", frequency: "daily", dueByLocal: "23:00", evidenceSpec: {}, ticketProject: "OPS", confluenceUrl: "", isActive: true }); },
     clear: async () => { await add("dailyCheckItem", { runId: "r", name: "Stuck", category: "stuck_tx", definitionCode: "CHK-01", periodKey: "2026-09-23", status: "pass" }); },
   },
   {
     code: "ALR-VND-01",
     params: { businessHours: 4 },
-    trigger: async (now) => { await add("workItem", { id: "wi-v", kind: "vendor_ticket", title: "Vendor issue", taskCode: "VENDOR", sourceSystem: "jira", sourceId: "VSR-1", ticketKey: "VSR-1", ticketSystem: "jira", clockStartedAt: new Date("2026-09-21T07:00:00Z"), metadata: { lastVendorUpdateAt: "2026-09-21T08:00:00Z" } }); void now; return "wi-v"; },
-    below: async (now) => { await add("workItem", { id: "wi-v", kind: "vendor_ticket", title: "Vendor issue", taskCode: "VENDOR", sourceSystem: "jira", sourceId: "VSR-1", ticketKey: "VSR-1", clockStartedAt: mins(now, -60), metadata: { lastVendorUpdateAt: mins(now, -60).toISOString() } }); },
+    trigger: async (now) => { await add("workItem", { id: "wi-v", kind: "vendor_ticket", title: "Vendor issue", taskCode: "VENDOR", sourceSystem: "jira", sourceId: "VND-1", ticketKey: "VND-1", ticketSystem: "jira", clockStartedAt: new Date("2026-09-21T07:00:00Z"), metadata: { lastVendorUpdateAt: "2026-09-21T08:00:00Z" } }); void now; return "wi-v"; },
+    below: async (now) => { await add("workItem", { id: "wi-v", kind: "vendor_ticket", title: "Vendor issue", taskCode: "VENDOR", sourceSystem: "jira", sourceId: "VND-1", ticketKey: "VND-1", clockStartedAt: mins(now, -60), metadata: { lastVendorUpdateAt: mins(now, -60).toISOString() } }); },
     clear: async (now) => update("workItem", { id: "wi-v" }, { metadata: { lastVendorUpdateAt: mins(now, 60).toISOString() } }),
   },
   {
     code: "ALR-HB-SOURCE",
-    trigger: async (now) => { await add("sourceHeartbeat", { source: "komainu_api.requests", expectedEveryMins: 1, lastSuccessAt: mins(now, -5), lastCount: 0 }); return "komainu_api.requests"; },
-    below: async (now) => { await add("sourceHeartbeat", { source: "komainu_api.requests", expectedEveryMins: 1, lastSuccessAt: mins(now, -1), lastCount: 0 }); },
-    clear: async (now) => update("sourceHeartbeat", { source: "komainu_api.requests" }, { lastSuccessAt: mins(now, 120) }),
+    trigger: async (now) => { await add("sourceHeartbeat", { source: "custody_api.requests", expectedEveryMins: 1, lastSuccessAt: mins(now, -5), lastCount: 0 }); return "custody_api.requests"; },
+    below: async (now) => { await add("sourceHeartbeat", { source: "custody_api.requests", expectedEveryMins: 1, lastSuccessAt: mins(now, -1), lastCount: 0 }); },
+    clear: async (now) => update("sourceHeartbeat", { source: "custody_api.requests" }, { lastSuccessAt: mins(now, 120) }),
   },
 ];
 
@@ -663,29 +663,29 @@ describe("routing and escalation", () => {
   });
 });
 
-describe("FAB module flag", () => {
-  it("evaluates no FAB rule while module.fab is off", async () => {
-    flagState.fab = false;
+describe("BANK module flag", () => {
+  it("evaluates no BANK rule while module.bank is off", async () => {
+    flagState.bank = false;
     try {
-      await enable("ALR-FAB-01");
-      await fabInstruction({});
+      await enable("ALR-BANK-01");
+      await bankInstruction({});
       await run(BUSINESS);
-      expect(await openAlerts("ALR-FAB-01")).toHaveLength(0);
+      expect(await openAlerts("ALR-BANK-01")).toHaveLength(0);
     } finally {
-      flagState.fab = true;
+      flagState.bank = true;
     }
   });
 });
 
 describe("risk signal source (§11.4)", () => {
-  it("fails safe: unparsed GX posts raise an alert instead of being dropped", async () => {
+  it("fails safe: unparsed Platform posts raise an alert instead of being dropped", async () => {
     await enable("ALR-CFG-02");
-    await add("sourceRecord", { source: "slack", kind: "risk_signal_raw", externalId: "C-GX:1", firstSeenAt: BUSINESS, fields: { text: "Risk: something" } });
-    const signals = await new SlackGxNotificationSource().poll(mins(BUSINESS, -60));
+    await add("sourceRecord", { source: "slack", kind: "risk_signal_raw", externalId: "C-Platform:1", firstSeenAt: BUSINESS, fields: { text: "Risk: something" } });
+    const signals = await new SlackPlatformNotificationSource().poll(mins(BUSINESS, -60));
     expect(signals).toEqual([]);
     const [a] = await p().alert.findMany({ where: { ruleCode: "ALR-CFG-02" } });
-    expect(a.message).toMatch(/Unparsed GX risk notification/);
-    expect((await p().sourceRecord.findFirst({ where: { externalId: "C-GX:1" } }))!.status).toBe("unparsed");
+    expect(a.message).toMatch(/Unparsed Platform risk notification/);
+    expect((await p().sourceRecord.findFirst({ where: { externalId: "C-Platform:1" } }))!.status).toBe("unparsed");
   });
 });
 

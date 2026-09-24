@@ -11,7 +11,7 @@ import type { DailyCheckItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { redactString } from "@/lib/log-redaction";
-import { komainuRecords, minsSince, pick, pickNumber, stillListed } from "@/modules/alerting/evaluators/source";
+import { custodyRecords, minsSince, pick, pickNumber, stillListed } from "@/modules/alerting/evaluators/source";
 import { londonParts } from "@/modules/alerting/calendar";
 import type { ExceptionRow } from "@/modules/daily-checks/enforcement";
 import { absDiff, dec } from "@/lib/decimal";
@@ -70,11 +70,11 @@ async function openTicketItems(prefix: string, kind?: string) {
 }
 
 export const COLLECTORS: Record<string, Collector> = {
-  /** CHK-01: PENDING/BROADCASTED transactions older than the per-asset threshold; known-degraded assets are suppressed with their reason (CF-26). */
+  /** CHK-01: PENDING/BROADCASTED transactions older than the per-asset threshold; known-degraded assets are suppressed with their reason. */
   async "CHK-01"({ now }) {
-    const asOf = await heartbeatAsOf("komainu_api.transactions");
-    if (!asOf) return unavailable("No successful Komainu transactions poll yet");
-    const txs = await komainuRecords("transaction", { status: { in: ["PENDING", "BROADCASTED"] }, ...stillListed });
+    const asOf = await heartbeatAsOf("custody_api.transactions");
+    if (!asOf) return unavailable("No successful the custody provider transactions poll yet");
+    const txs = await custodyRecords("transaction", { status: { in: ["PENDING", "BROADCASTED"] }, ...stillListed });
     const thresholds = new Map((await prisma.assetThreshold.findMany()).map((t) => [t.asset.toUpperCase(), t.stuckMins]));
     const statuses = new Map((await prisma.assetStatus.findMany({ where: { status: { not: "normal" } } })).map((a) => [a.asset.toUpperCase(), a]));
     const fallback = thresholds.get("*") ?? 120;
@@ -91,7 +91,7 @@ export const COLLECTORS: Record<string, Collector> = {
       else exceptions.push({ summary, reference: redactRef(t.externalId) });
     }
     return {
-      available: true, recordCount: txs.length, dataAsOf: asOf.toISOString(), source: "Komainu API /v1/custody/transactions",
+      available: true, recordCount: txs.length, dataAsOf: asOf.toISOString(), source: "custody API /v1/custody/transactions",
       fields: { stuckCount: exceptions.length + suppressed.length, suppressedCount: suppressed.length }, exceptions, suppressed,
       notes: ["ALR-TX-02 runs continuously; this check reviews the open items."],
     };
@@ -99,71 +99,71 @@ export const COLLECTORS: Record<string, Collector> = {
 
   /** CHK-03: requests PENDING, CREATED or BLOCKED, by type and age band. Read-only (H1). */
   async "CHK-03"({ now, spec }) {
-    const asOf = await heartbeatAsOf("komainu_api.requests");
-    if (!asOf) return unavailable("No successful Komainu requests poll yet");
+    const asOf = await heartbeatAsOf("custody_api.requests");
+    if (!asOf) return unavailable("No successful the custody provider requests poll yet");
     const threshold = num(spec, "thresholdMins", 240); // TODO(CONFIRM-CHK03-THRESHOLD)
-    const reqs = await komainuRecords("request", { status: { in: ["PENDING", "CREATED", "BLOCKED"] }, ...stillListed });
+    const reqs = await custodyRecords("request", { status: { in: ["PENDING", "CREATED", "BLOCKED"] }, ...stillListed });
     const old = reqs.filter((r) => minsSince(r.occurredAt, now) > threshold);
     return {
-      available: true, recordCount: reqs.length, dataAsOf: asOf.toISOString(), source: "Komainu API /v1/requests",
+      available: true, recordCount: reqs.length, dataAsOf: asOf.toISOString(), source: "custody API /v1/requests",
       fields: { byType: tally(reqs.map((r) => `${pick(r, "type") ?? "unknown"}/${r.status}`)), byAgeBand: tally(reqs.map((r) => bandOf(minsSince(r.occurredAt, now)))) },
       exceptions: old.map((r) => ({ summary: `${pick(r, "type") ?? "Request"} ${r.status} for ${Math.round(minsSince(r.occurredAt, now) / 60)}h`, reference: redactRef(r.externalId) })),
       suppressed: [],
-      notes: [`Exceptions are requests older than ${threshold} minutes. Act in GX; KOMmand Centre is read-only.`],
+      notes: [`Exceptions are requests older than ${threshold} minutes. Act in Platform; KOMmand Centre is read-only.`],
     };
   },
 
   /** CHK-10: one window's settlements against the expected portfolios. */
   async "CHK-10"({ item }) {
-    const asOf = await heartbeatAsOf("komainu_api.collateral");
-    if (!asOf) return unavailable("No successful Komainu collateral poll yet");
+    const asOf = await heartbeatAsOf("custody_api.collateral");
+    if (!asOf) return unavailable("No successful the custody provider collateral poll yet");
     const m = /^(\d{4}-\d{2}-\d{2}):([a-z0-9_-]+):(\d{2}:\d{2})Z$/.exec(item.periodKey ?? "");
     if (!m) return unavailable("Not a settlement-window item");
     const [, date, exchange, hhmm] = m;
     const start = new Date(`${date}T${hhmm}:00Z`);
-    const portfolios = (await komainuRecords("portfolio", stillListed)).filter((p) => pick(p, "exchange", "venue")?.toLowerCase() === exchange);
-    const settlements = (await komainuRecords("settlement", { occurredAt: { gte: new Date(start.getTime() - 60 * 60_000), lt: new Date(start.getTime() + 6 * 3_600_000) } }))
+    const portfolios = (await custodyRecords("portfolio", stillListed)).filter((p) => pick(p, "exchange", "venue")?.toLowerCase() === exchange);
+    const settlements = (await custodyRecords("settlement", { occurredAt: { gte: new Date(start.getTime() - 60 * 60_000), lt: new Date(start.getTime() + 6 * 3_600_000) } }))
       .filter((s) => pick(s, "exchange", "venue")?.toLowerCase() === exchange);
     const count = (st: string[]) => settlements.filter((s) => st.includes(s.mappedStatus ?? "")).length;
     const seen = new Set(settlements.map((s) => pick(s, "portfolio_id", "portfolio")));
     const missing = portfolios.filter((p) => !seen.has(p.externalId));
     return {
-      available: true, recordCount: settlements.length, dataAsOf: asOf.toISOString(), source: "Komainu API collateral settlements",
+      available: true, recordCount: settlements.length, dataAsOf: asOf.toISOString(), source: "custody API collateral settlements",
       fields: { portfoliosExpected: portfolios.length, settlementsSeen: settlements.length, completed: count(["completed"]), failed: count(["failed", "partial"]), inProgress: count(["in_progress", "pending"]) },
       exceptions: missing.map((p) => ({ summary: `No settlement for portfolio in the ${exchange} ${hhmm}Z window`, reference: redactRef(p.externalId) })),
       suppressed: [],
-      notes: ["Failed and stuck settlements are ticketed by ALR-OES-*. The skipped-above-threshold check stays disabled until the threshold is set (CF-37, CF-41)."],
+      notes: ["Failed and stuck settlements are ticketed by ALR-OES-*. The skipped-above-threshold check stays disabled until the threshold is set."],
     };
   },
 
-  /** CHK-09K: open KPR items (restricted). */
+  /** CHK-09K: open RLS items (restricted). */
   async "CHK-09K"() {
     const asOf = await heartbeatAsOf("atlassian.issues");
     if (!asOf) return unavailable("No successful Jira sync yet");
-    const items = await openTicketItems("KPR");
-    return { available: true, recordCount: items.length, dataAsOf: asOf.toISOString(), source: "Jira KPR", fields: {}, exceptions: [], suppressed: [], notes: ["ALR-KPS-01 flags realisations above the RiskCo threshold."] };
+    const items = await openTicketItems("RLS");
+    return { available: true, recordCount: items.length, dataAsOf: asOf.toISOString(), source: "Jira RLS", fields: {}, exceptions: [], suppressed: [], notes: ["ALR-RLS-01 flags realisations above the Risk Committee threshold."] };
   },
 
-  /** CHK-11: open incidents plus GXS and VSR tickets. */
+  /** CHK-11: open incidents plus PDEF and VND tickets. */
   async "CHK-11"() {
     const asOf = await heartbeatAsOf("atlassian.issues");
-    const [incidents, gxs, vsr] = await Promise.all([
+    const [incidents, platformDefects, vnd] = await Promise.all([
       prisma.incident.count({ where: { status: { not: "resolved" } } }),
-      openTicketItems("GXS"),
-      openTicketItems("VSR"),
+      openTicketItems("PDEF"),
+      openTicketItems("VND"),
     ]);
     return {
-      available: true, recordCount: incidents + gxs.length + vsr.length, dataAsOf: (asOf ?? new Date()).toISOString(), source: "Incidents module, Jira GXS and VSR",
-      fields: { incidents, gxsOpen: gxs.length, vsrOpen: vsr.length }, exceptions: [], suppressed: [],
-      notes: asOf ? [] : ["Jira has not synced yet: GXS/VSR counts may be incomplete."],
+      available: true, recordCount: incidents + platformDefects.length + vnd.length, dataAsOf: (asOf ?? new Date()).toISOString(), source: "Incidents module, Jira PDEF and VND",
+      fields: { incidents, platformDefectOpen: platformDefects.length, vndOpen: vnd.length }, exceptions: [], suppressed: [],
+      notes: asOf ? [] : ["Jira has not synced yet: PDEF/VND counts may be incomplete."],
     };
   },
 
-  /** CHK-12: open RCAs (VSR) and overdue ones (no vendor update beyond the ALR-VND-01 limit). */
+  /** CHK-12: open RCAs (VND) and overdue ones (no vendor update beyond the ALR-VND-01 limit). */
   async "CHK-12"({ now }) {
     const asOf = await heartbeatAsOf("atlassian.issues");
     if (!asOf) return unavailable("No successful Jira sync yet");
-    const items = await openTicketItems("VSR");
+    const items = await openTicketItems("VND");
     const rule = await prisma.alertRule.findUnique({ where: { code: "ALR-VND-01" } });
     const hours = typeof (rule?.params as Record<string, unknown> | undefined)?.businessHours === "number" ? ((rule!.params as Record<string, number>).businessHours) : null;
     const overdue = hours === null ? [] : items.filter((w) => {
@@ -171,7 +171,7 @@ export const COLLECTORS: Record<string, Collector> = {
       return minsSince(last, now) / 60 > hours;
     });
     return {
-      available: true, recordCount: items.length, dataAsOf: asOf.toISOString(), source: "Jira VSR and vendor emails",
+      available: true, recordCount: items.length, dataAsOf: asOf.toISOString(), source: "Jira VND and vendor emails",
       fields: { overdueCount: overdue.length }, exceptions: [], suppressed: [],
       notes: hours === null ? ["ALR-VND-01 hours not set (CONFIRM-VND-HOURS): overdue count is 0 until configured."] : [],
     };
@@ -214,7 +214,7 @@ export const COLLECTORS: Record<string, Collector> = {
   /**
    * CHK-04: screening in the last day from the Screening module (the Chainalysis
    * import replaces this when its template exists). Zero-value or no-hash
-   * transactions cannot be screened (CF-04) and staking is excluded (CF-01):
+   * transactions cannot be screened and staking is excluded:
    * both are counted separately, never as screened.
    */
   async "CHK-04"({ now }) {
@@ -246,26 +246,26 @@ export const COLLECTORS: Record<string, Collector> = {
   },
 
   /**
-   * CHK-16: wallet variances plus the position check staked ≤ total (CF-09).
+   * CHK-16: wallet variances plus the position check staked ≤ total.
    * Partner confirmations are entered by the operator.
    */
   async "CHK-16"() {
-    const asOf = await heartbeatAsOf("komainu_api.eod_balances");
+    const asOf = await heartbeatAsOf("custody_api.eod_balances");
     if (!asOf) return unavailable("No successful EOD balance poll yet");
     const wallets = await prisma.stakingWallet.findMany({ where: { status: "active", isTestWallet: false } });
     // varianceThreshold is an absolute quantity in the wallet's asset (as in the staking module), compared exactly.
     const variances = wallets.filter((w) => w.onChainBalance != null && w.platformBalance != null &&
       absDiff(w.onChainBalance, w.platformBalance).gt(w.varianceThreshold));
     const since = new Date(asOf.getTime() - 36 * 3_600_000);
-    const balances = await komainuRecords("eod_balance", { lastSeenAt: { gte: since } });
-    // TODO(CONFIRM-KOMAINU-OPENAPI): staked and total balance field names.
+    const balances = await custodyRecords("eod_balance", { lastSeenAt: { gte: since } });
+    // TODO(CONFIRM-CUSTODY-OPENAPI): staked and total balance field names.
     const violations = balances.filter((b) => {
       const staked = pickNumber(b, "staked_balance", "staked");
       const total = pickNumber(b, "total_balance", "total");
       return staked !== null && total !== null && staked > total;
     });
     return {
-      available: true, recordCount: wallets.length, dataAsOf: asOf.toISOString(), source: "Komainu API EOD balances and staking wallets",
+      available: true, recordCount: wallets.length, dataAsOf: asOf.toISOString(), source: "custody API EOD balances and staking wallets",
       fields: { variancesCount: variances.length, positionViolations: violations.length },
       exceptions: [
         ...variances.map((w) => ({ summary: `${w.asset} staking variance above ${dec(w.varianceThreshold).toFixed()} ${w.asset}`, reference: redactRef(w.walletAddress) })),
@@ -278,26 +278,26 @@ export const COLLECTORS: Record<string, Collector> = {
 
   /** CHK-21: rewards seen versus wallets expecting one; overdue from the reward heartbeat model. */
   async "CHK-21"({ now }) {
-    const asOf = await heartbeatAsOf("komainu_api.staking");
+    const asOf = await heartbeatAsOf("custody_api.staking");
     const wallets = await prisma.stakingWallet.findMany({ where: { status: "active", isTestWallet: false } });
     const expected = wallets.filter((w) => w.expectedNextRewardAt && w.expectedNextRewardAt <= now);
     const overdue = expected.filter((w) => !w.lastRewardAt || w.lastRewardAt < w.expectedNextRewardAt!);
-    const rewards = await komainuRecords("staking_reward", { lastSeenAt: { gte: new Date(now.getTime() - 36 * 3_600_000) } });
+    const rewards = await custodyRecords("staking_reward", { lastSeenAt: { gte: new Date(now.getTime() - 36 * 3_600_000) } });
     return {
-      available: true, recordCount: expected.length, dataAsOf: (asOf ?? now).toISOString(), source: "Komainu API daily rewards and StakingWallet",
+      available: true, recordCount: expected.length, dataAsOf: (asOf ?? now).toISOString(), source: "custody API daily rewards and StakingWallet",
       fields: { rewardsSeen: rewards.length, overdueCount: overdue.length },
       exceptions: overdue.map((w) => ({ summary: `${w.asset} reward overdue (expected ${w.expectedNextRewardAt!.toISOString().slice(0, 10)})`, reference: redactRef(w.walletAddress) })),
-      suppressed: [], notes: asOf ? [] : ["Komainu rewards not polled yet: only the reward heartbeat model is used."],
+      suppressed: [], notes: asOf ? [] : ["the custody provider rewards not polled yet: only the reward heartbeat model is used."],
     };
   },
 
   /** CHK-22: stakes first seen in the last day. */
   async "CHK-22"({ now }) {
-    const asOf = await heartbeatAsOf("komainu_api.stakes");
+    const asOf = await heartbeatAsOf("custody_api.stakes");
     if (!asOf) return unavailable("No successful stakes poll yet");
-    const fresh = await prisma.sourceRecord.findMany({ where: { source: "komainu_api", kind: "stake", firstSeenAt: { gte: new Date(now.getTime() - 86_400_000) } }, select: { externalId: true } });
+    const fresh = await prisma.sourceRecord.findMany({ where: { source: "custody_api", kind: "stake", firstSeenAt: { gte: new Date(now.getTime() - 86_400_000) } }, select: { externalId: true } });
     return {
-      available: true, recordCount: fresh.length, dataAsOf: asOf.toISOString(), source: "Komainu API ETH and SOL stakes",
+      available: true, recordCount: fresh.length, dataAsOf: asOf.toISOString(), source: "custody API ETH and SOL stakes",
       fields: {}, exceptions: [], suppressed: [],
       notes: ["Check each new stake has its expected staking configuration (TODO(CONFIRM-STAKE-CONFIG))."],
     };

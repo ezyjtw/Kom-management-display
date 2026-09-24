@@ -5,7 +5,7 @@
 
 import { env } from "@/lib/env";
 
-export const DEFAULT_ATLASSIAN_HOST = "komainu.atlassian.net";
+export const DEFAULT_ATLASSIAN_HOST = "example.atlassian.net";
 
 /** Always permitted, independent of configuration. */
 export const STATIC_ALLOWED_HOSTS = Object.freeze([
@@ -25,20 +25,20 @@ function hostOf(url: string | undefined): string | null {
 }
 
 export interface EgressConfig {
-  KOMAINU_API_BASE_URL?: string;
+  CUSTODY_API_BASE_URL?: string;
   ATLASSIAN_BASE_URL?: string;
   EGRESS_EXTRA_HOSTS?: string;
 }
 
 /**
- * Komainu API host, the Atlassian site, the static hosts above, plus any
+ * custody API host, the Atlassian site, the static hosts above, plus any
  * comma-separated EGRESS_EXTRA_HOSTS (for example when an optional module
  * such as the market ticker is switched on).
  */
 export function buildAllowedHosts(cfg: EgressConfig): ReadonlySet<string> {
   const hosts = new Set<string>(STATIC_ALLOWED_HOSTS);
-  const komainu = hostOf(cfg.KOMAINU_API_BASE_URL);
-  if (komainu) hosts.add(komainu);
+  const custody = hostOf(cfg.CUSTODY_API_BASE_URL);
+  if (custody) hosts.add(custody);
   hosts.add(hostOf(cfg.ATLASSIAN_BASE_URL) ?? DEFAULT_ATLASSIAN_HOST);
   for (const extra of (cfg.EGRESS_EXTRA_HOSTS ?? "").split(",")) {
     const h = hostOf(extra.trim());
@@ -49,7 +49,7 @@ export function buildAllowedHosts(cfg: EgressConfig): ReadonlySet<string> {
 
 export function getAllowedHosts(): ReadonlySet<string> {
   return buildAllowedHosts({
-    KOMAINU_API_BASE_URL: env("KOMAINU_API_BASE_URL"),
+    CUSTODY_API_BASE_URL: env("CUSTODY_API_BASE_URL"),
     ATLASSIAN_BASE_URL: env("ATLASSIAN_BASE_URL"),
     EGRESS_EXTRA_HOSTS: env("EGRESS_EXTRA_HOSTS"),
   });

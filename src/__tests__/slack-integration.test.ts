@@ -83,14 +83,14 @@ describe("Events API endpoint", () => {
 describe("purpose routing", () => {
   const channel = (purpose: string) => ({ id: "sc1", channelId: "C0000000001", channelName: "chan", purpose, clientId: null });
 
-  it("keeps bot messages in gx_notifications channels as raw risk signals", async () => {
-    const out = await ingestChannelMessage(channel("gx_notifications"), { ts: "1700000000.1", subtype: "bot_message", bot_id: "B1", text: "Risk: High" });
+  it("keeps bot messages in platform_notifications channels as raw risk signals", async () => {
+    const out = await ingestChannelMessage(channel("platform_notifications"), { ts: "1700000000.1", subtype: "bot_message", bot_id: "B1", text: "Risk: High" });
     expect(out).toBe("risk_signal");
     expect(prismaMock.sourceRecord.upsert.mock.calls[0][0].create).toMatchObject({ source: "slack", kind: "risk_signal_raw" });
   });
 
   it("still skips channel_join everywhere", async () => {
-    expect(await ingestChannelMessage(channel("gx_notifications"), { ts: "1.1", subtype: "channel_join" })).toBe("skipped");
+    expect(await ingestChannelMessage(channel("platform_notifications"), { ts: "1.1", subtype: "channel_join" })).toBe("skipped");
     expect(await ingestChannelMessage(channel("client"), { ts: "1.1", subtype: "channel_join" })).toBe("skipped");
   });
 
@@ -104,12 +104,12 @@ describe("purpose routing", () => {
 describe("outbound alert posts", () => {
   it("contain the rule code, work item link and ticket key, and only link buttons", () => {
     const { blocks, text } = buildAlertBlocks(
-      { ruleCode: "ALR-OES-01", severity: "critical", message: "Settlement failed", workItemId: "wi-1", ticketKey: "TOPS-9", ticketUrl: "https://komainu.atlassian.net/browse/TOPS-9" },
+      { ruleCode: "ALR-OES-01", severity: "critical", message: "Settlement failed", workItemId: "wi-1", ticketKey: "OPS-9", ticketUrl: "https://example.atlassian.net/browse/OPS-9" },
       "https://kommand.example",
     );
     expect(text).toContain("ALR-OES-01");
     const section = JSON.stringify(blocks[0]);
-    expect(section).toContain("TOPS-9");
+    expect(section).toContain("OPS-9");
     const actions = blocks.find((b) => b.type === "actions") as { elements: Array<Record<string, unknown>> };
     expect(actions.elements.map((e) => (e.text as { text: string }).text)).toEqual(["Open in KOMmand Centre", "Open ticket"]);
     for (const el of actions.elements) {

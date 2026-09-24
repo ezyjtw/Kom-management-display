@@ -123,7 +123,7 @@ Three independent clocks per thread, thresholds vary by priority:
 ## 5. Travel Rule Compliance (`/travel-rule`)
 
 ### 5.1 Reconciliation View
-- **Automated matching**: Custody custody transactions matched against Notabene travel rule transfers
+- **Automated matching**: Custody transactions matched against Notabene travel rule transfers
 - **Tabs**: All | No Travel Rule | Missing Originator | Missing Beneficiary | Matched
 - **Asset filter**: Dropdown to filter by token type
 - **Stats cards**: Total, Matched, Unmatched, Missing Originator, Missing Beneficiary
@@ -148,7 +148,7 @@ Three independent clocks per thread, thresholds vary by priority:
 ## 6. Incident & RCA Management
 
 ### 6.1 Incidents (`/incidents`)
-- **Track third-party provider incidents**: Fireblocks, Ledger, GX, Custody, Notabene, Chainalysis, etc.
+- **Track third-party provider incidents**: Fireblocks, Ledger, Platform, Custody, Notabene, Chainalysis, etc.
 - **Severity levels**: Low, Medium, High, Critical
 - **Status workflow**: Active → Monitoring → Resolved
 - **Fields**: Title, provider, severity, description, operational impact
@@ -173,12 +173,12 @@ Three independent clocks per thread, thresholds vary by priority:
 
 ## 7. OES Settlement Matching (`/settlements`)
 
-- **Venue support**: OKX OES and Fireblocks OES
+- **Venue support**: exchange OES and Fireblocks OES
 - **Settlement fields**: Reference, venue, client, account, asset, amount, direction (custody↔exchange), cycle timestamp
 - **Matching workflow**: Match exchange instructions against on-chain transactions
 - **Maker/Checker approval**: Dual-approval flow — maker confirms, then checker approves
 - **Match statuses**: Pending, Matched, Mismatch, Missing TX, Flagged
-- **OKX-specific**: Delegation status tracking (delegated/undelegated/pending)
+- **Venue-specific**: Delegation status tracking (delegated/undelegated/pending)
 - **Fireblocks-specific**: Transaction ID and signer group tracking
 - **Expanded detail**: Wallet addresses, delegation info, audit trail (maker/checker timestamps), escalation notes
 - **Filters**: Status tabs (5), venue filter (3), search bar (client, ref, asset, TX hash)
@@ -391,7 +391,7 @@ Three independent clocks per thread, thresholds vary by priority:
 
 | Integration | Purpose | Auth Method |
 |------------|---------|------------|
-| **Custody Custody API** | Pending transactions, approval requests, approve/reject | JWT bearer token (api_user + api_secret) |
+| **Custody API** | Pending transactions, approval requests, approve/reject | JWT bearer token (api_user + api_secret) |
 | **Notabene Travel Rule** | Transfer matching, originator/beneficiary data | Bearer token |
 | **Jira Cloud** | Comms thread sync, RCA ticket tracking, status polling | Basic auth (email + API token) |
 | **Slack** | Channel message ingestion into unified inbox, notifications | Bot token (OAuth) |

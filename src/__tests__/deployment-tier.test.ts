@@ -55,11 +55,11 @@ describe("deployment tier", () => {
 
 describe("go-live check (configuration)", () => {
   const files = (values: Record<string, string>) => () => ({ source: "secrets_dir" as const, dir: "/mnt/secrets", values, leakedEnvKeys: [] });
-  const liveSecrets = { NEXTAUTH_SECRET: "s", AZURE_AD_CLIENT_SECRET: "s", ATLASSIAN_API_TOKEN: "s", CONFLUENCE_API_TOKEN: "s", SLACK_BOT_TOKEN: "s", SLACK_SIGNING_SECRET: "s", GRAPH_CLIENT_SECRET: "s", JIRA_WEBHOOK_SECRET: "s", KOMAINU_API_SECRET: "s" };
+  const liveSecrets = { NEXTAUTH_SECRET: "s", AZURE_AD_CLIENT_SECRET: "s", ATLASSIAN_API_TOKEN: "s", CONFLUENCE_API_TOKEN: "s", SLACK_BOT_TOKEN: "s", SLACK_SIGNING_SECRET: "s", GRAPH_CLIENT_SECRET: "s", JIRA_WEBHOOK_SECRET: "s", CUSTODY_API_SECRET: "s" };
   const liveEnv = {
     NODE_ENV: "production", KOM_ENVIRONMENT: "production", NEXTAUTH_URL: "https://kom.example",
     AZURE_AD_TENANT_ID: "t", AZURE_AD_CLIENT_ID: "c", ROLE_GROUP_MAP: '{"g":"admin"}',
-    KOMAINU_API_BASE_URL: "https://api.custody.example", KOMAINU_API_USER: "u",
+    CUSTODY_API_BASE_URL: "https://api.custody.example", CUSTODY_API_USER: "u",
     ATLASSIAN_EMAIL: "svc@k", CONFLUENCE_EMAIL: "svc@k", SLACK_CHANNELS: "C1",
     GRAPH_TENANT_ID: "t", GRAPH_CLIENT_ID: "c", GRAPH_MAILBOXES: "[]",
   };
@@ -79,7 +79,7 @@ describe("go-live check (configuration)", () => {
     ]));
     const envSecrets = configChecks(liveEnv, () => ({ source: "environment" as const, dir: null, values: liveSecrets, leakedEnvKeys: ["SLACK_BOT_TOKEN"] }));
     expect(failing(envSecrets)).toEqual(expect.arrayContaining(["Secrets are read from SECRETS_DIR (Key Vault files), not environment variables", "No secret-bearing environment variables"]));
-    const demoApi = configChecks({ ...liveEnv, KOMAINU_API_BASE_URL: "https://api-demo.komainu.io" }, files(liveSecrets));
-    expect(failing(demoApi)).toEqual(["Komainu API base URL is not the demo host"]);
+    const demoApi = configChecks({ ...liveEnv, CUSTODY_API_BASE_URL: "https://custody-demo.example.com" }, files(liveSecrets));
+    expect(failing(demoApi)).toEqual(["Custody API base URL is not a demo, sandbox, staging or test host"]);
   });
 });

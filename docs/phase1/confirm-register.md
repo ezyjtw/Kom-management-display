@@ -15,44 +15,44 @@ this file.
 
 | Item | What is needed | Blocks | Where the code waits for it |
 |---|---|---|---|
-| CONFIRM-SLA-TARGETS | Internal SLA targets per policy (ownership, first response, resolution) | SLA alerts, attainment metrics | `prisma/migrations/0025_seed_sla_policies/migration.sql`, `prisma/schema.prisma`, `src/__tests__/data-model.test.ts`, `src/app/admin/SlaTargetsBanner.tsx` +1 |
-| CONFIRM-RISK-SOURCE | Where GX risk levels can be read (Slack bot posts with samples, or an internal feed) | ALR-RSK-* | `docs/integration-guide.md`, `src/modules/risk/signal-source.ts`, `src/modules/slack/services/slack-ingestion-service.ts` |
-| CONFIRM-RISKCO | Ratified risk tier mapping (Rules 2 and 3 inconsistency; Rules 7–11 Medium) and Control 3.2 wording (one versus two approvals for Medium) | Tier switch in `RiskRuleTier` | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma`, `src/modules/alerting/evaluators/risk.ts` |
+| CONFIRM-SLA-TARGETS | Internal SLA targets per policy (ownership, first response, resolution) | SLA alerts, attainment metrics | `prisma/migrations/0001_baseline/migration.sql`, `prisma/schema.prisma`, `src/__tests__/data-model.test.ts`, `src/app/admin/SlaTargetsBanner.tsx` +1 |
+| CONFIRM-RISK-SOURCE | Where platform risk levels can be read (bot posts with samples, or an internal feed) | ALR-RSK-* | `docs/integration-guide.md`, `src/modules/risk/signal-source.ts`, `src/modules/slack/services/slack-ingestion-service.ts` |
+| CONFIRM-RISK-COMMITTEE | The firm's ratified risk tier mapping and approval wording | Tier switch in `RiskRuleTier` | `prisma/schema.prisma`, `src/modules/alerting/evaluators/risk.ts` |
 | CONFIRM-RSK-MED-MINS, CONFIRM-RSK-HIGH-MINS | Clocks for pending medium and high | ALR-RSK-01/02 | `src/__tests__/alerting-engine.test.ts`, `src/modules/alerting/catalogue.ts` |
-| CONFIRM-API-SCOPE | Whether one read-only API user can see all workspaces | Komainu API aggregation | `.env.example`, `docs/phase1/credentials.md`, `prisma/schema.prisma`, `src/__tests__/komainu-integration.test.ts` +2 |
-| CONFIRM-SETTLEMENT-STATUS | Actual `status` values for settlements, operations and portfolios | ALR-OES-* | `docs/integration-guide.md`, `prisma/schema.prisma`, `src/modules/integrations/komainu/status-map.ts` |
-| CONFIRM-OES-WINDOWS | One reference time per exchange (the OKX UTC versus UK-time conflict) | ALR-OES-* | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma` |
-| CONFIRM-DERIBIT | Deribit OES window and contacts after its move into Coinbase | Deribit windows | `prisma/migrations/0029_alerting_engine/migration.sql`, `prisma/schema.prisma` |
+| CONFIRM-API-SCOPE | Whether one read-only API user can see all workspaces | custody API aggregation | `.env.example`, `docs/phase1/credentials.md`, `prisma/schema.prisma`, `src/__tests__/custody-integration.test.ts` +2 |
+| CONFIRM-SETTLEMENT-STATUS | Actual `status` values for settlements, operations and portfolios | ALR-OES-* | `docs/integration-guide.md`, `prisma/schema.prisma`, `src/modules/integrations/custody/status-map.ts` |
+| CONFIRM-OES-WINDOWS | One reference time per exchange settlement window | ALR-OES-* | `prisma/schema.prisma` |
+| CONFIRM-VENUE-WINDOWS | Settlement windows and contacts for each exchange venue | Venue windows | `prisma/schema.prisma` |
 | CONFIRM-AUDIT-EVENTS | Audit-log event names for tap rule, whitelist and risk-parameter changes | ALR-CFG-01 | `src/modules/alerting/catalogue.ts`, `src/modules/alerting/evaluators/operations.ts` |
-| CONFIRM-FAB-TEMPLATES, CONFIRM-FAB-ACK-MINS, CONFIRM-FAB-VALUE-DATE-CUTOFF, CONFIRM-FAB-PROJECT, CONFIRM-FEE-ALERT-FORMAT, CONFIRM-FEE-THRESHOLDS | FAB email formats, clocks, Jira project and fee alerting | `module.fab`, ALR-FAB-* | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `prisma/migrations/0025_seed_sla_policies/migration.sql`, `prisma/schema.prisma` +6 |
-| CONFIRM-MAILBOXES | Mailbox addresses and purposes; Exchange access policy | Graph mail | `.env.example`, `docs/integration-guide.md`, `src/lib/integrations/graph/client.ts` |
+| CONFIRM-BANK-TEMPLATES, CONFIRM-BANK-ACK-MINS, CONFIRM-BANK-VALUE-DATE-CUTOFF, CONFIRM-BANK-PROJECT, CONFIRM-FEE-ALERT-FORMAT, CONFIRM-FEE-THRESHOLDS | Partner bank email formats, clocks, Jira project and fee alerting | `module.bank`, ALR-BANK-* | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `prisma/migrations/0001_baseline/migration.sql`, `prisma/schema.prisma` +6 |
+| CONFIRM-MAILBOXES | Mailbox addresses and purposes; mail access policy | Graph mail | `.env.example`, `docs/integration-guide.md`, `src/lib/integrations/graph/client.ts` |
 | CONFIRM-VENDOR-FORMATS | Redacted vendor notification samples | Vendor parsing | `docs/integration-guide.md`, `src/__tests__/fixtures/synthetic/CONFIRM-VENDOR-FORMATS.json`, `src/__tests__/graph-integration.test.ts`, `src/modules/integrations/graph/vendor-parsers.ts` |
 | CONFIRM-CHAINALYSIS-EXPORT, CONFIRM-MTD-EXTRACT, CONFIRM-INBOUND-EXTRACT, CONFIRM-TATUM | Export templates | CHK-04, 02, 05, 15 imports | `src/__tests__/imports.test.ts`, `src/modules/daily-checks/definitions.ts`, `src/modules/imports/templates.ts` |
 | CONFIRM-NFT-SOURCE | Where pending NFTs are listed | CHK-07 automation | `src/modules/daily-checks/definitions.ts` |
-| CONFIRM-PROJECT-ROLES | Purpose of ITR and RCM for this team | Project config | `prisma/migrations/0026_integrations/migration.sql` |
+| CONFIRM-PROJECT-ROLES | Purpose of the EXT project for this team | Project config | `prisma/migrations/0001_baseline/migration.sql` |
 | CONFIRM-RISK-SCORE-SCALE | The team's ticket risk score scale | Closure validation | `src/modules/daily-checks/mtd.ts`, `src/modules/settings/registry.ts`, `src/modules/work-items/closure-rules.ts` |
-| CONFIRM-IAI-OWNER | IAI log owner agreement to automated drafts | `iai.drafts.enabled` | `src/lib/feature-flag-defaults.ts`, `src/modules/iai/drafts.ts` |
-| CONFIRM-CHECK-GAPS | Whether TOP checks 14 and 18–20 exist | Coverage sign-off | `docs/phase1/coverage-matrix.md`, `scripts/coverage-matrix.ts`, `src/modules/daily-checks/definitions.ts` |
-| CONFIRM-KPS-THRESHOLD | Current RiskCo realisation threshold (was $1m; an increase was tabled in August) | ALR-KPS-01 | not referenced yet |
-| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/lib/background-jobs.ts` +3 |
-| CONFIRM-JSM-INCIDENT-REQUEST-TYPE | JSM request type for client incident and risk notifications, and its portal-visible statuses | Section 9.7 client tickets | `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
+| CONFIRM-INCIDENT-LOG-OWNER | Incident log owner agreement to automated drafts | `incident_log.drafts.enabled` | `src/lib/feature-flag-defaults.ts`, `src/modules/incident-log/drafts.ts` |
+| CONFIRM-CHECK-GAPS | Numbering gaps in the team checklist | Coverage sign-off | `docs/phase1/coverage-matrix.md`, `scripts/coverage-matrix.ts`, `src/modules/daily-checks/definitions.ts` |
+| CONFIRM-REALISATION-THRESHOLD | Current risk committee realisation threshold | ALR-RLS-01 | not referenced yet |
+| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/__tests__/retention-job.test.ts` +4 |
+| CONFIRM-JSM-INCIDENT-REQUEST-TYPE | Request type for client incident and risk notifications, and its portal-visible statuses | Client incident tickets | `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-JSM-PORTAL | Client portal set-up: customer accounts, organisation membership, branding | Clients viewing their tickets | `src/modules/client-incidents/service.ts` |
-| CONFIRM-CLIENT-CONTACTS | Which client contacts become request participants | Section 9.7 | `src/modules/client-incidents/service.ts` |
-| CONFIRM-INCIDENT-PROJECT | Internal Jira project for incident and risk entries | Section 9.7 | `src/modules/settings/registry.ts` |
-| CONFIRM-CLIENT-UPDATE-CADENCE | Maximum time between client updates per severity | ALR-CLI-02 | `prisma/migrations/0034_polling_client_incidents/migration.sql`, `src/modules/alerting/catalogue.ts`, `src/modules/alerting/evaluators/operations.ts`, `src/modules/metrics/service.ts` |
-| CONFIRM-COMPLIANCE-ROUTE | Where compliance-sensitive entries are routed, and who records the decision | ALR-CLI-03, withheld tickets | `src/modules/alerting/catalogue.ts`, `src/modules/gx-sprints/intake.ts` |
-| CONFIRM-GX-RELEASE-PARENT | Confluence parent page and title pattern for GX sprint release notes | Section 16 intake | `src/modules/alerting/evaluators/gx.ts`, `src/modules/settings/registry.ts` |
-| CONFIRM-KMNC-NAMING | KMNC ticket naming for UAT and PROD GX releases | Section 16 timing | `src/modules/gx-sprints/sources.ts`, `src/modules/settings/registry.ts` |
-| CONFIRM-GX-IMPACT-RULES | Team review of the seed impact mapping | Section 16 ticket creation | `prisma/migrations/0039_gx_sprint_uat/migration.sql`, `prisma/schema.prisma`, `src/app/admin/ReferenceDataTab.tsx`, `src/modules/settings/registry.ts` |
-| CONFIRM-UAT-PROJECT | Jira project and issue type for UAT tickets | Section 16 tickets | `src/modules/settings/registry.ts` |
+| CONFIRM-CLIENT-CONTACTS | Which client contacts become request participants | Client incident tickets | `src/modules/client-incidents/service.ts` |
+| CONFIRM-INCIDENT-PROJECT | Internal Jira project for incident and risk entries | Client incident tickets | `src/modules/settings/registry.ts` |
+| CONFIRM-CLIENT-UPDATE-CADENCE | Maximum time between client updates per severity | ALR-CLI-02 | `src/modules/alerting/catalogue.ts`, `src/modules/alerting/evaluators/operations.ts`, `src/modules/metrics/service.ts` |
+| CONFIRM-COMPLIANCE-ROUTE | Where compliance-sensitive entries are routed, and who records the decision | ALR-CLI-03, withheld tickets | `src/modules/alerting/catalogue.ts`, `src/modules/platform-sprints/intake.ts` |
+| CONFIRM-PLATFORM-RELEASE-PARENT | Confluence parent page and title pattern for platform release notes | Change intake | `src/modules/alerting/evaluators/platform.ts`, `src/modules/settings/registry.ts` |
+| CONFIRM-CHG-NAMING | Change-ticket naming for UAT and PROD platform releases | Change intake timing | `src/modules/platform-sprints/sources.ts`, `src/modules/settings/registry.ts` |
+| CONFIRM-PLATFORM-IMPACT-RULES | Team review of the seed impact mapping | UAT ticket creation | `prisma/schema.prisma`, `src/app/admin/ReferenceDataTab.tsx`, `src/modules/settings/registry.ts` |
+| CONFIRM-UAT-PROJECT | Jira project and issue type for UAT tickets | UAT tickets | `src/modules/settings/registry.ts` |
 | CONFIRM-UAT-LEAD-DAYS | Business days before PROD that UAT must finish | Due dates, ALR-UAT-02 | `src/modules/settings/registry.ts` |
 | CONFIRM-UAT-TEMPLATES | Test outlines per mapping row, written by the team | Ticket content | not referenced yet |
-| CONFIRM-GX-RELEASE-SAMPLE | A redacted real release-notes page for the parser fixture | Parser tests beyond the synthetic template | `src/__tests__/fixtures/synthetic/CONFIRM-GX-RELEASE-SAMPLE.md`, `src/__tests__/gx-intake.test.ts`, `src/__tests__/gx-parse.test.ts`, `src/modules/gx-sprints/parse.ts` |
-| CONFIRM-AUDIT-RETENTION | Regulatory retention period for the audit log | Section 17.7 | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md` |
-| CONFIRM-OTC-RULE-REVIEW | Team review of the seeded `SignRule` and `BreakTypeRule` tables | Section 18.4, before any drafting | not referenced yet |
-| CONFIRM-VARIANCE-DEFINITIONS | Confirmation that the recomputed variances match the Power BI definitions | Sections 18.3 and 18.9 | not referenced yet |
-| CONFIRM-OTC-FIELD-MAPPING | Variance Type and Wallet Type field values per break type | Section 18.7 | not referenced yet |
-| CONFIRM-CATEGORY-LIST | Final incident and risk categories, and which are compliance-sensitive (Compliance to confirm) | Section 9.7 form | `prisma/migrations/0034_polling_client_incidents/migration.sql`, `prisma/schema.prisma` |
+| CONFIRM-PLATFORM-RELEASE-SAMPLE | A redacted real release-notes page for the parser fixture | Parser tests beyond the synthetic template | `src/__tests__/fixtures/synthetic/CONFIRM-PLATFORM-RELEASE-SAMPLE.md`, `src/__tests__/platform-intake.test.ts`, `src/__tests__/platform-parse.test.ts`, `src/modules/platform-sprints/parse.ts` |
+| CONFIRM-AUDIT-RETENTION | Regulatory retention period for the audit log | Audit retention | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md` |
+| CONFIRM-OTC-RULE-REVIEW | Team review of the seeded `SignRule` and `BreakTypeRule` tables | Break drafting | not referenced yet |
+| CONFIRM-VARIANCE-DEFINITIONS | Confirmation that the recomputed variances match the firm's report definitions | Break diagnosis | not referenced yet |
+| CONFIRM-OTC-FIELD-MAPPING | Variance Type and Wallet Type field values per break type | Break ticket drafting | not referenced yet |
+| CONFIRM-CATEGORY-LIST | Final incident and risk categories, and which are compliance-sensitive (Compliance to confirm) | Incident form | `prisma/schema.prisma` |
 
 ## Added during the build (49)
 
@@ -64,16 +64,17 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-BUSINESS-HOURS | `src/modules/alerting/calendar.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-CHK03-THRESHOLD | `src/modules/daily-checks/collectors.ts` |
 | CONFIRM-CI-IMAGE-PINS | `.github/workflows/ci.yml` |
-| CONFIRM-CLIENT-SCOPING | `prisma/migrations/0041_user_client_scope/migration.sql`, `prisma/schema.prisma`, `src/__tests__/client-scoping-enforced.test.ts`, `src/modules/auth/client-scope.ts` |
+| CONFIRM-CLIENT-SCOPING | `prisma/schema.prisma`, `src/__tests__/client-scoping-enforced.test.ts`, `src/modules/auth/client-scope.ts` |
 | CONFIRM-CODEOWNERS | `.github/CODEOWNERS`, `src/__tests__/security-docs.test.ts` |
 | CONFIRM-COIN-REVIEW-SLA | `src/modules/daily-checks/collectors.ts` |
 | CONFIRM-CONFLUENCE-URL | `src/__tests__/coverage-all-daily-tasks.test.ts`, `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-COVER-POOL | `src/modules/morning/handover.ts` |
 | CONFIRM-CREDENTIAL-OWNERS | `docs/phase1/credentials.md` |
 | CONFIRM-CSP-STYLES | `docs/phase1/threat-model.md`, `src/lib/security-policy.ts` |
+| CONFIRM-CUSTODY-OPENAPI | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `scripts/check-custody-api-spec.ts`, `src/__tests__/integration/custody-api-contract.test.ts` +5 |
 | CONFIRM-DATA-OWNERS | `docs/phase1/data-inventory.md` |
 | CONFIRM-DB-IDENTITY | `deploy/azure/README.md`, `docs/phase1/credentials.md`, `docs/phase1/threat-model.md`, `src/lib/secrets.ts` |
-| CONFIRM-DB-ROLES | `docs/compliance-audit-framework.md`, `docs/phase1/credentials.md`, `docs/phase1/db-roles.sql`, `prisma/migrations/0037_control_integrity/migration.sql` +1 |
+| CONFIRM-DB-ROLES | `docs/compliance-audit-framework.md`, `docs/phase1/credentials.md`, `docs/phase1/db-roles.sql` |
 | CONFIRM-DETECT-SECRETS-BASELINE | `.github/workflows/ci.yml` |
 | CONFIRM-DUE-TIMES | `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-EVIDENCE-SPEC | `src/modules/daily-checks/enforcement.ts` |
@@ -82,11 +83,10 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-EXPOSURE-BANDS | `src/app/api/work-items/[id]/exposure-band/route.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-GRAPH-DELTA | `src/lib/integrations/graph/client.ts` |
 | CONFIRM-GRAPH-MAIL-SEND | `src/lib/integrations/graph/client.ts`, `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
-| CONFIRM-IAI-INCIDENT-CRITERIA | `src/modules/incidents/services/incident-service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-IMPORT-FILENAMES | `src/__tests__/imports.test.ts`, `src/modules/imports/templates.ts`, `src/modules/settings/registry.ts` |
+| CONFIRM-INCIDENT-LOG-INCIDENT-CRITERIA | `src/modules/incidents/services/incident-service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-JIRA-AUTOMATION-API | `docs/phase1/jira-inventory.md`, `src/__tests__/jira-inventory.test.ts`, `src/modules/jira-inventory/collect.ts` |
 | CONFIRM-JIRA-CONSOLIDATION | `docs/phase1/jira-consolidation.json`, `docs/phase1/jira-inventory.md`, `src/__tests__/jira-inventory.test.ts`, `src/modules/jira-inventory/report.ts` |
-| CONFIRM-KOMAINU-OPENAPI | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `scripts/check-komainu-api-spec.ts`, `src/__tests__/integration/komainu-api-contract.test.ts` +5 |
 | CONFIRM-LEAVER | `docs/phase1/data-inventory.md` |
 | CONFIRM-OTC-BREAK-TYPES | `prisma/schema.prisma`, `src/app/api/admin/reference/[table]/route.ts` |
 | CONFIRM-OTC-OVERDUE | `src/app/api/otc/route.ts`, `src/modules/daily-checks/collectors.ts` |

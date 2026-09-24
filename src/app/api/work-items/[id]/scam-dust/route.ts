@@ -1,9 +1,8 @@
 /**
  * POST /api/work-items/:id/scam-dust — structured fields for a scam/dust case
  * (spec §12 CHK-06): the client advisory, a client override with the client's
- * decision attached (CF-35), and the "possible false positive" flag, which
- * opens a ticket to Tech (CF-34: GX auto-blacklists dust senders with no
- * documented reversal path). Nothing is changed in GX.
+ * decision attached, and the "possible false positive" flag, which
+ * opens a ticket to Tech. Nothing is changed in Platform.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             clockStartedAt: new Date(),
             metadata: { scamDustWorkItemId: item.id },
             ticket: project
-              ? { projectKey: project, summary: `Possible false positive: ${item.title}`, description: `Operations flagged a possible false positive on ${item.ticketKey ?? item.id}. GX auto-blacklists dust senders with no documented reversal path (findings register CF-34).`, labels: ["scam-dust", "false-positive"] }
+              ? { projectKey: project, summary: `Possible false positive: ${item.title}`, description: `Operations flagged a possible false positive on ${item.ticketKey ?? item.id}. Platform auto-blacklists dust senders with no documented reversal path.`, labels: ["scam-dust", "false-positive"] }
               : null,
           });
           next.falsePositiveWorkItemId = fp.id;

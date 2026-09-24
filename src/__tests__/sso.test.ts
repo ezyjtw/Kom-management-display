@@ -43,11 +43,11 @@ describe("groupsFromClaims", () => {
 describe("decideSsoLogin", () => {
   it("allows a mapped user with an Employee record, normalising the email", async () => {
     const d = await decideSsoLogin(
-      { preferred_username: "Alice@Komainu.com", groups: ["g-lead"] },
+      { preferred_username: "Alice@example.com", groups: ["g-lead"] },
       MAP,
-      hasEmployee(["alice@komainu.com"]),
+      hasEmployee(["alice@example.com"]),
     );
-    expect(d).toEqual({ allowed: true, email: "alice@komainu.com", role: "lead" });
+    expect(d).toEqual({ allowed: true, email: "alice@example.com", role: "lead" });
   });
 
   it("denies a user with no mapped group", async () => {

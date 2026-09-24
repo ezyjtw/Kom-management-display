@@ -38,14 +38,14 @@ const COMPOUND: Record<string, Record<string, string[]>> = {
   ticketLink: { system_key_workItemId: ["system", "key", "workItemId"] },
   approvedValidator: { chain_validator: ["chain", "validator"] },
   leadHandover: { date_team: ["date", "team"] },
-  gxChange: { sprintId_section_rowHash: ["sprintId", "section", "rowHash"] },
+  platformChange: { sprintId_section_rowHash: ["sprintId", "section", "rowHash"] },
 };
 
 /** Single-field unique constraints besides the primary key. */
 const UNIQUE: Record<string, string[]> = {
-  fabInstruction: ["reference"],
+  bankInstruction: ["reference"],
   employee: ["email"],
-  gxSprint: ["sprint"],
+  platformSprint: ["sprint"],
 };
 
 const uniqueError = () => new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "fake" });
@@ -82,7 +82,7 @@ const DEFAULTS: Record<string, () => Row> = {
   sourceRecord: () => ({ credentialLabel: "", status: null, mappedStatus: null, occurredAt: null, sourceUpdatedAt: null, fields: {}, firstSeenAt: new Date(), lastSeenAt: new Date() }),
   dailyCheckItem: () => ({ status: "pending", exceptionWorkItemIds: [], evidence: {}, autoResult: "", notes: "", completedAt: null, skippedReason: null, skipRequestedBy: null, skipApprovedBy: null, recordCount: null, dataAsOf: null }),
   dailyCheckDefinition: () => ({ isActive: true, version: 1, kind: "check", requiredFlag: null, restricted: false }),
-  iaiDraft: () => ({ jiraKey: null, completedAt: null }),
+  incidentLogDraft: () => ({ jiraKey: null, completedAt: null }),
   outboundMessageDraft: () => ({ status: "draft", purpose: "client_ticket_link", sentById: null, sentAt: null }),
   clientUpdate: () => ({ kind: "update", status: "pending_approval", approverId: null, postedAt: null, targetStatus: null }),
   incidentCategory: () => ({ isActive: true, sortOrder: 0, complianceSensitive: false }),
@@ -91,9 +91,9 @@ const DEFAULTS: Record<string, () => Row> = {
     absent: true, absenceSource: "manual", coveringEmployeeId: null, note: null, submittedById: null, submittedAt: null,
     postStatus: "pending", postAttempts: 0, lastPostAttemptAt: null, postedAt: null, postResults: [], missingNotifiedAt: null, reminderResults: [],
   }),
-  gxSprint: () => ({ releaseNotesUrl: "", releaseNotesPageId: null, pageVersion: 0, uatLandedAt: null, prodPlannedAt: null, kmncKeys: [], fixVersions: [], parentTicketKey: null, parentWorkItemId: null, lastParsedAt: null }),
-  gxChange: () => ({ gxJiraKeys: [], env: "", firstCell: "", qualifies: false, tags: [], team: "All", priority: "P2", uatTemplate: null, affectedTasks: [], affectedAlerts: [], affectedControls: [], predecessorId: null, workItemId: null, uatTicketKey: null, uatOutcome: null, pageVersion: 0, removedAt: null }),
-  gxImpactRule: () => ({ taskCodes: [], alertCodes: [], controls: [], team: "All", uatTemplate: "", priority: "P2", isActive: true, version: 1 }),
+  platformSprint: () => ({ releaseNotesUrl: "", releaseNotesPageId: null, pageVersion: 0, uatLandedAt: null, prodPlannedAt: null, changeKeys: [], fixVersions: [], parentTicketKey: null, parentWorkItemId: null, lastParsedAt: null }),
+  platformChange: () => ({ platformJiraKeys: [], env: "", firstCell: "", qualifies: false, tags: [], team: "All", priority: "P2", uatTemplate: null, affectedTasks: [], affectedAlerts: [], affectedControls: [], predecessorId: null, workItemId: null, uatTicketKey: null, uatOutcome: null, pageVersion: 0, removedAt: null }),
+  platformImpactRule: () => ({ taskCodes: [], alertCodes: [], controls: [], team: "All", uatTemplate: "", priority: "P2", isActive: true, version: 1 }),
   uatTemplate: () => ({ steps: "", expectedResults: "", evidenceRequired: "" }),
   ptoRecord: () => ({ type: "annual_leave", status: "approved", notes: "" }),
   teamConfig: () => ({ leadEmployeeId: null, deputyEmployeeId: null, memberEmployeeIds: [] }),

@@ -57,7 +57,7 @@ export default function AlertRulesTab() {
         <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><BellRing size={18} /> Alert Rules</h2>
         <p className="text-xs text-muted-foreground mt-1">
           Every rule ships disabled. Enable rules one by one once thresholds are confirmed. A parameter shown as null is a
-          CONFIRM placeholder and blocks enabling. Alerts are informational only: approvals stay in GX.
+          CONFIRM placeholder and blocks enabling. Alerts are informational only: approvals stay in Platform.
         </p>
       </div>
       {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}

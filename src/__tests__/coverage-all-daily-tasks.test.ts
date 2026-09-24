@@ -19,9 +19,9 @@ import { COLLECTORS } from "@/modules/daily-checks/collectors";
 
 /** Every code listed in spec §12 (Team 1, Team 2, Team 3, All teams). */
 const SPEC_CODES = [
-  "CHK-01", "CHK-09K", "CHK-10", "CHK-11", "CHK-12", "CHK-17", "CHK-08", "TASK-FAB",
+  "CHK-01", "CHK-09K", "CHK-10", "CHK-11", "CHK-12", "CHK-17", "CHK-08", "TASK-BANK",
   "CHK-02", "CHK-03", "TASK-OTC", "CHK-06", "CHK-07", "CHK-13",
-  "CHK-09", "CHK-05", "CHK-04", "CHK-16", "CHK-21", "CHK-22", "CHK-15", "TASK-AVIVA",
+  "CHK-09", "CHK-05", "CHK-04", "CHK-16", "CHK-21", "CHK-22", "CHK-15", "TASK-CLIENT-REPORT",
   "TASK-CLIENTQ", "TASK-VENDOR", "TASK-BILL", "TASK-RISKVIEW", "TASK-MORNING",
 ];
 
@@ -50,11 +50,11 @@ describe("coverage-all-daily-tasks", () => {
     expect(dev).toMatchObject({ team: "Team 3", frequency: "weekly" });
   });
 
-  it("the FAB module ships behind module.fab", () => {
-    for (const code of ["TASK-FAB", "TASK-FAB-REPORT"]) expect(DEFINITIONS.find((d) => d.code === code)?.requiredFlag).toBe("module.fab");
+  it("the BANK module ships behind module.bank", () => {
+    for (const code of ["TASK-BANK", "TASK-BANK-REPORT"]) expect(DEFINITIONS.find((d) => d.code === code)?.requiredFlag).toBe("module.bank");
   });
 
-  it("CHK-09K is restricted (kps:view)", () => {
+  it("CHK-09K is restricted (realisation:view)", () => {
     expect(DEFINITIONS.find((d) => d.code === "CHK-09K")?.restricted).toBe(true);
   });
 
@@ -65,8 +65,8 @@ describe("coverage-all-daily-tasks", () => {
 
   it("does not overwrite admin edits on re-sync", async () => {
     await syncDailyCheckDefinitions();
-    await db.client.dailyCheckDefinition.update({ where: { code: "CHK-01" }, data: { confluenceUrl: "https://komainu.atlassian.net/wiki/x" } });
+    await db.client.dailyCheckDefinition.update({ where: { code: "CHK-01" }, data: { confluenceUrl: "https://example.atlassian.net/wiki/x" } });
     expect(await syncDailyCheckDefinitions()).toBe(0);
-    expect((await db.client.dailyCheckDefinition.findUnique({ where: { code: "CHK-01" } }))!.confluenceUrl).toBe("https://komainu.atlassian.net/wiki/x");
+    expect((await db.client.dailyCheckDefinition.findUnique({ where: { code: "CHK-01" } }))!.confluenceUrl).toBe("https://example.atlassian.net/wiki/x");
   });
 });

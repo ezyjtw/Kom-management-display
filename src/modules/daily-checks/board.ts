@@ -44,13 +44,13 @@ export interface BoardCard {
   banners: string[];
   items: BoardItem[];
   openWorkItems: number;
-  /** Spec §16.7: open GX sprint UAT items that affect this task. */
+  /** Spec §16.7: open Platform sprint UAT items that affect this task. */
   uatDue: Array<{ workItemId: string; ticketKey: string | null; title: string; sprint: string | null }>;
 }
 
 export const APPROVED_VALIDATORS_MISSING = "Approved validator set not defined: control 5.1 cannot be evidenced.";
 
-export async function buildBoard(team: string | null, opts: { now?: Date; canViewKps: boolean }): Promise<BoardCard[]> {
+export async function buildBoard(team: string | null, opts: { now?: Date; canViewRealisations: boolean }): Promise<BoardCard[]> {
   const now = opts.now ?? new Date();
   const today = londonParts(now).date;
   const defs = await prisma.dailyCheckDefinition.findMany({
@@ -61,14 +61,14 @@ export async function buildBoard(team: string | null, opts: { now?: Date; canVie
   const uatOpen = await prisma.workItem.findMany({ where: { kind: "uat_task", state: { in: [...OPEN] } }, select: { id: true, ticketKey: true, title: true, metadata: true } });
   const uatFor = (code: string) => uatOpen
     .filter((u) => { const m = (u.metadata ?? {}) as Record<string, unknown>; return Array.isArray(m.affectedTasks) && (m.affectedTasks as unknown[]).includes(code); })
-    .map((u) => { const m = (u.metadata ?? {}) as Record<string, unknown>; return { workItemId: u.id, ticketKey: u.ticketKey, title: u.title, sprint: typeof m.gxSprint === "string" ? m.gxSprint : null }; });
+    .map((u) => { const m = (u.metadata ?? {}) as Record<string, unknown>; return { workItemId: u.id, ticketKey: u.ticketKey, title: u.title, sprint: typeof m.platformSprint === "string" ? m.platformSprint : null }; });
   const cards: BoardCard[] = [];
 
   for (const def of defs) {
     const spec = DEFINITION_BY_CODE[def.code];
     const evidence = (def.evidenceSpec ?? {}) as { requiredFields?: string[]; notes?: string };
     const flagOff = def.requiredFlag && !(await isFeatureEnabled(def.requiredFlag)) ? def.requiredFlag : null;
-    const hidden = def.restricted && !opts.canViewKps;
+    const hidden = def.restricted && !opts.canViewRealisations;
 
     const periodKeys = (await periodsFor(def, now)).map((p) => p.key);
     const items = hidden || flagOff
@@ -82,7 +82,7 @@ export async function buildBoard(team: string | null, opts: { now?: Date; canVie
     const banners: string[] = [];
     if (def.code === "CHK-08" && validators === 0) banners.push(APPROVED_VALIDATORS_MISSING);
     if (flagOff) banners.push(`Disabled: feature flag ${flagOff} is off.`);
-    if (hidden) banners.push("Restricted: requires kps:view.");
+    if (hidden) banners.push("Restricted: requires realisation:view.");
 
     cards.push({
       code: def.code,

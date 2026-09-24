@@ -271,7 +271,7 @@ model KnowledgeScore {
 }
 
 // NOTE: Only one ScoringConfig should be active at a time (active=true).
-// Enforced at the DB level via a partial unique index in migration 0013,
+// Enforced at the DB level via a partial unique index in the baseline migration,
 // and at the application level in PUT /api/scores/config. See ADR-004.
 model ScoringConfig {
   id           String              @id @default(cuid())
@@ -681,7 +681,7 @@ model RotaAssignment {
   rotationCycle String   @default("weekly") // weekly, monthly, bimonthly
   shiftType     String   @default("standard") // standard, late, weekend
   isWfh         Boolean  @default(false)
-  location      String   @default("London") // London, Hong Kong, Jersey
+  location      String   @default("London") // e.g. London, Singapore, Dublin
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -784,7 +784,7 @@ model Alert {
 
   // Alerting engine (spec §7.4)
   ruleCode       String // e.g. "ALR-OES-01"; legacy alerts use their `type`
-  dedupeKey      String // one open alert per (ruleCode, dedupeKey) — partial unique index in migration 0022
+  dedupeKey      String // one open alert per (ruleCode, dedupeKey) — partial unique index in the baseline migration
   workItemId     String? // required before acknowledge (spec §10.2)
   firstFiredAt   DateTime  @default(now())
   lastFiredAt    DateTime  @default(now())
@@ -818,9 +818,9 @@ model Alert {
 
 model Incident {
   id                          String           @id @default(cuid())
-  workItemId                  String? // our GXS/VSR ticket (spec §12 CHK-11); timeline updates post there as comments
+  workItemId                  String? // our PDEF/VND ticket (spec §12 CHK-11); timeline updates post there as comments
   title                       String // e.g. "Fireblocks signing service degraded"
-  provider                    String // Fireblocks, Ledger, GX, Custody, Notabene, etc.
+  provider                    String // Fireblocks, Ledger, Platform, Custody, Notabene, etc.
   severity                    IncidentSeverity @default(medium)
   status                      IncidentStatus   @default(active)
   description                 String           @default("")
@@ -908,7 +908,7 @@ model ExternalTicketEvent {
 model OesSettlement {
   id                    String    @id @default(cuid())
   settlementRef         String    @unique // settlement reference / cycle ID
-  venue                 String    @default("okx") // okx, fireblocks
+  venue                 String    @default("exchange") // exchange, fireblocks
   clientName            String
   clientAccount         String    @default("")
   asset                 String // BTC, ETH, USDC, SOL, etc.
@@ -922,7 +922,7 @@ model OesSettlement {
   custodyWallet         String    @default("") // source/dest custody wallet
   matchStatus           String    @default("pending") // pending, matched, mismatch, missing_tx, flagged
   matchNote             String    @default("") // mismatch reason or exchange escalation note
-  // Delegation (OKX specific)
+  // Delegation (venue specific)
   delegationStatus      String    @default("n/a") // n/a, delegated, undelegated, pending_delegation
   delegatedAmount       Decimal   @default(0) @db.Decimal(38, 18)
   // Maker/Checker
@@ -1022,10 +1022,10 @@ model AuditLog {
   action        String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
   entityType    String // scoring_config, employee, thread, knowledge_score
   entityId      String
-  /// Employee of the actor ("system" when the actor has none). Normalised by a database trigger (migration 0037).
+  /// Employee of the actor ("system" when the actor has none). Normalised by a database trigger (baseline migration).
   userId        String
   details       String   @default("{}") // JSON — stored as TEXT holding JSON (drift reconciliation, 0043)
-  /// user | system | service. The table is append-only: UPDATE, DELETE and TRUNCATE are rejected by triggers (migration 0037).
+  /// user | system | service. The table is append-only: UPDATE, DELETE and TRUNCATE are rejected by triggers (baseline migration).
   actorType     String   @default("user")
   /// User.id of the signed-in principal (no FK: users may be removed, the audit trail stays).
   actorUserId   String?
@@ -1140,8 +1140,8 @@ model DailyCheckDefinition {
   ticketProject String // default Jira project for exceptions
   confluenceUrl String
   kind          String   @default("check") // check | task (spec §12 recurring non-check tasks)
-  requiredFlag  String? // feature flag that must be on (e.g. module.fab)
-  restricted    Boolean  @default(false) // RESTRICTED explainer: needs kps:view
+  requiredFlag  String? // feature flag that must be on (e.g. module.bank)
+  restricted    Boolean  @default(false) // RESTRICTED explainer: needs realisation:view
   version       Int      @default(1)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -1180,7 +1180,7 @@ model ScreeningEntry {
   @@index([asset])
 }
 
-// ─── Approval Audit Trail (archived in migration 0017) ───
+// ─── Approval Audit Trail (archived in the baseline migration) ───
 // The ApprovalAuditEntry table has been renamed to _archived_ApprovalAuditEntry.
 // Model removed from schema per H1: no transaction approval.
 
@@ -1367,13 +1367,13 @@ model TransactionConfirmation {
   id               String               @id @default(cuid())
   transactionId    String // Custody transaction ID
   requestId        String? // Custody request ID (if applicable)
-  riskLevel        TransactionRiskLevel @default(unknown) // from GX only (H5)
+  riskLevel        TransactionRiskLevel @default(unknown) // from Platform only (H5)
   asset            String
   amount           Decimal              @db.Decimal(38, 18) // token quantity in `asset`
   direction        String // IN, OUT
   account          String               @default("")
   workspace        String               @default("")
-  // Read-only tracking of GX items awaiting human action in GX
+  // Read-only tracking of Platform items awaiting human action in Platform
   status           ConfirmationStatus   @default(pending)
   ownedById        String?
   ownedAt          DateTime?
@@ -1495,7 +1495,7 @@ model SlackChannel {
   lastSyncedAt   DateTime?
   createdAt      DateTime  @default(now())
   clientId       String? // spec §8.4
-  purpose        String    @default("internal_ops") // client | gx_notifications | vendor | internal_ops | alerts_out
+  purpose        String    @default("internal_ops") // client | platform_notifications | vendor | internal_ops | alerts_out
 
   threads CommsThread[]
   client  Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1614,8 +1614,8 @@ model VendorReliabilityScore {
 model Client {
   id                  String    @id @default(cuid())
   displayName         String
-  komainuOrgId        String?   @unique // Komainu API `organization`
-  komainuAccountNos   Json      @default("[]") // Komainu API account numbers
+  custodyOrgId        String?   @unique // custody API `organization`
+  custodyAccountNos   Json      @default("[]") // custody API account numbers
   jsmOrganizationId   String?   @unique // JSM organisation
   jurisdiction        String    @default("") // UK | JE | AE | EU (entity servicing)
   isActive            Boolean   @default(true)
@@ -1675,8 +1675,8 @@ enum WorkItemKind {
   daily_check_exception
   mtd_break
   oes_settlement
-  fab_instruction
-  kps_case
+  bank_instruction
+  realisation_case
   vendor_ticket
   travel_rule_case
   screening_case
@@ -1713,7 +1713,7 @@ model WorkItem {
   riskScore        String? // required before closure (spec §10.2)
   state            WorkItemState @default(open)
   ownerEmployeeId  String?
-  sourceSystem     String // komainu_api | slack | email | teams | jira | jsm | manual | system
+  sourceSystem     String // custody_api | slack | email | teams | jira | jsm | manual | system
   sourceId         String // dedupe key in source
   ticketSystem     String? // jsm | jira
   ticketKey        String? // e.g. OTC-1234
@@ -1725,7 +1725,7 @@ model WorkItem {
   resolvedAt       DateTime?
   resolutionNote   String?
   rootCause        String? // controlled list (spec §10.2)
-  exposureUsd      Decimal?      @db.Decimal(20, 2) // USD, where relevant (OES, FAB)
+  exposureUsd      Decimal?      @db.Decimal(20, 2) // USD, where relevant (OES, BANK)
   clientTicketKey  String? // client-visible JSM request (spec §9.7), separate from ticketKey
   clientTicketUrl  String? // portal URL shared with the client
   sourceMessageRef String? // Slack permalink or Graph message id the entry was raised from
@@ -1740,7 +1740,7 @@ model WorkItem {
   alerts      Alert[]
   timeLogs    TimeLog[]
   ticketLinks TicketLink[]
-  iaiDrafts   IaiDraft[]
+  incidentLogDrafts   IncidentLogDraft[]
 
   @@unique([sourceSystem, sourceId])
   @@index([state, team])
@@ -1804,7 +1804,7 @@ model AlertRule {
 }
 
 model SourceHeartbeat {
-  source            String    @id // "komainu_api.requests", "slack.client", "outlook.fab_ics", ...
+  source            String    @id // "custody_api.requests", "slack.client", "outlook.bank_instructions", ...
   lastSuccessAt     DateTime?
   lastRecordAt      DateTime? // newest record timestamp seen
   lastCount         Int       @default(0)
@@ -1851,11 +1851,11 @@ model TicketLink {
   @@index([system, key])
 }
 
-model IaiDraft {
+model IncidentLogDraft {
   id          String    @id @default(cuid())
   workItemId  String
   triggerCode String // alert rule that triggered it
-  jiraKey     String? // once created in IAI
+  jiraKey     String? // once created in INC
   dueAt       DateTime // createdAt + 24h
   completedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -1873,10 +1873,10 @@ model IaiDraft {
 /// fields a rule needs are kept (spec §8.1 data handling).
 model SourceRecord {
   id              String    @id @default(cuid())
-  source          String // komainu_api | graph_teams | graph_mail | slack
+  source          String // custody_api | graph_teams | graph_mail | slack
   kind            String // request | transaction | settlement | collateral_operation | portfolio | eod_balance | staking_reward | audit_log | risk_signal_raw | teams_message | vendor_email
   externalId      String
-  credentialLabel String    @default("") // which Komainu API credential saw it (CONFIRM-API-SCOPE)
+  credentialLabel String    @default("") // which custody API credential saw it (CONFIRM-API-SCOPE)
   status          String? // raw status from the source
   mappedStatus    String? // pending | in_progress | completed | failed | partial | unknown
   occurredAt      DateTime? // event time in the source
@@ -1906,7 +1906,7 @@ model SettlementStatusMap {
 
 /// Jira/JSM project mapping (spec §8.3). Ids are discovered at runtime; nothing is hard-coded.
 model JiraProjectConfig {
-  key                 String   @id // OTC, TOPS, VSR, ...
+  key                 String   @id // OTC, OPS, VND, ...
   name                String
   purpose             String   @default("")
   kind                String   @default("jira") // jira | jsm
@@ -1953,7 +1953,7 @@ model AppSetting {
 }
 
 /// OES settlement windows (spec §11.2). `cron` is read in `referenceTz`.
-/// TODO(CONFIRM-OES-WINDOWS) / TODO(CONFIRM-DERIBIT): seed values await confirmation.
+/// TODO(CONFIRM-OES-WINDOWS) / TODO(CONFIRM-VENUE-WINDOWS): seed values await confirmation.
 model OesWindow {
   id           String   @id @default(cuid())
   exchange     String
@@ -1975,8 +1975,8 @@ model AssetThreshold {
   updatedAt DateTime @updatedAt
 }
 
-/// GX risk rule number -> tier (spec §11.2). Seeded with every rule at "high",
-/// the current approved flow (TODO(CONFIRM-RISKCO)).
+/// Platform risk rule number -> tier (spec §11.2). Seeded with every rule at "high",
+/// the current approved flow (TODO(CONFIRM-RISK-COMMITTEE)).
 model RiskRuleTier {
   rule      Int      @id
   tier      String   @default("high") // low | medium | high | requires_escalation
@@ -2022,7 +2022,7 @@ model ApprovedValidator {
 /// Notes on the read-only settlement matching view (spec §12 CHK-10).
 model SettlementNote {
   id          String   @id @default(cuid())
-  windowKey   String // "2026-09-23:okx:09:00Z"
+  windowKey   String // "2026-09-23:exch-a:09:00Z"
   portfolioId String
   text        String
   authorId    String
@@ -2031,9 +2031,9 @@ model SettlementNote {
   @@index([windowKey])
 }
 
-/// FAB instruction register (spec §12 TASK-FAB), behind flag module.fab.
-/// Rows are entered from the fab_ics mailbox until the parser is confirmed (CONFIRM-FAB-TEMPLATES).
-model FabInstruction {
+/// BANK instruction register (spec §12 TASK-BANK), behind flag module.bank.
+/// Rows are entered from the bank_instructions mailbox until the parser is confirmed (CONFIRM-BANK-TEMPLATES).
+model BankInstruction {
   id              String    @id @default(cuid())
   messageType     String // TRD_NTF | STL_INS
   reference       String    @unique // TradeReference or AgreementReference
@@ -2057,10 +2057,10 @@ model FabInstruction {
   @@index([valueDate])
 }
 
-/// FAB settlement log. txHash is stored for matching and masked in logs and views (H8).
-model FabSettlementLog {
+/// BANK settlement log. txHash is stored for matching and masked in logs and views (H8).
+model BankSettlementLog {
   id           String   @id @default(cuid())
-  reference    String // FabInstruction.reference
+  reference    String // BankInstruction.reference
   status       String // RECEIVED | INITIATED | COMPLETED | FAILED
   txHash       String?
   kytStatus    String   @default("none") // none | fail | escalated | cleared
@@ -2074,8 +2074,8 @@ model FabSettlementLog {
   @@index([status])
 }
 
-/// Manual fee-reserve balance entries for ALR-FAB-08 (CONFIRM-FEE-ALERT-FORMAT).
-model FabFeeBalance {
+/// Manual fee-reserve balance entries for ALR-BANK-08 (CONFIRM-FEE-ALERT-FORMAT).
+model BankFeeBalance {
   id           String   @id @default(cuid())
   walletRef    String
   asset        String
@@ -2211,34 +2211,34 @@ model LeadHandover {
   @@unique([date, team])
 }
 
-/// GX sprint (spec §16). One per sprint number; release notes read from Confluence.
-model GxSprint {
+/// Platform sprint (spec §16). One per sprint number; release notes read from Confluence.
+model PlatformSprint {
   id                 String     @id @default(cuid())
   sprint             String     @unique // "6.19"
   releaseNotesUrl    String     @default("")
   releaseNotesPageId String?
   pageVersion        Int        @default(0)
-  uatLandedAt        DateTime? // from the KMNC UAT ticket
-  prodPlannedAt      DateTime? // from the KMNC PROD ticket or the release notes
-  kmncKeys           Json       @default("[]")
+  uatLandedAt        DateTime? // from the CHG UAT ticket
+  prodPlannedAt      DateTime? // from the CHG PROD ticket or the release notes
+  changeKeys           Json       @default("[]")
   fixVersions        Json       @default("[]")
   parentTicketKey    String?
   parentWorkItemId   String?
   lastParsedAt       DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
-  changes            GxChange[]
+  changes            PlatformChange[]
 }
 
 /// One change item parsed from a release-notes row (spec §16.2). Never deleted: a removed row gets removedAt.
-model GxChange {
+model PlatformChange {
   id               String    @id @default(cuid())
   sprintId         String
   section          String
   itemType         String // function_toggle | ui_change | api_change | permission_change | staking_change | risk_engine_change | technical_change | highlight | deployment_note | verify_fix
   summary          String
   detail           Json // the parsed row, cell by cell (release engineer names redacted)
-  gxJiraKeys       Json      @default("[]")
+  platformJiraKeys       Json      @default("[]")
   env              String    @default("")
   rowHash          String
   firstCell        String    @default("")
@@ -2259,14 +2259,14 @@ model GxChange {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  sprint GxSprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  sprint PlatformSprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
 
   @@unique([sprintId, section, rowHash])
   @@index([sprintId, removedAt])
 }
 
-/// Impact mapping (spec §16.3): config, not code. Admin-editable, versioned, audit-logged. TODO(CONFIRM-GX-IMPACT-RULES).
-model GxImpactRule {
+/// Impact mapping (spec §16.3): config, not code. Admin-editable, versioned, audit-logged. TODO(CONFIRM-PLATFORM-IMPACT-RULES).
+model PlatformImpactRule {
   id          String   @id @default(cuid())
   name        String
   matchOn     String // section | workstream | keyword | jira_project

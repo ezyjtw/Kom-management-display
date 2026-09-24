@@ -1,7 +1,7 @@
 /**
  * Spec §12 Team 1: settlement matching view (read-only, H1), OES-06 exposure
  * band, incident tickets and Jira timeline comments, draft-only provider
- * comments, the FAB register behind module.fab, and kps:view.
+ * comments, the BANK register behind module.bank, and realisation:view.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
@@ -12,9 +12,9 @@ vi.mock("@/lib/prisma", async () => {
   db.client = createFakePrisma();
   return { prisma: db.client };
 });
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 const flags = vi.hoisted(() => ({ on: new Set<string>() }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => flags.on.has(k)) }));
 const auth = vi.hoisted(() => ({ user: { id: "u1", name: "Op", email: "op@k.com", role: "lead", employeeId: "emp-1", team: null } as Record<string, unknown> }));
@@ -22,15 +22,15 @@ vi.mock("@/lib/auth-user", () => ({ requireAuth: vi.fn(async () => auth.user) })
 vi.mock("@/lib/api/rate-limit-middleware", () => ({ checkRateLimit: () => null, RATE_LIMIT_PRESETS: { mutation: {} } }));
 
 import { CircuitBreaker } from "@/lib/circuit-breaker";
-import { buildSettlementView, CF39_NOTICE } from "@/modules/settlements/matching-view";
+import { buildSettlementView, EXPOSURE_BAND_NOTICE } from "@/modules/settlements/matching-view";
 import * as settlementsRoute from "@/app/api/settlements/route";
 import { POST as exposureBand } from "@/app/api/work-items/[id]/exposure-band/route";
 import { closureIssues } from "@/modules/work-items/closure-rules";
 import { incidentService, incidentTicketProject } from "@/modules/incidents/services/incident-service";
 import { POST as rcaPost } from "@/app/api/rca/tickets/route";
-import { GET as fabGet } from "@/app/api/fab/route";
-import { POST as fabInstructionPost } from "@/app/api/fab/instructions/route";
-import { GET as kpsGet } from "@/app/api/kps/route";
+import { GET as bankGet } from "@/app/api/bank/route";
+import { POST as bankInstructionPost } from "@/app/api/bank/instructions/route";
+import { GET as realisationGet } from "@/app/api/realisations/route";
 
 const p = () => db.client;
 const add = (m: string, data: Record<string, unknown>) => p()[m].create({ data });
@@ -57,22 +57,22 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("CHK-10 settlement matching view", () => {
   beforeEach(async () => {
-    await add("oesWindow", { exchange: "okx", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
-    await add("sourceRecord", { source: "komainu_api", kind: "portfolio", externalId: "pf-1", status: "ACTIVE", fields: { exchange: "okx" } });
-    await add("sourceRecord", { source: "komainu_api", kind: "portfolio", externalId: "pf-2", status: "ACTIVE", fields: { exchange: "okx" } });
-    await add("sourceRecord", { source: "komainu_api", kind: "settlement", externalId: "s-1", status: "FAILED", mappedStatus: "failed", occurredAt: new Date("2026-09-23T09:03:00Z"), lastSeenAt: new Date("2026-09-23T09:10:00Z"), fields: { exchange: "okx", portfolio_id: "pf-1" } });
-    await add("sourceRecord", { source: "komainu_api", kind: "settlement", externalId: "s-x", status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:04:00Z"), lastSeenAt: new Date("2026-09-23T09:10:00Z"), fields: { exchange: "okx", portfolio_id: "pf-9" } });
+    await add("oesWindow", { exchange: "exch-a", cron: "0 9 * * *", durationMins: 30, referenceTz: "UTC", isActive: true });
+    await add("sourceRecord", { source: "custody_api", kind: "portfolio", externalId: "pf-1", status: "ACTIVE", fields: { exchange: "exch-a" } });
+    await add("sourceRecord", { source: "custody_api", kind: "portfolio", externalId: "pf-2", status: "ACTIVE", fields: { exchange: "exch-a" } });
+    await add("sourceRecord", { source: "custody_api", kind: "settlement", externalId: "s-1", status: "FAILED", mappedStatus: "failed", occurredAt: new Date("2026-09-23T09:03:00Z"), lastSeenAt: new Date("2026-09-23T09:10:00Z"), fields: { exchange: "exch-a", portfolio_id: "pf-1" } });
+    await add("sourceRecord", { source: "custody_api", kind: "settlement", externalId: "s-x", status: "DONE", mappedStatus: "completed", occurredAt: new Date("2026-09-23T09:04:00Z"), lastSeenAt: new Date("2026-09-23T09:10:00Z"), fields: { exchange: "exch-a", portfolio_id: "pf-9" } });
   });
 
   it("has one row per expected portfolio per window, plus unmatched settlements", async () => {
     const view = await buildSettlementView("2026-09-23", new Date("2026-09-23T12:00:00Z"));
     expect(view.rows.map((r) => [r.windowKey, r.portfolioId, r.settlementId, r.mappedStatus])).toEqual([
-      ["2026-09-23:okx:09:00Z", "pf-1", "s-1", "failed"],
-      ["2026-09-23:okx:09:00Z", "pf-2", null, "no_record"],
-      ["2026-09-23:okx:09:00Z", "pf-9", "s-x", "completed"],
+      ["2026-09-23:exch-a:09:00Z", "pf-1", "s-1", "failed"],
+      ["2026-09-23:exch-a:09:00Z", "pf-2", null, "no_record"],
+      ["2026-09-23:exch-a:09:00Z", "pf-9", "s-x", "completed"],
     ]);
-    expect(view.rows[0].timeline.map((t) => t.label)).toEqual(["Window opens (okx)", "Settlement started", "Last seen: failed (FAILED)"]);
-    expect(view.cf39).toBe(CF39_NOTICE);
+    expect(view.rows[0].timeline.map((t) => t.label)).toEqual(["Window opens (exch-a)", "Settlement started", "Last seen: failed (FAILED)"]);
+    expect(view.exposureBandNotice).toBe(EXPOSURE_BAND_NOTICE);
   });
 
   it("offers only a read endpoint (no maker/checker approval, H1)", () => {
@@ -80,7 +80,7 @@ describe("CHK-10 settlement matching view", () => {
   });
 
   it("shows the ALR-OES-06 exposure step and requires the band before closure", async () => {
-    await add("workItem", { id: "wi-oes", kind: "oes_settlement", title: "Settlement failed", taskCode: "OES", sourceSystem: "alert", sourceId: "x", ticketKey: "TOPS-9", ticketSystem: "jira", exposureUsd: 250000, clockStartedAt: new Date() });
+    await add("workItem", { id: "wi-oes", kind: "oes_settlement", title: "Settlement failed", taskCode: "OES", sourceSystem: "alert", sourceId: "x", ticketKey: "OPS-9", ticketSystem: "jira", exposureUsd: 250000, clockStartedAt: new Date() });
     await add("alert", { type: "ALR-OES-06", ruleCode: "ALR-OES-06", dedupeKey: "s-1", message: "EOD", severity: "critical", workItemId: "wi-oes" });
     const row = (await buildSettlementView("2026-09-23", new Date("2026-09-23T17:00:00Z"))).rows[0];
     expect(row.exposure).toEqual({ workItemId: "wi-oes", exposureUsd: "250000.00", band: null });
@@ -91,7 +91,7 @@ describe("CHK-10 settlement matching view", () => {
 
     const res = await exposureBand(req("/api/work-items/wi-oes/exposure-band", "POST", { band: "USD 100k–1m" }), ctx("wi-oes"));
     expect(res.status).toBe(200);
-    expect(jira.calls.some((c) => c.path === "/rest/api/3/issue/TOPS-9/comment")).toBe(true);
+    expect(jira.calls.some((c) => c.path === "/rest/api/3/issue/OPS-9/comment")).toBe(true);
     const after = await p().workItem.findUnique({ where: { id: "wi-oes" } });
     expect(await closureIssues(after as never, { writeUp })).toEqual([]);
   });
@@ -107,22 +107,22 @@ describe("CHK-10 settlement matching view", () => {
 
 describe("CHK-11 incidents", () => {
   beforeEach(async () => {
-    for (const key of ["GXS", "VSR"]) await add("jiraProjectConfig", { key, name: key, kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
+    for (const key of ["PDEF", "VND"]) await add("jiraProjectConfig", { key, name: key, kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
   });
 
-  it("routes GX issues to GXS and other providers to VSR", () => {
-    expect(incidentTicketProject("GX")).toBe("GXS");
-    expect(incidentTicketProject("Fireblocks")).toBe("VSR");
+  it("routes Platform issues to PDEF and other providers to VND", () => {
+    expect(incidentTicketProject("Platform")).toBe("PDEF");
+    expect(incidentTicketProject("Fireblocks")).toBe("VND");
   });
 
   it("opens the incident's ticket and posts timeline updates as Jira comments first", async () => {
     const inc = await incidentService.createIncident({ title: "Signing degraded", provider: "Fireblocks", severity: "high", reportedById: "emp-1" } as never);
     const saved = await p().incident.findUnique({ where: { id: inc.id } });
     const wi = await p().workItem.findUnique({ where: { id: saved!.workItemId } });
-    expect(wi).toMatchObject({ kind: "incident", ticketKey: "VSR-1", taskCode: "CHK-11" });
+    expect(wi).toMatchObject({ kind: "incident", ticketKey: "VND-1", taskCode: "CHK-11" });
 
     await incidentService.addUpdate(inc.id, "emp-1", "Vendor confirmed a fix is rolling out", "update");
-    expect(jira.calls.at(-1)).toMatchObject({ method: "POST", path: "/rest/api/3/issue/VSR-1/comment" });
+    expect(jira.calls.at(-1)).toMatchObject({ method: "POST", path: "/rest/api/3/issue/VND-1/comment" });
     expect(await p().incidentUpdate.count()).toBe(1);
   });
 
@@ -154,39 +154,39 @@ describe("CHK-12 provider comments are drafts only", () => {
   });
 });
 
-describe("TASK-FAB register (module.fab)", () => {
+describe("TASK-BANK register (module.bank)", () => {
   const instruction = { messageType: "STL_INS", reference: "AGR-1", instructionType: "OPEN", direction: "RECEIVE", asset: "USDC", amount: 1000, valueDate: "2026-09-23", receivedAt: "2026-09-23T08:00:00Z" };
 
-  it("is not found while module.fab is off", async () => {
-    expect((await fabGet(req("/api/fab", "GET"))).status).toBe(404);
-    expect((await fabInstructionPost(req("/api/fab/instructions", "POST", instruction))).status).toBe(404);
+  it("is not found while module.bank is off", async () => {
+    expect((await bankGet(req("/api/bank", "GET"))).status).toBe(404);
+    expect((await bankInstructionPost(req("/api/bank/instructions", "POST", instruction))).status).toBe(404);
   });
 
   it("records an instruction and opens one ticket per reference", async () => {
-    flags.on.add("module.fab");
-    await add("appSetting", { key: "fab.ticketProject", value: "FAB" });
-    await add("jiraProjectConfig", { key: "FAB", name: "FAB", kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
-    const res = await fabInstructionPost(req("/api/fab/instructions", "POST", instruction));
+    flags.on.add("module.bank");
+    await add("appSetting", { key: "bank.ticketProject", value: "BANK" });
+    await add("jiraProjectConfig", { key: "BANK", name: "BANK", kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
+    const res = await bankInstructionPost(req("/api/bank/instructions", "POST", instruction));
     expect(res.status).toBe(201);
     const row = (await res.json()).data;
     const wi = await p().workItem.findUnique({ where: { id: row.workItemId } });
-    expect(wi).toMatchObject({ kind: "fab_instruction", ticketKey: "FAB-1", sourceSystem: "fab", sourceId: "AGR-1" });
-    expect((await fabInstructionPost(req("/api/fab/instructions", "POST", instruction))).status).toBe(409);
+    expect(wi).toMatchObject({ kind: "bank_instruction", ticketKey: "BANK-1", sourceSystem: "bank", sourceId: "AGR-1" });
+    expect((await bankInstructionPost(req("/api/bank/instructions", "POST", instruction))).status).toBe(409);
   });
 
   it("masks tx hashes in the register view", async () => {
-    flags.on.add("module.fab");
-    await add("fabSettlementLog", { reference: "AGR-1", status: "COMPLETED", txHash: "0x" + "ab".repeat(32), kytStatus: "none", occurredAt: new Date(), notes: "" });
-    const data = (await (await fabGet(req("/api/fab", "GET"))).json()).data;
+    flags.on.add("module.bank");
+    await add("bankSettlementLog", { reference: "AGR-1", status: "COMPLETED", txHash: "0x" + "ab".repeat(32), kytStatus: "none", occurredAt: new Date(), notes: "" });
+    const data = (await (await bankGet(req("/api/bank", "GET"))).json()).data;
     expect(data.settlements[0].txHash).toBe("0xab…abab");
   });
 });
 
-describe("CHK-09K kps:view", () => {
-  it("refuses users without kps:view and shows the CF-03 banner to those with it", async () => {
-    expect((await kpsGet()).status).toBe(403);
+describe("CHK-09K realisation:view", () => {
+  it("refuses users without realisation:view and shows the restricted-view notice to those with it", async () => {
+    expect((await realisationGet()).status).toBe(403);
     auth.user = { ...auth.user, role: "admin" };
-    const body = await (await kpsGet()).json();
-    expect(body.data.notice).toMatch(/CF-03/);
+    const body = await (await realisationGet()).json();
+    expect(body.data.notice).toMatch(/Restricted view/);
   });
 });

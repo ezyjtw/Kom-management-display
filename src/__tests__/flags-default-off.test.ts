@@ -20,8 +20,8 @@ const SPEC_FLAGS = [
   "integration.notabene.enabled",
   "module.market_ticker", // spec §6.4
   "module.status_pages", // spec §8.6
-  "iai.drafts.enabled", // spec §10.4
-  "module.fab", // spec §12 TASK-FAB
+  "incident_log.drafts.enabled", // spec §10.4
+  "module.bank", // spec §12 TASK-BANK
   "slack.events_push", // spec v2 §8.4
 ];
 

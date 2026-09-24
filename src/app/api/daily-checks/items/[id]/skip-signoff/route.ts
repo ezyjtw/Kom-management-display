@@ -9,7 +9,7 @@ import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { approveSkip, DailyCheckRuleError } from "@/modules/daily-checks/enforcement";
-import { isRestrictedItemFor } from "@/modules/kps/access";
+import { isRestrictedItemFor } from "@/modules/realisations/access";
 import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { id } = await params;
-    if (await isRestrictedItemFor(id, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires kps:view." }, { status: 403 });
+    if (await isRestrictedItemFor(id, auth)) return NextResponse.json({ success: false, error: "Restricted check: requires realisation:view." }, { status: 403 });
     const actor = auditActor(auth);
     const item = await auditedAction(
       {

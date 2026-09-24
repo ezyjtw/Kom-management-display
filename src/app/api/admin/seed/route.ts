@@ -40,7 +40,7 @@ export async function POST() {
   try {
     const results: string[] = [];
 
-    // ── Ensure PostgreSQL enum types exist (safety net for databases missing migration 0014) ──
+    // ── Ensure PostgreSQL enum types exist (safety net for databases missing the baseline migration) ──
     const enumDefs: [string, string[]][] = [
       ["UserRole", ["admin", "lead", "employee", "auditor"]],
       ["EmployeeRole", ["Analyst", "Senior", "Lead", "Manager"]],

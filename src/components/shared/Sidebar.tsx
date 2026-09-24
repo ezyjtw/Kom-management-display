@@ -54,8 +54,8 @@ interface NavItem {
   flag?: SafetyFlagKey;
   /** Only role admin: matches the middleware rule that /admin is admin-only. */
   adminOnly?: true;
-  /** Shown only when /api/me/capabilities grants it (e.g. kps:view). */
-  capability?: "kps";
+  /** Shown only when /api/me/capabilities grants it (e.g. realisation:view). */
+  capability?: "realisations";
 }
 
 /**
@@ -81,12 +81,12 @@ const navSections: Array<{ label: string; items: NavItem[]; collapsible?: true }
       { href: "/settlements", label: "Settlements (OES)", icon: ArrowDownUp },
       { href: "/travel-rule", label: "Travel Rule", icon: ShieldAlert },
       { href: "/staking", label: "Staking", icon: Layers },
-      { href: "/kps", label: "KPS", icon: Scale, capability: "kps" },
-      { href: "/fab", label: "FAB", icon: Building2, flag: "module.fab" as SafetyFlagKey },
+      { href: "/realisations", label: "RLS", icon: Scale, capability: "realisations" },
+      { href: "/bank", label: "BANK", icon: Building2, flag: "module.bank" as SafetyFlagKey },
       { href: "/tokens", label: "Coin Reviews", icon: Coins },
       { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/rca", label: "RCA", icon: FileSearch },
-      { href: "/gx-sprints", label: "GX Sprints", icon: GitBranch },
+      { href: "/platform-sprints", label: "Platform Sprints", icon: GitBranch },
     ],
   },
   {

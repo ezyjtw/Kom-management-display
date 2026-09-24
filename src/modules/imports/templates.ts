@@ -3,8 +3,8 @@
  * real export; until then it is listed with its CONFIRM blocker and uploads
  * are refused. No parser is guessed.
  *
- * Filenames are checked before anything else (spec §12 CHK-09, CF-22: the
- * existing macro fails silently on a filename mismatch). Each template's
+ * Filenames are checked before anything else (spec §12 CHK-09: a
+ * filename mismatch must never be imported silently). Each template's
  * expected name is a regex in setting imports.filenamePatterns with a named
  * group `date` (YYYY-MM-DD or YYYYMMDD) that must equal the data date.
  */
@@ -23,7 +23,7 @@ export interface ImportTemplate {
 
 export const IMPORT_TEMPLATES: readonly ImportTemplate[] = Object.freeze([
   { id: "chainalysis", source: "Chainalysis", purpose: "Screening and KYT alerts export (CHK-04)", confirmId: "CONFIRM-CHAINALYSIS-EXPORT" },
-  { id: "mtd_variance", source: "Power BI (MTD report)", purpose: "Optional daily variance extract (CHK-02)", confirmId: "CONFIRM-MTD-EXTRACT" },
+  { id: "mtd_variance", source: "BI tool (MTD report)", purpose: "Optional daily variance extract (CHK-02)", confirmId: "CONFIRM-MTD-EXTRACT" },
   { id: "tatum", source: "Tatum", purpose: "Daily report (CHK-15)", confirmId: "CONFIRM-TATUM" },
   { id: "inbound", source: "Inbound transactions", purpose: "Inbound threshold breaches extract (CHK-05)", confirmId: "CONFIRM-INBOUND-EXTRACT" },
   { id: "travel_rule_recon", source: "Travel rule reconciliation", purpose: "Reconciliation output of the existing process (CHK-09)", confirmId: "CONFIRM-TR-RECON-EXPORT" },

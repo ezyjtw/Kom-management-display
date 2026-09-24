@@ -15,7 +15,7 @@ const NO_BODY: Record<string, string> = {
   "/api/client-incidents/[id]/updates/[updateId]/review": "Approve a reviewed update by id.",
   "/api/daily-checks/items/[id]/collect": "Collect evidence for an item by id.",
   "/api/daily-checks/items/[id]/skip-signoff": "Approve a skip request by id.",
-  "/api/iai-drafts/[id]/complete": "Complete a draft by id.",
+  "/api/incident-log-drafts/[id]/complete": "Complete a draft by id.",
   "/api/integrations/email": "Queue a mailbox poll.",
   "/api/notifications": "Mark notifications read for the caller.",
 };

@@ -291,7 +291,7 @@ export function pollingHealth(cycles: Array<{ startedAt: Date; finishedAt: Date;
   return { slots, onTime, failed: [...failedSlots].filter((s) => !onTimeSlots.has(s)).length, pct: slots ? Math.round((onTime / slots) * 1000) / 10 : null };
 }
 
-// ── GX sprint UAT (spec §16.8) ──
+// ── Platform sprint UAT (spec §16.8) ──
 
 export interface UatItem {
   createdAt: Date;

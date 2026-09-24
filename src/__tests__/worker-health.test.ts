@@ -64,11 +64,13 @@ describe("deployment wiring", () => {
     expect(fs.existsSync(path.join(root, "Procfile"))).toBe(false);
   });
 
-  it("start.sh never seeds the production tier and otherwise requires ALLOW_SEED=true", () => {
+  it("start.sh never seeds the production tier and otherwise requires ALLOW_SEED=true (or a demo rebuild)", () => {
     const sh = read("start.sh");
     // A production build is the production tier unless KOM_ENVIRONMENT=demo (Phase 12j).
     expect(sh).toMatch(/elif \[ "\$\{KOM_ENVIRONMENT\}" = "production" \] \|\| \[ "\$\{NODE_ENV\}" = "production" \]; then\n\s*TIER="production"/);
     expect(sh).toMatch(/if \[ "\$\{TIER\}" = "production" \]; then\n[^\n]*\n[^\n]*\n\s*echo "Skipping seed \(never seeds in production\)"/);
-    expect(sh).toMatch(/elif \[ "\$\{ALLOW_SEED\}" = "true" \]; then\n[\s\S]*node prisma\/seed\.js/);
+    expect(sh).toMatch(/elif \[ "\$\{ALLOW_SEED\}" = "true" \] \|\| \[ "\$\{FORCE_SEED\}" = "true" \]; then\n[\s\S]*node prisma\/seed\.js/);
+    // FORCE_SEED is set only by the demo-tier rebuild of a pre-baseline database.
+    expect(sh.match(/FORCE_SEED="true"/g)).toHaveLength(1);
   });
 });

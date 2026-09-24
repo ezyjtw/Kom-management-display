@@ -1,7 +1,7 @@
 /**
  * POST /api/work-items/:id/exposure-band — on ALR-OES-06 the operator must
  * choose the client exposure band before the client notification (spec §12
- * CHK-10, CF-39). Recorded on the WorkItem and as a ticket comment; closing
+ * CHK-10). Recorded on the WorkItem and as a ticket comment; closing
  * the item requires it.
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { action: "oes_exposure_band_chosen", entityType: "work_item", entityId: id, userId: actor.userId, summary: `Exposure band ${parsed.data.band}`, after: { band: parsed.data.band }, metadata: actor.metadata },
       async () => {
         if (item.ticketKey) {
-          await commentInternal(id, `Client exposure band chosen: ${parsed.data.band}${item.exposureUsd != null ? ` (exposure USD ${item.exposureUsd})` : ""}. See findings register CF-39.`);
+          await commentInternal(id, `Client exposure band chosen: ${parsed.data.band}${item.exposureUsd != null ? ` (exposure USD ${item.exposureUsd})` : ""}.`);
         }
         return prisma.workItem.update({
           where: { id },

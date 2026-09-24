@@ -54,8 +54,8 @@ export default function IntakeTab() {
         <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><Inbox size={18} /> Client Intake</h2>
         <p className="text-xs text-muted-foreground mt-1">
           Client questions become JSM requests (spec §9). Only one Slack route may be active. The kommand route needs the
-          JSM service desk, request type and Komainu&apos;s Slack workspace id; jsm_native needs the completed verification record.
-          Switch off the <code>:inbox_tray:</code> Slack-to-VSR skill when intake goes live (see docs/phase1/intake-cutover.md).
+          JSM service desk, request type and the custody provider&apos;s Slack workspace id; jsm_native needs the completed verification record.
+          Switch off the <code>:inbox_tray:</code> Slack-to-VND skill when intake goes live (see docs/phase1/intake-cutover.md).
         </p>
       </div>
       <div role="status" className="text-sm">Current Slack route: <strong>{String(route ?? "off")}</strong></div>

@@ -8,7 +8,7 @@ import { getSetting } from "@/modules/settings/settings";
 export async function checkSettingChange(key: SettingKey, value: unknown): Promise<string[]> {
   const problems: string[] = [];
   if (key === "intake.slack.route" && value === "kommand") {
-    if (!(await getSetting("intake.slack.komainuTeamId"))) problems.push("Set intake.slack.komainuTeamId first (needed to tell clients from staff).");
+    if (!(await getSetting("intake.slack.custodyTeamId"))) problems.push("Set intake.slack.custodyTeamId first (needed to tell clients from staff).");
     if (!(await getSetting("intake.jsm.serviceDeskId"))) problems.push("Set intake.jsm.serviceDeskId first.");
     if (!(await getSetting("intake.jsm.requestTypeId"))) problems.push("Set intake.jsm.requestTypeId first.");
   }
@@ -22,7 +22,7 @@ export async function checkSettingChange(key: SettingKey, value: unknown): Promi
     if (!(await getSetting("intake.jsm.serviceDeskId")) || !(await getSetting("intake.jsm.requestTypeId"))) problems.push("Set the JSM service desk and request type first.");
   }
   if (key === "intake.teams.enabled" && value === true) {
-    if (!(await getSetting("intake.teams.komainuTenantId"))) problems.push("Set intake.teams.komainuTenantId first.");
+    if (!(await getSetting("intake.teams.custodyTenantId"))) problems.push("Set intake.teams.custodyTenantId first.");
     if (!(await getSetting("intake.jsm.serviceDeskId")) || !(await getSetting("intake.jsm.requestTypeId"))) problems.push("Set the JSM service desk and request type first.");
   }
   return problems;

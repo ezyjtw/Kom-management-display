@@ -12,11 +12,11 @@ import { auditedResponse } from "@/lib/api/audit";
 import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
- * Only tickets on the Komainu Jira site are read here. Vendor tickets on other
+ * Only tickets on the custody Jira site are read here. Vendor tickets on other
  * Atlassian sites (e.g. the Ledger service desk) arrive through vendor emails
  * (spec §8.5, §12 CHK-12); no credentials for vendor sites are ever stored.
  */
-function onKomainuSite(url: string): boolean {
+function onCustodySite(url: string): boolean {
   if (!url) return true;
   try {
     return new URL(url).host === new URL(env("ATLASSIAN_BASE_URL") ?? "https://invalid.invalid").host;
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     for (const inc of incidents) {
-      if (!onKomainuSite(inc.externalTicketUrl)) continue; // vendor site: status comes from vendor emails
+      if (!onCustodySite(inc.externalTicketUrl)) continue; // vendor site: status comes from vendor emails
       try {
         const issue = await getIssue(inc.externalTicketRef, ["status", "resolution"]).catch(() => null);
         // Ticket might not exist or access denied — skip

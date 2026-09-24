@@ -5,7 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { buildBoard } from "@/modules/daily-checks/board";
 import { generateDailyItems } from "@/modules/daily-checks/schedule";
-import { canViewKps } from "@/modules/kps/access";
+import { canViewRealisations } from "@/modules/realisations/access";
 
 const TEAMS = ["Team 1", "Team 2", "Team 3", "All"];
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const team = new URL(request.url).searchParams.get("team");
     if (team && !TEAMS.includes(team)) return apiValidationError(`team must be one of: ${TEAMS.join(", ")}`);
     await generateDailyItems();
-    return apiSuccess(await buildBoard(team && team !== "All" ? team : null, { canViewKps: await canViewKps(auth) }));
+    return apiSuccess(await buildBoard(team && team !== "All" ? team : null, { canViewRealisations: await canViewRealisations(auth) }));
   } catch (error) {
     return handleApiError(error, "boards GET");
   }

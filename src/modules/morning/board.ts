@@ -3,7 +3,7 @@
  * WorkItems: anything not on a ticket does not appear ("no verbal-only
  * updates"). Per team: the previous business day's checks not completed, open
  * exceptions with age, blockers (waiting states with reason), SLA breaches in
- * the last 24 hours, active alerts, and FAB and OES status.
+ * the last 24 hours, active alerts, and BANK and OES status.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -51,7 +51,7 @@ export interface TeamBoard {
   blockers: Array<ItemRef & { state: string; reason: string | null; sinceMins: number }>;
   slaBreaches24h: Array<ItemRef & { breach: string; at: string }>;
   activeAlerts: Array<{ id: string; ruleCode: string; severity: string; message: string; workItemId: string; ticketKey: string }>;
-  fab: { open: number; items: ItemRef[] };
+  bank: { open: number; items: ItemRef[] };
   oes: { open: number; items: ItemRef[] };
 }
 
@@ -89,7 +89,7 @@ export async function buildMorningBoard(now = new Date()) {
     const cfg = configs.find((c) => c.team === team);
     const lead = cfg?.leadEmployeeId ? leads.get(cfg.leadEmployeeId) ?? null : null;
     const oes = mine.filter((i) => i.kind === "oes_settlement");
-    const fab = mine.filter((i) => i.kind === "fab_instruction");
+    const bank = mine.filter((i) => i.kind === "bank_instruction");
     teams.push({
       team,
       lead,
@@ -117,7 +117,7 @@ export async function buildMorningBoard(now = new Date()) {
       activeAlerts: alerts
         .filter((a) => byId.get(a.workItemId!)?.team === team)
         .map((a) => ({ id: a.id, ruleCode: a.ruleCode, severity: a.severity, message: a.message, workItemId: a.workItemId!, ticketKey: byId.get(a.workItemId!)!.ticketKey! })),
-      fab: { open: fab.length, items: fab.slice(0, 10).map(ref) },
+      bank: { open: bank.length, items: bank.slice(0, 10).map(ref) },
       oes: { open: oes.length, items: oes.slice(0, 10).map(ref) },
     });
   }

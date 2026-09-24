@@ -2,7 +2,8 @@
  * Spec §17.7 / §17.10 `audit-log-is-append-only`. Static checks always run;
  * with TEST_DATABASE_URL set (a disposable local database with the
  * migrations applied) the triggers are exercised for real. Also covers
- * BackgroundJobRun (migration 0042), which is execution evidence.
+ * BackgroundJobRun, which is execution evidence. Both are created by the
+ * baseline migration.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -23,22 +24,22 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("audit-log-is-append-only", () => {
-  it("AuditLog rejects UPDATE, DELETE and TRUNCATE in the database (0037)", () => {
-    const sql = migration("0037_");
-    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_update_delete" BEFORE UPDATE OR DELETE ON "AuditLog"/);
+  it("AuditLog rejects UPDATE, DELETE and TRUNCATE in the database", () => {
+    const sql = migration("0001_");
+    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_update_delete" BEFORE DELETE OR UPDATE ON "AuditLog"/);
     expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_truncate" BEFORE TRUNCATE ON "AuditLog"/);
   });
 
-  it("BackgroundJobRun rejects UPDATE and TRUNCATE, and DELETE inside retention (0042)", () => {
-    const sql = migration("0042_");
-    expect(sql).toMatch(/BEFORE UPDATE OR DELETE ON "BackgroundJobRun"/);
+  it("BackgroundJobRun rejects UPDATE and TRUNCATE, and DELETE inside retention", () => {
+    const sql = migration("0001_");
+    expect(sql).toMatch(/BEFORE DELETE OR UPDATE ON "BackgroundJobRun"/);
     expect(sql).toMatch(/BEFORE TRUNCATE ON "BackgroundJobRun"/);
     expect(sql).toContain("interval '30 days'");
     expect(sql).toContain("interval '400 days'");
   });
 
-  it("no migration after 0037 drops or disables the audit triggers", () => {
-    const later = readdirSync("prisma/migrations").filter((d) => /^\d{4}_/.test(d) && d > "0037");
+  it("no later migration drops or disables the audit triggers", () => {
+    const later = readdirSync("prisma/migrations").filter((d) => /^\d{4}_/.test(d) && d > "0001");
     for (const d of later) {
       const sql = readFileSync(path.join("prisma/migrations", d, "migration.sql"), "utf8");
       expect(sql, d).not.toMatch(/DROP TRIGGER[^;]*"AuditLog_|DISABLE TRIGGER|kom_audit_append_only\(\)[^;]*RETURNS trigger[^;]*RETURN NEW/i);

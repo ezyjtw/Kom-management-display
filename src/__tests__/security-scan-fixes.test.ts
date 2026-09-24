@@ -23,7 +23,7 @@ beforeEach(() => db.client.__reset());
 describe("admin regex patterns are ReDoS-safe", () => {
   it("refuses nested quantifiers and backreferences, accepts ordinary patterns", () => {
     for (const bad of ["(a+)+$", "(\\w*)*x", "([a-z]+){2,}", "(x|y+)+", "(a)\\1"]) expect(unsafeRegexReason(bad), bad).not.toBeNull();
-    for (const ok of ["^risk engine", "wallet\\s*tech", "(KMNC|GXS)-\\d+", "auto[- ]approval", "^(?<date>\\d{8})_mtd\\.csv$"]) expect(unsafeRegexReason(ok), ok).toBeNull();
+    for (const ok of ["^risk engine", "wallet\\s*tech", "(CHG|PDEF)-\\d+", "auto[- ]approval", "^(?<date>\\d{8})_mtd\\.csv$"]) expect(unsafeRegexReason(ok), ok).toBeNull();
     expect(safeRegex("(")).toBeNull();
     expect(unsafeRegexReason("a".repeat(301))).toMatch(/longer than/);
   });
@@ -34,7 +34,7 @@ describe("admin regex patterns are ReDoS-safe", () => {
     expect(boundedTest(re, "abcx")).toBe(true);
   });
 
-  it("the GX impact-rule and import-filename settings refuse unsafe patterns when saved", async () => {
+  it("the Platform impact-rule and import-filename settings refuse unsafe patterns when saved", async () => {
     const { SETTINGS } = await import("@/modules/settings/registry");
     const schema = SETTINGS["imports.filenamePatterns"].schema;
     expect(schema.safeParse({ mtd: "^(?<date>\\d{8})_mtd\\.csv$" }).success).toBe(true);

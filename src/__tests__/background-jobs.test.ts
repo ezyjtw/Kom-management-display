@@ -85,12 +85,12 @@ describe("dispatch", () => {
   it("has a handler for every job type the queue can hold", () => {
     expect(Object.keys(JOB_HANDLERS).sort()).toEqual([
       "alert_digest", "check_confirmations", "check_sla", "check_staking", "classify_thread", "cleanup_sessions", "collect_check_evidence", "data_retention",
-      "draft_client_comms", "evaluate_alerts", "generate_daily_checks", "graph_teams_sync", "gx_sprint_intake", "iai_overdue",
-      "komainu_poll_audit_logs", "komainu_poll_collateral", "komainu_poll_eod_balances",
-      "komainu_poll_requests", "komainu_poll_stakes", "komainu_poll_staking", "komainu_poll_transactions", "morning_handover", "mtd_autoclose",
+      "draft_client_comms", "evaluate_alerts", "generate_daily_checks", "graph_teams_sync", "platform_sprint_intake", "incident_log_overdue",
+      "custody_poll_audit_logs", "custody_poll_collateral", "custody_poll_eod_balances",
+      "custody_poll_requests", "custody_poll_stakes", "custody_poll_staking", "custody_poll_transactions", "morning_handover", "mtd_autoclose",
       "poll_client_ticket_comments", "poll_risk_signals", "poll_status_pages", "reconcile_tickets", "report_unticketed", "score_vendor_reliability", "slack_event",
       "sync_jira", "sync_mail", "sync_slack", "sync_slack_replies",
-    ]);
+    ].sort());
   });
 
   it("throws for unknown types so they are retried and dead-lettered, not silently completed", async () => {

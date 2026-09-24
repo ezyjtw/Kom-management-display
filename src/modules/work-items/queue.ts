@@ -15,8 +15,8 @@ export const OPEN_STATES = ["open", "owned", "waiting_client", "waiting_vendor",
 export const WORK_TEAMS = ["Team 1", "Team 2", "Team 3"] as const;
 
 const KINDS = [
-  "client_request", "client_incident", "client_risk", "alert", "daily_check_exception", "mtd_break", "oes_settlement", "fab_instruction",
-  "kps_case", "vendor_ticket", "travel_rule_case", "screening_case", "scam_dust_case", "coin_review", "staking_exception", "nft_review",
+  "client_request", "client_incident", "client_risk", "alert", "daily_check_exception", "mtd_break", "oes_settlement", "bank_instruction",
+  "realisation_case", "vendor_ticket", "travel_rule_case", "screening_case", "scam_dust_case", "coin_review", "staking_exception", "nft_review",
   "report_task", "incident", "rca", "internal_task",
 ] as const;
 

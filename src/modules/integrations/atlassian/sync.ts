@@ -14,8 +14,8 @@ import { notifyOnAssign } from "@/modules/notifications/on-assign";
 export const JIRA_HEARTBEAT = { source: "atlassian.issues", expectedEveryMins: 2 };
 
 const WORK_ITEM_KINDS = new Set<string>([
-  "client_request", "alert", "daily_check_exception", "mtd_break", "oes_settlement", "fab_instruction",
-  "kps_case", "vendor_ticket", "travel_rule_case", "screening_case", "scam_dust_case", "coin_review",
+  "client_request", "alert", "daily_check_exception", "mtd_break", "oes_settlement", "bank_instruction",
+  "realisation_case", "vendor_ticket", "travel_rule_case", "screening_case", "scam_dust_case", "coin_review",
   "staking_exception", "nft_review", "report_task", "incident", "rca", "internal_task",
 ]);
 
