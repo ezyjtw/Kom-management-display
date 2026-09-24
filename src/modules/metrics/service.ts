@@ -8,8 +8,8 @@ import { CronExpressionParser } from "cron-parser";
 import { prisma } from "@/lib/prisma";
 import { loadCalendar, londonInstant, type BusinessCalendar } from "@/modules/alerting/calendar";
 import {
-  alertLoad, backlogAge, breachCount, checkCompletion, clientEffortHours, loggingCoverage, mtdClosure, slaAttainment,
-  timeTo, trendPct, windowOutcome, type Clock, type MeasuredItem, type WindowOutcome,
+  alertLoad, backlogAge, breachCount, cadenceAttainment, cadenceOutcome, checkCompletion, clientEffortHours, elapsedMins, loggingCoverage,
+  mtdClosure, pollingHealth, slaAttainment, timeTo, trendPct, windowOutcome, type Clock, type MeasuredItem, type WindowOutcome,
 } from "@/modules/metrics/definitions";
 
 export interface Period {
@@ -266,7 +266,106 @@ export async function hygiene(period: Period, now = new Date()) {
   };
 }
 
-export const SECTIONS = { responsiveness, clients: clientsSection, operations: operationsHealth, hygiene } as const;
+// ── Client incident communication (per client and severity; withheld as a count only) ──
+
+export async function clientIncidentComms(period: Period, now = new Date()) {
+  const items = await prisma.workItem.findMany({
+    where: { kind: { in: ["client_incident", "client_risk"] }, clockStartedAt: { gte: period.from, lt: period.to } },
+    select: { id: true, clientId: true, priority: true, clockStartedAt: true, resolvedAt: true, clientTicketKey: true, metadata: true },
+  });
+  const sensitive = (m: unknown) => ((m ?? {}) as Record<string, unknown>).complianceSensitive === true;
+  // Compliance-sensitive entries are counted only: no client, severity or timing is reported for them (tipping-off risk).
+  const withheld = items.filter((i) => sensitive(i.metadata)).length;
+  const visible = items.filter((i) => !sensitive(i.metadata));
+  const ids = visible.map((i) => i.id);
+  const [clients, updates, links, rule] = await Promise.all([
+    prisma.client.findMany({ where: { id: { in: [...new Set(visible.map((i) => i.clientId).filter((c): c is string => !!c))] } }, select: { id: true, displayName: true } }),
+    prisma.clientUpdate.findMany({ where: { workItemId: { in: ids }, status: "posted" }, select: { workItemId: true, kind: true, postedAt: true } }),
+    prisma.ticketLink.findMany({ where: { workItemId: { in: ids }, role: "client" }, select: { workItemId: true, createdAt: true } }),
+    prisma.alertRule.findUnique({ where: { code: "ALR-CLI-02" }, select: { params: true } }),
+  ]);
+  const names = new Map(clients.map((c) => [c.id, c.displayName]));
+  // TODO(CONFIRM-CLIENT-UPDATE-CADENCE): cadence per severity comes from ALR-CLI-02 params.
+  const params = (rule?.params ?? {}) as Record<string, unknown>;
+  const cadence = (params.cadenceMins && typeof params.cadenceMins === "object" ? params.cadenceMins : {}) as Record<string, unknown>;
+
+  const rows = visible.map((i) => {
+    const meta = (i.metadata ?? {}) as Record<string, unknown>;
+    const requestAt = typeof meta.clientTicketCreatedAt === "string" ? new Date(meta.clientTicketCreatedAt) : links.find((l) => l.workItemId === i.id)?.createdAt ?? null;
+    const posted = updates.filter((u) => u.workItemId === i.id && u.postedAt).map((u) => ({ kind: u.kind, at: u.postedAt! }));
+    const firstUpdate = posted.filter((u) => u.kind === "update").sort((a, b) => a.at.getTime() - b.at.getTime())[0]?.at ?? null;
+    const resolution = posted.find((u) => u.kind === "resolution")?.at ?? i.resolvedAt;
+    const limit = cadence[i.priority];
+    return {
+      group: `${names.get(i.clientId ?? "") ?? "Unmapped"} · ${i.priority}`,
+      raiseToRequestMins: requestAt ? elapsedMins(i.clockStartedAt, requestAt) : null,
+      raiseToFirstUpdateMins: firstUpdate ? elapsedMins(i.clockStartedAt, firstUpdate) : null,
+      raiseToResolvedMins: resolution ? elapsedMins(i.clockStartedAt, resolution) : null,
+      cadence: requestAt && i.clientTicketKey && typeof limit === "number" ? cadenceOutcome(requestAt, posted.map((u) => u.at), resolution, limit, now) : null,
+      hasRequest: !!i.clientTicketKey,
+    };
+  });
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+  const summarise = (g: typeof rows) => ({
+    raised: g.length,
+    clientRequests: g.filter((r) => r.hasRequest).length,
+    medianMins: {
+      raiseToClientRequest: median(g.map((r) => r.raiseToRequestMins).filter((v): v is number => v != null)),
+      raiseToFirstPublicUpdate: median(g.map((r) => r.raiseToFirstUpdateMins).filter((v): v is number => v != null)),
+      raiseToResolved: median(g.map((r) => r.raiseToResolvedMins).filter((v): v is number => v != null)),
+    },
+    cadence: cadenceAttainment(g.map((r) => r.cadence)),
+  });
+  return {
+    period: { from: period.from.toISOString(), to: period.to.toISOString() },
+    overall: summarise(rows),
+    byClientAndSeverity: Object.fromEntries([...groups.entries()].sort().map(([k, g]) => [k, summarise(g)])),
+    withheldForCompliance: withheld,
+    cadenceTargets: Object.keys(cadence).length ? cadence : "target not set",
+    freshness: await freshness(now, ["atlassian", "slack", "outlook"]),
+  };
+}
+
+// ── Polling health (share of 5-minute cycles on time, per source) ──
+
+const POLL_RETENTION_DAYS = 90;
+
+export async function pollingHealthSection(period: Period, now = new Date()) {
+  const to = new Date(Math.min(period.to.getTime(), now.getTime()));
+  const cycles = await prisma.pollCycle.findMany({
+    where: { startedAt: { gte: period.from, lt: to } },
+    select: { source: true, startedAt: true, finishedAt: true, ok: true },
+  });
+  const sources = [...new Set(["slack", ...cycles.map((c) => c.source)])].sort();
+  const bySource: Record<string, ReturnType<typeof pollingHealth> & { measuredFrom: string | null }> = {};
+  for (const source of sources) {
+    // Measure from the first cycle ever recorded for the source (polling may have started mid-period).
+    const first = await prisma.pollCycle.findFirst({ where: { source }, orderBy: { startedAt: "asc" }, select: { startedAt: true } });
+    if (!first || first.startedAt >= to) {
+      bySource[source] = { slots: 0, onTime: 0, failed: 0, pct: null, measuredFrom: null };
+      continue;
+    }
+    const from = new Date(Math.max(period.from.getTime(), first.startedAt.getTime()));
+    bySource[source] = { ...pollingHealth(cycles.filter((c) => c.source === source), from, to), measuredFrom: from.toISOString() };
+  }
+  return {
+    period: { from: period.from.toISOString(), to: period.to.toISOString() },
+    bySource,
+    partial: period.from.getTime() < now.getTime() - POLL_RETENTION_DAYS * 86_400_000,
+    note: `Cycle records are kept for ${POLL_RETENTION_DAYS} days.`,
+    freshness: await freshness(now, ["slack.channels", "outlook"]),
+  };
+}
+
+export const SECTIONS = {
+  responsiveness,
+  clients: clientsSection,
+  operations: operationsHealth,
+  hygiene,
+  client_incidents: clientIncidentComms,
+  polling: pollingHealthSection,
+} as const;
 export type SectionName = keyof typeof SECTIONS;
 
 /** Calendar month "YYYY-MM" in UTC. */

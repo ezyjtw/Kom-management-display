@@ -9,12 +9,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CheckCircle2, AlertTriangle, CircleSlash, Download } from "lucide-react";
 
-type Section = "responsiveness" | "clients" | "operations" | "hygiene";
+type Section = "responsiveness" | "clients" | "operations" | "hygiene" | "client_incidents" | "polling";
 const TABS: Array<{ key: Section; label: string }> = [
   { key: "responsiveness", label: "Responsiveness" },
   { key: "clients", label: "Clients" },
   { key: "operations", label: "Operations health" },
   { key: "hygiene", label: "Hygiene" },
+  { key: "client_incidents", label: "Client incident comms" },
+  { key: "polling", label: "Polling health" },
 ];
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- section payloads are rendered generically; shapes are defined in src/modules/metrics/service.ts */
@@ -172,6 +174,44 @@ function Hygiene({ d }: { d: Json }) {
   );
 }
 
+const mins = (v: number | null) => (v == null ? "—" : v < 120 ? `${v} min` : `${Math.round(v / 6) / 10} h`);
+const pctOf = (v: number | null) => (v == null ? "—" : `${v}%`);
+
+function ClientIncidentComms({ d }: { d: Json }) {
+  const o = d.overall;
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Tile label="Raised (client-visible)" value={o.raised} note={`${o.clientRequests} with a client request`} />
+        <Tile label="Raise → first public update" value={mins(o.medianMins.raiseToFirstPublicUpdate)} note="median" />
+        <Tile label="Update cadence met" value={pct(o.cadence)} note={`${o.cadence.met} met, ${o.cadence.missed} missed, ${o.cadence.pending} open`} />
+        <Tile label="Withheld for Compliance" value={d.withheldForCompliance} note="Count only" />
+      </div>
+      <div className="rounded-xl border border-border bg-card p-4 overflow-x-auto">
+        <table className="w-full text-xs"><thead><tr className="text-left text-muted-foreground"><th>Client · severity</th><th>Raised</th><th>Raise → client request</th><th>Raise → first update</th><th>Raise → resolved</th><th>Cadence met</th></tr></thead>
+          <tbody>{Object.entries(d.byClientAndSeverity).map(([g, v]: [string, Json]) => (
+            <tr key={g} className="border-t border-border/50"><td className="py-1">{g}</td><td>{v.raised}</td><td>{mins(v.medianMins.raiseToClientRequest)}</td><td>{mins(v.medianMins.raiseToFirstPublicUpdate)}</td><td>{mins(v.medianMins.raiseToResolved)}</td><td>{pct(v.cadence)}</td></tr>
+          ))}</tbody></table>
+        {Object.keys(d.byClientAndSeverity).length === 0 && <p className="text-xs text-muted-foreground">No client incidents or risks raised in this period.</p>}
+      </div>
+    </div>
+  );
+}
+
+function Polling({ d }: { d: Json }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4 overflow-x-auto">
+        <table className="w-full text-xs"><thead><tr className="text-left text-muted-foreground"><th>Source</th><th>5-minute cycles on time</th><th>On time</th><th>Failed</th><th>Slots</th><th>Measured from</th></tr></thead>
+          <tbody>{Object.entries(d.bySource).map(([s, v]: [string, Json]) => (
+            <tr key={s} className="border-t border-border/50"><td className="py-1">{s}</td><td>{v.measuredFrom ? pctOf(v.pct) : "never polled"}</td><td>{v.onTime}</td><td>{v.failed}</td><td>{v.slots}</td><td>{v.measuredFrom ? new Date(v.measuredFrom).toLocaleString() : "—"}</td></tr>
+          ))}</tbody></table>
+      </div>
+      <p className="text-xs text-muted-foreground">{d.note}{d.partial ? " This period is partly outside the retention window." : ""}</p>
+    </div>
+  );
+}
+
 export default function MetricsPage() {
   const [tab, setTab] = useState<Section>("responsiveness");
   const [month, setMonth] = useState(currentMonth());
@@ -215,6 +255,8 @@ export default function MetricsPage() {
           {tab === "clients" && <Clients d={data} />}
           {tab === "operations" && <Operations d={data} />}
           {tab === "hygiene" && <Hygiene d={data} />}
+          {tab === "client_incidents" && <ClientIncidentComms d={data} />}
+          {tab === "polling" && <Polling d={data} />}
         </>
       )}
     </div>

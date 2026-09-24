@@ -218,3 +218,75 @@ export function trendPct(current: number, previous: number): number | null {
   if (!previous) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
+
+// ── Client incident communication (spec v2 §13.2) ──
+
+export type CadenceOutcome = "met" | "missed" | "pending";
+
+/**
+ * Update-cadence attainment for one client incident/risk: every gap between
+ * client-visible updates (from the client request, through each posted
+ * update, to resolution) must be within the cadence. An open item whose
+ * current gap already exceeds the cadence has missed; otherwise it is pending.
+ */
+export function cadenceOutcome(clientRequestAt: Date, updates: Date[], resolvedAt: Date | null, cadenceMins: number, now: Date): CadenceOutcome {
+  const points = [clientRequestAt, ...updates.filter((u) => u >= clientRequestAt && (!resolvedAt || u <= resolvedAt)).sort((a, b) => a.getTime() - b.getTime())];
+  for (let i = 1; i < points.length; i++) if (elapsedMins(points[i - 1], points[i]) > cadenceMins) return "missed";
+  const last = points[points.length - 1];
+  if (resolvedAt) return elapsedMins(last, resolvedAt) > cadenceMins ? "missed" : "met";
+  return elapsedMins(last, now) > cadenceMins ? "missed" : "pending";
+}
+
+export interface CadenceAttainment {
+  met: number;
+  missed: number;
+  pending: number;
+  pct: number | null;
+  targetSet: boolean;
+}
+
+export function cadenceAttainment(outcomes: Array<CadenceOutcome | null>): CadenceAttainment {
+  const out: CadenceAttainment = { met: 0, missed: 0, pending: 0, pct: null, targetSet: false };
+  for (const o of outcomes) {
+    if (o == null) continue;
+    out.targetSet = true;
+    out[o]++;
+  }
+  const measured = out.met + out.missed;
+  out.pct = measured ? Math.round((out.met / measured) * 1000) / 10 : null;
+  return out;
+}
+
+// ── Polling health (spec v2 §13.2) ──
+
+export const POLL_SLOT_MINS = 5;
+
+export interface PollingHealth {
+  slots: number;
+  onTime: number;
+  failed: number;
+  pct: number | null;
+}
+
+/**
+ * Share of 5-minute polling slots with a cycle completed on time: a
+ * successful cycle that started in the slot and finished before the slot
+ * ended. Slots run from `from` (floored to the slot) to the last complete
+ * slot before `to`.
+ */
+export function pollingHealth(cycles: Array<{ startedAt: Date; finishedAt: Date; ok: boolean }>, from: Date, to: Date, slotMins = POLL_SLOT_MINS): PollingHealth {
+  const slotMs = slotMins * 60_000;
+  const first = Math.floor(from.getTime() / slotMs);
+  const last = Math.floor(to.getTime() / slotMs); // exclusive: the slot containing `to` is not complete
+  const onTimeSlots = new Set<number>();
+  const failedSlots = new Set<number>();
+  for (const c of cycles) {
+    const slot = Math.floor(c.startedAt.getTime() / slotMs);
+    if (slot < first || slot >= last) continue;
+    if (c.ok && c.finishedAt.getTime() < (slot + 1) * slotMs) onTimeSlots.add(slot);
+    else if (!c.ok) failedSlots.add(slot);
+  }
+  const slots = Math.max(0, last - first);
+  const onTime = onTimeSlots.size;
+  return { slots, onTime, failed: [...failedSlots].filter((s) => !onTimeSlots.has(s)).length, pct: slots ? Math.round((onTime / slots) * 1000) / 10 : null };
+}

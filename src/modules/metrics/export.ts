@@ -4,7 +4,7 @@
  * metrics sections, which carry no person fields.
  */
 
-import { clientsSection, hygiene, operationsHealth, responsiveness, type Period } from "@/modules/metrics/service";
+import { clientIncidentComms, clientsSection, hygiene, operationsHealth, pollingHealthSection, responsiveness, type Period } from "@/modules/metrics/service";
 
 export interface MetricRow {
   section: string;
@@ -18,11 +18,16 @@ type Pack = {
   clients: Awaited<ReturnType<typeof clientsSection>>;
   operations: Awaited<ReturnType<typeof operationsHealth>>;
   hygiene: Awaited<ReturnType<typeof hygiene>>;
+  clientIncidents: Awaited<ReturnType<typeof clientIncidentComms>>;
+  polling: Awaited<ReturnType<typeof pollingHealthSection>>;
 };
 
 export async function buildPack(period: Period, now = new Date()): Promise<Pack> {
-  const [r, c, o, h] = await Promise.all([responsiveness(period, now), clientsSection(period, now), operationsHealth(period, now), hygiene(period, now)]);
-  return { responsiveness: r, clients: c, operations: o, hygiene: h };
+  const [r, c, o, h, ci, pl] = await Promise.all([
+    responsiveness(period, now), clientsSection(period, now), operationsHealth(period, now), hygiene(period, now),
+    clientIncidentComms(period, now), pollingHealthSection(period, now),
+  ]);
+  return { responsiveness: r, clients: c, operations: o, hygiene: h, clientIncidents: ci, polling: pl };
 }
 
 export function packRows(p: Pack): MetricRow[] {
@@ -68,6 +73,24 @@ export function packRows(p: Pack): MetricRow[] {
   push("hygiene", "logging", "closed_non_actionable", p.hygiene.loggingCoverage.closedNonActionable);
   for (const d of p.hygiene.unticketedWork.daily) push("hygiene", "unticketed_work (target 0)", d.date, d.total);
   push("hygiene", "skipped_checks", "total", p.hygiene.skippedChecks.total);
+
+  const ci = (group: string, v: Pack["clientIncidents"]["overall"]) => {
+    push("client_incidents", group, "raised", v.raised);
+    push("client_incidents", group, "client_requests", v.clientRequests);
+    push("client_incidents", group, "raise_to_client_request.median_mins", v.medianMins.raiseToClientRequest);
+    push("client_incidents", group, "raise_to_first_public_update.median_mins", v.medianMins.raiseToFirstPublicUpdate);
+    push("client_incidents", group, "raise_to_resolved.median_mins", v.medianMins.raiseToResolved);
+    push("client_incidents", group, "update_cadence_attainment_pct", v.cadence.targetSet ? v.cadence.pct : "target not set");
+  };
+  ci("all", p.clientIncidents.overall);
+  for (const [g, v] of Object.entries(p.clientIncidents.byClientAndSeverity)) ci(g, v);
+  push("client_incidents", "compliance", "withheld_count", p.clientIncidents.withheldForCompliance);
+
+  for (const [source, v] of Object.entries(p.polling.bySource)) {
+    push("polling", source, "cycles_on_time_pct", v.measuredFrom ? v.pct : "never polled");
+    push("polling", source, "slots", v.slots);
+    push("polling", source, "failed", v.failed);
+  }
   return rows;
 }
 
@@ -84,13 +107,18 @@ export function toCsv(rows: MetricRow[]): string {
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
+const TITLES: Record<string, string> = {
+  responsiveness: "Responsiveness", clients: "Clients", operations: "Operations", hygiene: "Hygiene",
+  client_incidents: "Client incident communication", polling: "Polling health",
+};
+
 export function toHtml(month: string, p: Pack, rows: MetricRow[]): { title: string; html: string } {
-  const sections = ["responsiveness", "clients", "operations", "hygiene"];
+  const sections = ["responsiveness", "clients", "operations", "hygiene", "client_incidents", "polling"];
   const stale = p.responsiveness.freshness.sources.filter((s) => s.status !== "ok").map((s) => s.source);
   const html = `
     <p class="meta">Team and client level only. Effort is logged effort; volume is volume, not effort. Data as of ${esc(p.responsiveness.freshness.asOf)}${stale.length ? `; sources not current: ${esc(stale.join(", "))}` : ""}.</p>
     ${sections.map((s) => `
-      <h2>${esc(s[0].toUpperCase() + s.slice(1))}</h2>
+      <h2>${esc(TITLES[s] ?? s)}</h2>
       <table class="data-table"><tr><th>Group</th><th>Metric</th><th>Value</th></tr>
       ${rows.filter((r) => r.section === s).map((r) => `<tr><td>${esc(r.group)}</td><td>${esc(r.metric)}</td><td>${esc(r.value ?? "—")}</td></tr>`).join("")}
       </table>`).join("")}

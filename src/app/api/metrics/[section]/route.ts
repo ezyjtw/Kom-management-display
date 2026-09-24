@@ -1,6 +1,6 @@
 /**
  * GET /api/metrics/:section?from=YYYY-MM-DD&to=YYYY-MM-DD (or ?month=YYYY-MM)
- * Sections: responsiveness, clients, operations, hygiene (spec §13.3).
+ * Sections: responsiveness, clients, operations, hygiene, client_incidents, polling (spec §13.3).
  * Team and client level only (H4). Each response carries data freshness.
  */
 import { NextRequest, NextResponse } from "next/server";

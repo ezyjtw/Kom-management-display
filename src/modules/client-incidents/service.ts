@@ -71,6 +71,7 @@ interface Meta {
   complianceDecisionRef?: string;
   clientTicketError?: string;
   lastClientUpdateAt?: string;
+  clientTicketCreatedAt?: string;
   clientStatus?: ClientStatus;
   postedCommentIds?: string[];
   [k: string]: unknown;
@@ -138,7 +139,7 @@ async function createClientRequest(item: WorkItem): Promise<{ key: string; url: 
       data: {
         clientTicketKey: created.issueKey,
         clientTicketUrl: url,
-        metadata: { ...meta, clientTicketError: undefined, clientStatus: "Received", lastClientUpdateAt: new Date().toISOString() } as unknown as Prisma.InputJsonValue,
+        metadata: { ...meta, clientTicketError: undefined, clientStatus: "Received", clientTicketCreatedAt: new Date().toISOString(), lastClientUpdateAt: new Date().toISOString() } as unknown as Prisma.InputJsonValue,
       },
     }),
     ...(url ? [prisma.ticketLink.create({ data: { workItemId: item.id, system: "jsm", key: created.issueKey, url, role: "client" } })] : []),

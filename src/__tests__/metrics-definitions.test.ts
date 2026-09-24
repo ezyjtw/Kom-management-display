@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  alertLoad, backlogAge, backlogBand, breachCount, checkCompletion, clientEffortHours, elapsedMins, loggingCoverage,
+  alertLoad, backlogAge, backlogBand, breachCount, cadenceAttainment, cadenceOutcome, checkCompletion, pollingHealth, clientEffortHours, elapsedMins, loggingCoverage,
   mtdClosure, slaAttainment, targetFor, timeTo, trendPct, windowOutcome, type MeasuredItem,
 } from "@/modules/metrics/definitions";
 import type { BusinessCalendar } from "@/modules/alerting/calendar";
@@ -145,5 +145,36 @@ describe("trend", () => {
     expect(trendPct(15, 10)).toBe(50);
     expect(trendPct(5, 0)).toBeNull();
     expect(elapsedMins(T, at(-5))).toBe(0);
+  });
+});
+
+describe("client update cadence attainment", () => {
+  it("is met when every gap from the client request through updates to resolution is within the cadence", () => {
+    expect(cadenceOutcome(T, [at(50), at(100)], at(140), 60, at(500))).toBe("met");
+  });
+  it("is missed when any gap exceeds the cadence, including the gap to resolution", () => {
+    expect(cadenceOutcome(T, [at(70)], at(100), 60, at(500))).toBe("missed");
+    expect(cadenceOutcome(T, [at(50)], at(200), 60, at(500))).toBe("missed");
+  });
+  it("is pending while open and within the cadence, missed once the running gap passes it", () => {
+    expect(cadenceOutcome(T, [at(30)], null, 60, at(80))).toBe("pending");
+    expect(cadenceOutcome(T, [at(30)], null, 60, at(100))).toBe("missed");
+  });
+  it("attainment is met ÷ (met + missed); items without a cadence are not counted", () => {
+    expect(cadenceAttainment(["met", "met", "missed", "pending", null])).toEqual({ met: 2, missed: 1, pending: 1, pct: 66.7, targetSet: true });
+    expect(cadenceAttainment([null])).toMatchObject({ pct: null, targetSet: false });
+  });
+});
+
+describe("polling health", () => {
+  it("is the share of complete 5-minute slots with a successful cycle that finished inside the slot", () => {
+    const cyc = (startMin: number, durSecs: number, ok = true) => ({ startedAt: at(startMin), finishedAt: new Date(at(startMin).getTime() + durSecs * 1000), ok });
+    // Slots 09:00..09:25 (6 complete slots before 09:30; 09:30 still running).
+    const r = pollingHealth([cyc(0, 20), cyc(5, 20), cyc(10, 400), cyc(15, 5, false), cyc(25, 30), cyc(30, 10)], T, at(32));
+    expect(r).toEqual({ slots: 6, onTime: 3, failed: 1, pct: 50 });
+  });
+  it("counts a slot once even with several cycles in it", () => {
+    const r = pollingHealth([{ startedAt: at(0), finishedAt: at(1), ok: false }, { startedAt: at(2), finishedAt: at(3), ok: true }], T, at(5));
+    expect(r).toEqual({ slots: 1, onTime: 1, failed: 0, pct: 100 });
   });
 });

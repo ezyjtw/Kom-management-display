@@ -64,6 +64,17 @@ beforeAll(async () => {
   await add("sourceRecord", { source: "kommand", kind: "unticketed_report", externalId: now.toISOString().slice(0, 10), occurredAt: ago(30), fields: { total: 2, alertsWithoutTicket: [{ workItemId: "wi-0" }] } });
   await add("sourceHeartbeat", { source: "atlassian.issues", expectedEveryMins: 2, lastSuccessAt: ago(1), lastCount: 0 });
   await add("incident", { id: "inc-1", title: "Signing degraded", provider: "Fireblocks", severity: "high", status: "active", reportedById: "emp-alice-7f3", resolvedById: "emp-bob-2k8", startedAt: ago(100), rcaStatus: "none" });
+  // Client incidents: authors and approvers are people; the sensitive one must surface as a count only.
+  await add("alertRule", { code: "ALR-CLI-02", severity: "high", params: { cadenceMins: { P1: 60 } } });
+  await add("workItem", { id: "ci-1", kind: "client_incident", title: "Incident: delayed withdrawals", team: "Team 2", taskCode: "CLIENT-INC", sourceSystem: "kommand", sourceId: "ci-1", clientId: "cl-1", priority: "P1", ownerEmployeeId: "emp-bob-2k8", state: "closed",
+    clockStartedAt: ago(400), resolvedAt: ago(100), clientTicketKey: "KSD-9", metadata: { raisedByUserId: "u-alice-7f3", complianceSensitive: false, clientTicketCreatedAt: ago(390).toISOString() } });
+  await add("clientUpdate", { workItemId: "ci-1", body: "We are investigating.", status: "posted", authorId: "u-alice-7f3", approverId: "u-bob-2k8", postedAt: ago(350) });
+  await add("clientUpdate", { workItemId: "ci-1", body: "Resolved.", kind: "resolution", status: "posted", authorId: "u-bob-2k8", postedAt: ago(100) });
+  await add("workItem", { id: "ci-2", kind: "client_risk", title: "Risk: KYT hit", team: "Team 2", taskCode: "CLIENT-RISK", sourceSystem: "kommand", sourceId: "ci-2", clientId: "cl-1", priority: "P1", ownerEmployeeId: "emp-alice-7f3",
+    clockStartedAt: ago(200), metadata: { raisedByUserId: "u-bob-2k8", complianceSensitive: true, category: "kyt_alert", clientTicketBlocked: "compliance_sensitive" } });
+  for (const [i, source] of ["slack", "outlook.custody"].entries()) {
+    await add("pollCycle", { source, startedAt: ago(20 + i), finishedAt: ago(19 + i), ok: true, count: 1 });
+  }
   await add("incidentUpdate", { incidentId: "inc-1", authorId: "emp-bob-2k8", content: "Vendor investigating", type: "update", createdAt: ago(50) });
 });
 
@@ -80,7 +91,7 @@ const month = now.toISOString().slice(0, 7);
 const req = (url: string) => new NextRequest(`http://localhost${url}`);
 
 describe("no-per-person-metrics-in-reports", () => {
-  it.each(["responsiveness", "clients", "operations", "hygiene"])("metrics section %s", async (section) => {
+  it.each(["responsiveness", "clients", "operations", "hygiene", "client_incidents", "polling"])("metrics section %s", async (section) => {
     const res = await sectionGet(req(`/api/metrics/${section}?month=${month}`), { params: Promise.resolve({ section }) });
     expect(res.status).toBe(200);
     const text = await bodyOf(res);
@@ -93,6 +104,17 @@ describe("no-per-person-metrics-in-reports", () => {
     expect(r.data.overall.items).toBeGreaterThanOrEqual(3);
     const c = await (await sectionGet(req(`/api/metrics/clients?month=${month}`), { params: Promise.resolve({ section: "clients" }) })).json();
     expect(c.data.byEffort[0]).toMatchObject({ client: "Acme Capital", loggedEffortHours: 1.5 });
+  });
+
+  it("client incident communication is per client and severity, with withheld entries as a count only", async () => {
+    const ci = (await (await sectionGet(req(`/api/metrics/client_incidents?month=${month}`), { params: Promise.resolve({ section: "client_incidents" }) })).json()).data;
+    expect(Object.keys(ci.byClientAndSeverity)).toEqual(["Acme Capital · P1"]);
+    expect(ci.byClientAndSeverity["Acme Capital · P1"]).toMatchObject({ raised: 1, clientRequests: 1, medianMins: { raiseToClientRequest: 10, raiseToFirstPublicUpdate: 50, raiseToResolved: 300 } });
+    expect(ci.overall.cadence).toMatchObject({ met: 0, missed: 1 });
+    expect(ci.withheldForCompliance).toBe(1);
+    expect(JSON.stringify(ci)).not.toMatch(/kyt|KYT hit/);
+    const pl = (await (await sectionGet(req(`/api/metrics/polling?month=${month}`), { params: Promise.resolve({ section: "polling" }) })).json()).data;
+    expect(Object.keys(pl.bySource)).toEqual(["outlook.custody", "slack"]);
   });
 
   it.each(["csv", "pdf"])("monthly export (%s)", async (format) => {
