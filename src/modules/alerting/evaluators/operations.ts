@@ -263,3 +263,33 @@ export async function evaluateClientUpdateOverdue(ctx: EvaluatorContext): Promis
     }];
   });
 }
+
+/**
+ * ALR-AUD-01 (control integrity): a fail-closed audited action wrote its
+ * "requested" entry but no "completed" or "failed" outcome within graceMins.
+ * The action may have happened without its outcome being recorded.
+ */
+export async function evaluateAuditOutcomeMissing(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
+  const graceMins = numParam(ctx.params, "graceMins", 10);
+  const lookbackHours = numParam(ctx.params, "lookbackHours", 72);
+  const requested = await prisma.auditLog.findMany({
+    where: { phase: "requested", createdAt: { gte: new Date(ctx.now.getTime() - lookbackHours * 3_600_000), lt: new Date(ctx.now.getTime() - graceMins * 60_000) } },
+    select: { correlationId: true, action: true, entityType: true, entityId: true, createdAt: true },
+    take: 5000,
+  });
+  const ids = requested.map((r) => r.correlationId).filter((x): x is string => !!x);
+  if (!ids.length) return [];
+  const outcomes = new Set(
+    (await prisma.auditLog.findMany({ where: { correlationId: { in: ids }, phase: { in: ["completed", "failed"] } }, select: { correlationId: true } })).map((o) => o.correlationId),
+  );
+  const orphans = requested.filter((r) => r.correlationId && !outcomes.has(r.correlationId));
+  if (!orphans.length) return [];
+  const actions = [...new Set(orphans.map((o) => o.action))].slice(0, 10);
+  return [{
+    dedupeKey: "audit-outcome-missing",
+    severity: "high" as const,
+    title: `Audit outcome missing for ${orphans.length} action(s)`,
+    detail: `${orphans.length} audited action(s) have a "requested" entry but no recorded outcome after ${graceMins} minutes (${actions.join(", ")}). Check the audit log by correlation id and confirm what happened.`,
+    workItemSeed: { kind: "internal_task" as const, taskCode: "AUD" },
+  }];
+}

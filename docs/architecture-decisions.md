@@ -67,7 +67,7 @@
 
 ## ADR-005: Audit Model
 
-**Decision**: Append-only AuditLog table with JSON details
+**Decision**: Append-only AuditLog table with JSON details. Enforced in the database since migration 0037 (triggers reject UPDATE, DELETE and TRUNCATE; an insert trigger normalises the actor). Control-relevant actions are audited fail-closed via `auditedAction()` (requested → completed/failed, linked by `correlationId`).
 
 **Context**: Institutional ops platform requires full traceability of who did what and when.
 

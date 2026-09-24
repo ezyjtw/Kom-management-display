@@ -161,7 +161,10 @@ describe("work item actions (spec §14.2)", () => {
     expect(res.status).toBe(200);
     expect(jira.calls.some((c) => c.method === "PUT" && c.path === "/rest/api/3/issue/TOPS-2/assignee")).toBe(true);
     expect(await item("wi-warn")).toMatchObject({ ownerEmployeeId: "emp-ann", state: "owned" });
-    expect(await p().auditLog.findMany({ where: { action: "work_item_owner_changed", entityId: "wi-warn" } })).toHaveLength(1);
+    // Fail-closed audit: a requested entry before the change and a completed one after, linked by correlation id.
+    const audit = await p().auditLog.findMany({ where: { action: "work_item_owner_changed", entityId: "wi-warn" } });
+    expect(audit.map((a) => a.phase)).toEqual(["requested", "completed"]);
+    expect(audit[0].correlationId).toBe(audit[1].correlationId);
     expect(sse.events).toContainEqual(expect.objectContaining({ workItemId: "wi-warn", change: "owner" }));
   });
 

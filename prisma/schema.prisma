@@ -1017,16 +1017,28 @@ model BrandingConfig {
 // ─── Audit ───
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  action     String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
-  entityType String // scoring_config, employee, thread, knowledge_score
-  entityId   String
-  userId     String
-  details    Json     @default("{}") // JSON
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  action        String // open-ended: config_change, manual_score, ownership_change, status_change, export, login, etc.
+  entityType    String // scoring_config, employee, thread, knowledge_score
+  entityId      String
+  /// Employee of the actor ("system" when the actor has none). Normalised by a database trigger (migration 0037).
+  userId        String
+  details       Json     @default("{}") // JSON
+  /// user | system | service. The table is append-only: UPDATE, DELETE and TRUNCATE are rejected by triggers (migration 0037).
+  actorType     String   @default("user")
+  /// User.id of the signed-in principal (no FK: users may be removed, the audit trail stays).
+  actorUserId   String?
+  /// Links the requested / completed / failed entries of one audited action.
+  correlationId String?
+  /// recorded (single entry) | requested | completed | failed
+  phase         String   @default("recorded")
+  createdAt     DateTime @default(now())
 
   user Employee @relation(fields: [userId], references: [id])
 
+  @@index([correlationId])
+  @@index([actorUserId, createdAt])
+  @@index([phase, createdAt])
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@index([entityType, entityId])
@@ -1446,6 +1458,25 @@ model BackgroundJob {
   @@index([type])
   @@index([isRecurring, status])
   @@index([deduplicationKey])
+}
+
+/// One row per job execution attempt, never updated or reset (durable run and dead-letter evidence).
+/// BackgroundJob is the schedule/queue entry; a recurring job's failed run stays here after it is rescheduled.
+model BackgroundJobRun {
+  id         String    @id @default(cuid())
+  jobId      String
+  type       String
+  attempt    Int
+  startedAt  DateTime?
+  finishedAt DateTime  @default(now())
+  status     String // succeeded | retrying | dead_lettered
+  error      String    @default("")
+  result     Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([type, finishedAt])
+  @@index([status, finishedAt])
+  @@index([jobId])
 }
 
 // ─── Stream 2: Slack Thread Architecture ───

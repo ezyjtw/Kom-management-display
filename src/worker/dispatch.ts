@@ -77,7 +77,8 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
   async cleanup_sessions() {
     const { cleanupExpiredSessions } = await import("@/lib/session-revocation");
     const { prunePollCycles } = await import("@/modules/integrations/poll-cycles");
-    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles() };
+    const { pruneJobRuns } = await import("@/lib/background-jobs");
+    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles(), prunedJobRuns: await pruneJobRuns() };
   },
 
   /** Spec §6.1: every registered channel once per 5-minute cycle, 24/7 (history from the cursor, then replies). */

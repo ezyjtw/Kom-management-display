@@ -10,6 +10,7 @@ import { handoverAction } from "@/modules/morning/http";
 export async function POST(request: NextRequest) {
   return handoverAction(request, handoverSchema, {
     action: "lead_handover_submitted",
+    entityId: (body) => `${body.team}:${body.date}`,
     run: (body, auth) => submitHandover(body, { employeeId: auth.employeeId ?? null, role: auth.role }),
     summary: (body) => `Handover for ${body.team} on ${body.date}`,
   });

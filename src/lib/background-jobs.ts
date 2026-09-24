@@ -264,14 +264,19 @@ export async function claimNextJob(): Promise<{
  * Mark a job as completed.
  */
 export async function completeJob(jobId: string, result?: unknown): Promise<void> {
+  const now = new Date();
+  const json = result ? (JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue) : undefined;
   const job = await prisma.backgroundJob.update({
     where: { id: jobId },
     data: {
       status: "completed",
-      completedAt: new Date(),
-      result: result ? JSON.parse(JSON.stringify(result)) : undefined,
-      lastRunAt: new Date(),
+      completedAt: now,
+      result: json,
+      lastRunAt: now,
     },
+  });
+  await prisma.backgroundJobRun.create({
+    data: { jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: "succeeded", result: json },
   });
 
   // If recurring, schedule the next run
@@ -300,7 +305,18 @@ export async function failJob(jobId: string, error: string): Promise<void> {
   const job = await prisma.backgroundJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  if (job.attempts < job.maxAttempts) {
+  const now = new Date();
+  const exhausted = job.attempts >= job.maxAttempts;
+  // Durable run record first: it is never reset, so a dead-lettered run of a
+  // recurring job stays visible after the job is rescheduled.
+  await prisma.backgroundJobRun.create({
+    data: {
+      jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now,
+      status: exhausted ? "dead_lettered" : "retrying", error: error.slice(0, 4000),
+    },
+  });
+
+  if (!exhausted) {
     // Retry with exponential backoff: 30s, 60s, 120s, ...
     const backoffMs = Math.pow(2, job.attempts) * 30_000;
     await prisma.backgroundJob.update({
@@ -325,7 +341,7 @@ export async function failJob(jobId: string, error: string): Promise<void> {
       },
     });
 
-    // If recurring, still schedule the next regular run
+    // If recurring, schedule the next regular run. The dead-lettered run stays in BackgroundJobRun.
     if (job.isRecurring && job.cronExpression) {
       const nextRun = getNextCronRun(job.cronExpression);
       await prisma.backgroundJob.update({
@@ -373,9 +389,18 @@ export async function getJobQueueStatus() {
     },
   });
 
+  const since = new Date(Date.now() - 24 * 3_600_000);
+  const deadLettered24h = await prisma.backgroundJobRun.findMany({
+    where: { status: "dead_lettered", finishedAt: { gte: since } },
+    orderBy: { finishedAt: "desc" },
+    take: 100,
+    select: { type: true, finishedAt: true, error: true },
+  });
+
   return {
-    summary: { pending, running, failed, completed },
+    summary: { pending, running, failed, completed, deadLettered24h: deadLettered24h.length },
     recurringJobs: jobs,
+    deadLetteredRuns24h: deadLettered24h,
   };
 }
 
@@ -433,8 +458,30 @@ export async function isAnyWorkerAlive(thresholdMs = 120_000): Promise<boolean> 
   return alive > 0;
 }
 
+/** Drop old run records: successful runs after `okDays`, retrying/dead-lettered runs after `failDays`. */
+export async function pruneJobRuns(now = new Date(), okDays = 30, failDays = 400): Promise<number> {
+  const [ok, failed] = await Promise.all([
+    prisma.backgroundJobRun.deleteMany({ where: { status: "succeeded", finishedAt: { lt: new Date(now.getTime() - okDays * 86_400_000) } } }),
+    prisma.backgroundJobRun.deleteMany({ where: { status: { not: "succeeded" }, finishedAt: { lt: new Date(now.getTime() - failDays * 86_400_000) } } }),
+  ]);
+  return ok.count + failed.count;
+}
+
 /**
- * Get dead-lettered jobs for review/replay.
+ * Dead-lettered runs (durable, including recurring jobs that were rescheduled).
+ */
+export async function getDeadLetteredRuns(limit = 50, since?: Date) {
+  return prisma.backgroundJobRun.findMany({
+    where: { status: "dead_lettered", ...(since ? { finishedAt: { gte: since } } : {}) },
+    orderBy: { finishedAt: "desc" },
+    take: limit,
+    select: { id: true, jobId: true, type: true, attempt: true, startedAt: true, finishedAt: true, error: true },
+  });
+}
+
+/**
+ * Get dead-lettered one-off jobs for review/replay (recurring jobs reschedule;
+ * see getDeadLetteredRuns for their failed runs).
  */
 export async function getDeadLetterJobs(limit = 50) {
   return prisma.backgroundJob.findMany({

@@ -134,7 +134,8 @@ describe("lead handover (spec §14.3)", () => {
     expect(JSON.stringify(comments()[0].body)).toContain("Covering: Ann Operator");
     const h = (await board()).teams.find((t: { team: string }) => t.team === "Team 2").handover;
     expect(h).toMatchObject({ absent: true, covering: { name: "Ann Operator" }, postedTo: 2, late: false });
-    expect(await p().auditLog.findMany({ where: { action: "lead_handover_submitted" } })).toHaveLength(1);
+    // The rejected attempt (lead as cover) is on record as requested + failed, then the accepted one as requested + completed.
+    expect((await p().auditLog.findMany({ where: { action: "lead_handover_submitted" } })).map((a) => a.phase)).toEqual(["requested", "failed", "requested", "completed"]);
   });
 
   it("only the team's lead, deputy or an admin can write it", async () => {

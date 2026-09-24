@@ -147,7 +147,10 @@ export function handleApiError(error: unknown, context?: string): NextResponse {
   let status = 500;
 
   if (error instanceof Error) {
-    if (error.message.includes("Unique constraint")) {
+    if (error.name === "AuditUnavailableError") {
+      message = "The audit trail could not be written, so nothing was changed. Try again shortly.";
+      status = 503;
+    } else if (error.message.includes("Unique constraint")) {
       message = "A record with this value already exists";
       status = 409;
     } else if (

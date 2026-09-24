@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { z } from "zod";
 import { requireAuth, type AuthUser } from "@/lib/auth-user";
-import { createAuditEntry } from "@/lib/api/audit";
+import { auditedAction } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
@@ -13,7 +13,7 @@ import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
 export async function handoverAction<T, R extends { id: string }>(
   request: NextRequest,
   schema: z.ZodSchema<T>,
-  opts: { action: string; run: (body: T, auth: AuthUser) => Promise<R>; summary: (body: T) => string },
+  opts: { action: string; entityId: (body: T) => string; run: (body: T, auth: AuthUser) => Promise<R>; summary: (body: T) => string },
 ): Promise<NextResponse> {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
@@ -22,9 +22,13 @@ export async function handoverAction<T, R extends { id: string }>(
   try {
     const parsed = validateBody(schema, await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error);
-    const row = await opts.run(parsed.data, auth);
     const actor = auditActor(auth);
-    await createAuditEntry({ action: opts.action, entityType: "lead_handover", entityId: row.id, userId: actor.userId, summary: opts.summary(parsed.data), metadata: actor.metadata });
+    // Fail-closed: no audit entry, no handover change.
+    const row = await auditedAction(
+      { action: opts.action, entityType: "lead_handover", entityId: opts.entityId(parsed.data), userId: actor.userId, summary: opts.summary(parsed.data), metadata: actor.metadata },
+      () => opts.run(parsed.data, auth),
+      (r) => ({ id: r.id, postStatus: (r as { postStatus?: string }).postStatus ?? null }),
+    );
     return apiSuccess(row);
   } catch (error) {
     if (error instanceof HandoverError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });

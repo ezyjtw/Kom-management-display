@@ -180,6 +180,12 @@ const SCENARIOS: Scenario[] = [
     clear: async (now) => update("sourceHeartbeat", { source: "outlook.custody" }, { lastSuccessAt: mins(now, 60) }),
   },
   {
+    code: "ALR-AUD-01",
+    trigger: async (now) => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "requested", correlationId: "c1", createdAt: mins(now, -15) }); return "audit-outcome-missing"; },
+    below: async (now) => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "requested", correlationId: "c1", createdAt: mins(now, -5) }); },
+    clear: async () => { await add("auditLog", { action: "work_item_state_changed", entityType: "work_item", entityId: "w", userId: "system", details: "{}", phase: "completed", correlationId: "c1" }); },
+  },
+  {
     code: "ALR-CLI-04",
     trigger: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2025-01-10T00:00:00Z") }); return "cl-1"; },
     below: async () => { await add("client", { id: "cl-1", displayName: "Acme", isActive: true, inboundThresholdUsd: 10000, thresholdReviewedAt: new Date("2026-06-01T00:00:00Z") }); },

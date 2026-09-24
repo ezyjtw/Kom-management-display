@@ -128,6 +128,8 @@ const defs: Def[] = [
     params: { escalation: [{ afterMins: 0, notifyRole: "admin" }] } },
   { code: "ALR-VND-01", name: "Vendor ticket no update", ownerTeam: TEAMS.txOps, severity: "medium", clock: "CONFIRM", ticketProject: "VSR", autoResolve: true, cadenceMins: 15,
     params: { businessHours: null }, confirm: { businessHours: "CONFIRM-VND-HOURS" }, evaluate: ops.evaluateVendorNoUpdate },
+  { code: "ALR-AUD-01", name: "Audit outcome missing", ownerTeam: TEAMS.txOps, severity: "high", clock: "10 min grace", autoResolve: true,
+    params: { graceMins: 10, lookbackHours: 72 }, evaluate: ops.evaluateAuditOutcomeMissing },
   { code: "ALR-HB-SLACK", name: "Slack polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,
     params: { staleMins: 10 }, evaluate: ops.evaluateMessagePolling("slack") },
   { code: "ALR-HB-MAIL", name: "Mailbox polling stopped", ownerTeam: TEAMS.txOps, severity: "critical", clock: "10 min, 24/7", autoResolve: true,
