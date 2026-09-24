@@ -853,6 +853,11 @@ export const closeWorkItemSchema = z.object({
   target: z.enum(["resolved", "closed"]).optional(),
   transitionName: z.string().max(100).optional(),
   clientResolutionMessage: z.string().max(2000).optional(),
+  uat: z.object({
+    outcome: z.enum(["pass", "fail", "not_applicable", "blocked"]),
+    evidence: z.string().trim().max(2000),
+    defectKey: z.string().trim().max(30).optional(),
+  }).optional(),
 });
 
 export const dailyCheckExceptionsSchema = z.object({

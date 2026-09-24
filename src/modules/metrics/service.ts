@@ -8,7 +8,7 @@ import { CronExpressionParser } from "cron-parser";
 import { prisma } from "@/lib/prisma";
 import { loadCalendar, londonInstant, type BusinessCalendar } from "@/modules/alerting/calendar";
 import {
-  alertLoad, backlogAge, breachCount, cadenceAttainment, cadenceOutcome, checkCompletion, clientEffortHours, elapsedMins, loggingCoverage,
+  sprintUat, alertLoad, backlogAge, breachCount, cadenceAttainment, cadenceOutcome, checkCompletion, clientEffortHours, elapsedMins, loggingCoverage,
   mtdClosure, pollingHealth, slaAttainment, timeTo, trendPct, windowOutcome, type Clock, type MeasuredItem, type WindowOutcome,
 } from "@/modules/metrics/definitions";
 
@@ -358,6 +358,34 @@ export async function pollingHealthSection(period: Period, now = new Date()) {
   };
 }
 
+// ── GX sprint UAT (per sprint, team level) ──
+
+export async function gxSprintUat(period: Period, now = new Date()) {
+  void now;
+  const sprints = await prisma.gxSprint.findMany({
+    where: { OR: [{ prodPlannedAt: { gte: period.from, lt: period.to } }, { createdAt: { gte: period.from, lt: period.to } }] },
+    orderBy: { sprint: "asc" },
+  });
+  const changes = await prisma.gxChange.findMany({ where: { sprintId: { in: sprints.map((s) => s.id) }, removedAt: null, qualifies: true } });
+  const workItems = await prisma.workItem.findMany({
+    where: { id: { in: changes.map((c) => c.workItemId).filter((x): x is string => !!x) } },
+    select: { id: true, resolvedAt: true, metadata: true },
+  });
+  const byId = new Map(workItems.map((w) => [w.id, w]));
+  return {
+    period: { from: period.from.toISOString(), to: period.to.toISOString() },
+    sprints: sprints.map((s) => {
+      const items = changes.filter((c) => c.sprintId === s.id).map((c) => {
+        const w = c.workItemId ? byId.get(c.workItemId) : undefined;
+        const m = (w?.metadata ?? {}) as Record<string, unknown>;
+        return { createdAt: c.createdAt, resolvedAt: w?.resolvedAt ?? null, outcome: c.uatOutcome, defect: typeof m.gxsDefectKey === "string", hasTicket: !!c.uatTicketKey };
+      });
+      return { sprint: s.sprint, prodPlannedAt: s.prodPlannedAt?.toISOString() ?? null, ...sprintUat(items, s.prodPlannedAt) };
+    }),
+    freshness: await freshness(now, ["atlassian"]),
+  };
+}
+
 export const SECTIONS = {
   responsiveness,
   clients: clientsSection,
@@ -365,6 +393,7 @@ export const SECTIONS = {
   hygiene,
   client_incidents: clientIncidentComms,
   polling: pollingHealthSection,
+  gx_uat: gxSprintUat,
 } as const;
 export type SectionName = keyof typeof SECTIONS;
 

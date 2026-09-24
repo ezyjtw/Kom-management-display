@@ -5,6 +5,8 @@
  * - approved-validators: the approved validator set (CF-10, CF-24), shipped empty;
  * - incident-categories: §9.7 categories and whether each is compliance-sensitive (DELETE deactivates);
  * - otc-break-types: CHK-02 break types from Confluence "2.3 OTC Break Types" (TODO(CONFIRM-OTC-BREAK-TYPES)).
+ * - gx-impact-rules: §16.3 GX impact mapping (versioned: every save bumps the version; DELETE deactivates);
+ * - uat-templates: §16.5 human-authored UAT test outlines (no delete).
  * GET lists; PUT upserts one row; DELETE removes one (?key=).
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -51,8 +53,30 @@ const incidentCategory = z.object({
   sortOrder: z.number().int().min(0).max(1000).default(0),
 });
 
-type TableName = "team-config" | "asset-status" | "approved-validators" | "otc-break-types" | "incident-categories";
-const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators", "otc-break-types", "incident-categories"];
+type TableName = "team-config" | "asset-status" | "approved-validators" | "otc-break-types" | "incident-categories" | "gx-impact-rules" | "uat-templates";
+const TABLES: TableName[] = ["team-config", "asset-status", "approved-validators", "otc-break-types", "incident-categories", "gx-impact-rules", "uat-templates"];
+
+const codeList = z.array(z.string().trim().min(1).max(40)).max(50).default([]);
+const gxImpactRule = z.object({
+  id: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(2).max(100),
+  matchOn: z.enum(["section", "workstream", "keyword", "jira_project"]),
+  pattern: z.string().min(1).max(300).refine((p) => { try { new RegExp(p, "i"); return true; } catch { return false; } }, "Not a valid regular expression"),
+  taskCodes: codeList,
+  alertCodes: codeList,
+  controls: codeList,
+  team: z.string().trim().min(1).max(60).default("All"),
+  uatTemplate: z.string().trim().max(60).default(""),
+  priority: z.enum(["P0", "P1", "P2", "P3"]).default("P2"),
+  isActive: z.boolean().default(false),
+});
+const uatTemplate = z.object({
+  code: z.string().trim().regex(/^[A-Z0-9-]{3,60}$/),
+  title: z.string().trim().min(2).max(200),
+  steps: z.string().max(20000).default(""),
+  expectedResults: z.string().max(20000).default(""),
+  evidenceRequired: z.string().max(5000).default(""),
+});
 
 async function guard(request: NextRequest | null, write: boolean) {
   const auth = await requireAuth();
@@ -71,6 +95,8 @@ function list(table: TableName) {
   if (table === "asset-status") return prisma.assetStatus.findMany({ orderBy: { asset: "asc" } });
   if (table === "incident-categories") return prisma.incidentCategory.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
   if (table === "otc-break-types") return prisma.otcBreakType.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
+  if (table === "gx-impact-rules") return prisma.gxImpactRule.findMany({ orderBy: { name: "asc" } });
+  if (table === "uat-templates") return prisma.uatTemplate.findMany({ orderBy: { code: "asc" } });
   return prisma.approvedValidator.findMany({ orderBy: [{ chain: "asc" }, { validator: "asc" }] });
 }
 
@@ -123,6 +149,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!v.success) return apiValidationError(v.error);
       key = v.data.code;
       write = () => prisma.otcBreakType.upsert({ where: { code: v.data.code }, update: v.data, create: v.data });
+    } else if (table === "gx-impact-rules") {
+      const v = validateBody(gxImpactRule, body);
+      if (!v.success) return apiValidationError(v.error);
+      const { id, ...data } = v.data;
+      key = id ?? data.name;
+      write = () => (id
+        ? prisma.gxImpactRule.update({ where: { id }, data: { ...data, version: { increment: 1 } } })
+        : prisma.gxImpactRule.create({ data }));
+    } else if (table === "uat-templates") {
+      const v = validateBody(uatTemplate, body);
+      if (!v.success) return apiValidationError(v.error);
+      key = v.data.code;
+      write = () => prisma.uatTemplate.upsert({ where: { code: v.data.code }, update: v.data, create: v.data });
     } else {
       const v = validateBody(approvedValidator, body);
       if (!v.success) return apiValidationError(v.error);
@@ -149,7 +188,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (auth instanceof NextResponse) return auth;
   const { table } = await params;
   const key = new URL(request.url).searchParams.get("key");
-  if (!TABLES.includes(table as TableName) || table === "team-config") return apiNotFoundError("Reference table");
+  if (!TABLES.includes(table as TableName) || table === "team-config" || table === "uat-templates") return apiNotFoundError("Reference table");
   if (!key) return apiValidationError("key is required");
   const actor = auditActor(auth);
   try {
@@ -159,6 +198,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         ? await prisma.incidentCategory.count({ where: { code: key } })
         : table === "otc-break-types"
         ? await prisma.otcBreakType.count({ where: { code: key } })
+        : table === "gx-impact-rules"
+        ? await prisma.gxImpactRule.count({ where: { id: key } })
         : await prisma.approvedValidator.count({ where: { id: key } });
     if (!existing) return apiNotFoundError("Row");
     const { count } = await auditedAction(
@@ -169,6 +210,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           ? prisma.incidentCategory.updateMany({ where: { code: key }, data: { isActive: false } })
           : table === "otc-break-types"
           ? prisma.otcBreakType.deleteMany({ where: { code: key } })
+          : table === "gx-impact-rules"
+          ? prisma.gxImpactRule.updateMany({ where: { id: key }, data: { isActive: false, version: { increment: 1 } } })
           : prisma.approvedValidator.deleteMany({ where: { id: key } }),
       (r) => ({ deleted: r.count }),
     );

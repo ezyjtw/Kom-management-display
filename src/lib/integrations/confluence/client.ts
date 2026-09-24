@@ -51,7 +51,9 @@ async function confluenceGet<T>(path: string, query: Record<string, string> = {}
     headers: { Authorization: `Basic ${Buffer.from(`${cfg.email}:${cfg.token}`).toString("base64")}`, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Confluence GET ${path} failed: ${res.status}`);
-  return (await res.json()) as T;
+  const text = await res.text();
+  if (!text) throw new Error(`Confluence GET ${path} returned an empty response (${res.status})`);
+  return JSON.parse(text) as T;
 }
 
 export interface ConfluencePageRef {

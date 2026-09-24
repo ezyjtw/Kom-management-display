@@ -39,6 +39,7 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/lib/use-branding";
@@ -59,9 +60,8 @@ interface NavItem {
 
 /**
  * Spec §14.1 navigation. Removed: approvals (deleted); USDC ramp, AI briefing
- * and compliance bot (flags off); scoring and activity (flags off). GX sprints
- * arrive with Phase 11. Pages the spec does not list stay reachable under
- * "Other tools".
+ * and compliance bot (flags off); scoring and activity (flags off). Pages the
+ * spec does not list stay reachable under "Other tools".
  */
 const navSections: Array<{ label: string; items: NavItem[]; collapsible?: true }> = [
   {
@@ -86,6 +86,7 @@ const navSections: Array<{ label: string; items: NavItem[]; collapsible?: true }
       { href: "/tokens", label: "Coin Reviews", icon: Coins },
       { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/rca", label: "RCA", icon: FileSearch },
+      { href: "/gx-sprints", label: "GX Sprints", icon: GitBranch },
     ],
   },
   {

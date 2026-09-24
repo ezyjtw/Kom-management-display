@@ -19,7 +19,11 @@ export interface WriteUp {
   timeLogBucketMins?: number;
   /** Spec §9.7: final client-facing resolution message (human-written) for entries with a client request. */
   clientResolutionMessage?: string;
+  /** Spec §16.5: UAT outcome for uat_task items. */
+  uat?: { outcome: string; evidence: string; defectKey?: string };
 }
+
+export const UAT_OUTCOMES = ["pass", "fail", "not_applicable", "blocked"] as const;
 
 /**
  * How a close is justified: a full write-up, or the one-click "not a question"
@@ -80,6 +84,19 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
   if ((item.kind === "client_incident" || item.kind === "client_risk") && item.clientTicketKey) {
     if ((basis.writeUp.clientResolutionMessage ?? "").trim().length < 10) {
       issues.push("Write the client-facing resolution message (at least 10 characters); it is posted to the client request.");
+    }
+  }
+
+  // Spec §16.5: a UAT child closes with its outcome and evidence; a fail needs a linked GXS defect.
+  if (item.kind === "uat_task") {
+    const uat = basis.writeUp.uat;
+    if (!uat || !(UAT_OUTCOMES as readonly string[]).includes(uat.outcome)) {
+      issues.push(`Record the UAT outcome: ${UAT_OUTCOMES.join(", ")}.`);
+    } else {
+      if ((uat.evidence ?? "").trim().length < 3) issues.push("Add the UAT evidence (a screenshot link or a reference).");
+      if (uat.outcome === "fail" && !/^GXS-\d+$/.test((uat.defectKey ?? "").trim())) {
+        issues.push("A failed UAT item needs a linked GXS defect ticket (for example GXS-123): create it from the item or enter the key.");
+      }
     }
   }
 

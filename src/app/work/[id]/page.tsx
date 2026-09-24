@@ -28,6 +28,9 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<"state" | "note" | "time" | "link" | "reassign" | "update" | "close" | "reply" | null>(null);
   const [reply, setReply] = useState("");
+  const [uatOutcome, setUatOutcome] = useState("");
+  const [defectKey, setDefectKey] = useState("");
+  const [defect, setDefect] = useState<{ summary: string; description: string; confirm: boolean } | null>(null);
   const now = useNow();
   const { lastEvent } = useSSE({ filter: ["work_item_update", "sla_breach"] });
 
@@ -56,6 +59,23 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
       const issues: string[] = json?.issues ?? json?.details?.issues ?? [];
       setMessage({ ok: false, text: [json?.error ?? "The action failed.", ...issues].join(" ") });
     }
+  }
+  async function loadDefectDraft() {
+    const json = await fetch(`/api/gx-sprints/defect/${id}`).then((r) => r.json()).catch(() => null);
+    if (json?.success) setDefect({ summary: json.data.summary, description: json.data.description, confirm: false });
+    else setMessage({ ok: false, text: json?.error ?? "Could not draft the defect." });
+  }
+  async function createDefect() {
+    if (!defect) return;
+    setBusy(true);
+    const res = await fetch(`/api/gx-sprints/defect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary: defect.summary, description: defect.description, confirm: true }) });
+    const json = await res.json().catch(() => null);
+    setBusy(false);
+    if (res.ok) {
+      setDefectKey(json.data.key);
+      setDefect(null);
+      setMessage({ ok: true, text: `GXS defect ${json.data.key} created and linked.` });
+    } else setMessage({ ok: false, text: json?.error ?? "Could not create the defect." });
   }
   const form = (fn: (f: FormData) => void) => (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -180,6 +200,7 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
           timeLogBucketMins: f.get("timeLogBucketMins") ? Number(f.get("timeLogBucketMins")) : undefined,
           clientResolutionMessage: String(f.get("clientResolutionMessage") || "") || undefined,
           transitionName: String(f.get("transitionName") || "") || undefined,
+          uat: item.kind === "uat_task" ? { outcome: String(f.get("uatOutcome") || ""), evidence: String(f.get("uatEvidence") || ""), defectKey: defectKey || undefined } : undefined,
         }, "Closed."))}>
           <textarea name="resolutionNote" aria-label="Resolution note" required minLength={20} rows={3} placeholder="Resolution note (at least 20 characters)" className="w-full rounded-md border border-border bg-background p-2 text-sm" />
           <div className="flex gap-2 flex-wrap">
@@ -190,6 +211,27 @@ export default function WorkItemPage({ params }: { params: Promise<{ id: string 
             <select name="timeLogBucketMins" aria-label="Time spent" className={input}><option value="">Time spent…</option>{d.closeOptions.timeBuckets.map((b) => <option key={b} value={b}>{b} min</option>)}</select>
             <input name="transitionName" aria-label="Jira transition name" placeholder="Transition name (if asked)" className={`${input} w-48`} />
           </div>
+          {item.kind === "uat_task" && (
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">UAT outcome (tested in GX UAT). A fail needs a linked GXS defect.</p>
+              <div className="flex gap-2 flex-wrap">
+                <select name="uatOutcome" aria-label="UAT outcome" required className={input} value={uatOutcome} onChange={(e) => setUatOutcome(e.target.value)}>
+                  <option value="">Outcome…</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="not_applicable">Not applicable</option><option value="blocked">Blocked</option>
+                </select>
+                <input name="uatEvidence" aria-label="UAT evidence" required placeholder="Evidence (screenshot link or reference)" className={`${input} w-80`} />
+                {uatOutcome === "fail" && <input aria-label="GXS defect key" placeholder="GXS-123" value={defectKey} onChange={(e) => setDefectKey(e.target.value.toUpperCase())} className={`${input} w-32`} />}
+                {uatOutcome === "fail" && !defectKey && <button type="button" className={button} onClick={() => void loadDefectDraft()}>Draft GXS defect</button>}
+              </div>
+              {defect && (
+                <div className="space-y-2">
+                  <input aria-label="Defect summary" value={defect.summary} onChange={(e) => setDefect({ ...defect, summary: e.target.value })} className={`${input} w-full`} />
+                  <textarea aria-label="Defect description" rows={6} value={defect.description} onChange={(e) => setDefect({ ...defect, description: e.target.value })} className="w-full rounded-md border border-border bg-background p-2 text-sm" />
+                  <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={defect.confirm} onChange={(e) => setDefect({ ...defect, confirm: e.target.checked })} /> I have reviewed this defect and want it created in GXS</label>
+                  <button type="button" disabled={busy || !defect.confirm} className={button} onClick={() => void createDefect()}>Create GXS defect</button>
+                </div>
+              )}
+            </div>
+          )}
           {d.canPostClientUpdate && (
             <textarea name="clientResolutionMessage" aria-label="Client resolution message" required rows={3} placeholder="Resolution message for the client (posted on the client request; human-written)" className="w-full rounded-md border border-border bg-background p-2 text-sm" />
           )}

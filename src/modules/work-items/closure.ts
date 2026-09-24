@@ -38,6 +38,7 @@ export async function closeWorkItem(workItemId: string, input: CloseInput, logge
     riskScore: input.riskScore.trim(),
     timeLogBucketMins: input.timeLogBucketMins,
     clientResolutionMessage: input.clientResolutionMessage?.trim(),
+    uat: input.uat ? { outcome: input.uat.outcome, evidence: input.uat.evidence.trim(), defectKey: input.uat.defectKey?.trim().toUpperCase() } : undefined,
   };
   await assertClosable(item, { writeUp });
 
@@ -57,5 +58,9 @@ export async function closeWorkItem(workItemId: string, input: CloseInput, logge
       ? [prisma.timeLog.create({ data: { workItemId, clientId: item.clientId, bucketMins: writeUp.timeLogBucketMins, loggedById } })]
       : []),
   ]);
+  if (item.kind === "uat_task" && writeUp.uat) {
+    const { recordUatOutcome } = await import("@/modules/gx-sprints/outcome");
+    await recordUatOutcome(updated, writeUp.uat);
+  }
   return updated;
 }

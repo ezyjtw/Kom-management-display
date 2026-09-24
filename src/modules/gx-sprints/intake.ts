@@ -32,7 +32,10 @@ export interface IntakeResult {
   newItems: number;
   updatedItems: number;
   removedItems: number;
+  /** Jira tickets actually created (the ticket key was returned). */
   ticketsCreated: number;
+  /** Work items whose Jira ticket could not be created (see metadata.writebackError and the unticketed-work report). */
+  ticketsFailed: number;
   skipped: string[];
 }
 
@@ -177,8 +180,9 @@ async function childTicket(sprint: GxSprint, change: GxChange, parent: { id: str
 }
 
 /** Extra internal tasks: access review (permission changes), connector regression (API changes), TOP procedure reviews. */
-async function followUps(sprint: GxSprint, change: GxChange, childKey: string | null, cfg: Settings): Promise<number> {
+async function followUps(sprint: GxSprint, change: GxChange, childKey: string | null, cfg: Settings): Promise<{ created: number; failed: number }> {
   let created = 0;
+  let failed = 0;
   const task = async (sourceId: string, title: string, description: string, labels: string[], dueDate?: string) => {
     const before = await prisma.workItem.findUnique({ where: { sourceSystem_sourceId: { sourceSystem: "gx_sprint", sourceId } }, select: { id: true } });
     const item = await ensureTicketedWorkItem({
@@ -187,7 +191,8 @@ async function followUps(sprint: GxSprint, change: GxChange, childKey: string | 
       ticket: { projectKey: cfg["gx.uat.project"], issueType: cfg["gx.uat.issueType"], summary: title, description, labels: ["uat", sprintLabel(sprint.sprint), ...labels], dueDate },
     });
     if (!before) {
-      created++;
+      if (item.ticketKey) created++;
+      else failed++;
       await link(childKey, item.ticketKey);
     }
   };
@@ -207,7 +212,7 @@ async function followUps(sprint: GxSprint, change: GxChange, childKey: string | 
       `Review the TOP procedure for ${code} (${DEFINITION_BY_CODE[code].confluenceTitle}) after GX Sprint ${sprint.sprint} reaches PROD. Do not describe the change as live until its UAT item has passed and the release is in PROD.${draft ? " The function is released but disabled in PROD: keep any change in draft." : ""}`,
       ["doc-review", ...(draft ? ["draft"] : [])], due);
   }
-  return created;
+  return { created, failed };
 }
 
 function toData(row: ParsedRow, c: Classification, pageVersion: number) {
@@ -272,14 +277,20 @@ export async function applyNotes(sprint: GxSprint, notes: ParsedNotes, pageVersi
 
   // Tickets for new qualifying items.
   let ticketsCreated = 0;
+  let ticketsFailed = 0;
   const qualifying = created.filter((c) => c.qualifies);
   if (qualifying.length || edited.some((e) => e.to.qualifies && !e.to.workItemId)) {
     const fresh = await prisma.gxSprint.findUniqueOrThrow({ where: { id: sprint.id } });
     const parent = await ensureParent(fresh, cfg);
     for (const change of [...qualifying, ...edited.map((e) => e.to).filter((c) => c.qualifies && !c.workItemId)]) {
       const child = await childTicket(fresh, change, parent, cfg);
-      if (child.created) ticketsCreated++;
-      ticketsCreated += await followUps(fresh, change, child.ticketKey, cfg);
+      if (child.created) {
+        if (child.ticketKey) ticketsCreated++;
+        else ticketsFailed++;
+      }
+      const extra = await followUps(fresh, change, child.ticketKey, cfg);
+      ticketsCreated += extra.created;
+      ticketsFailed += extra.failed;
       if (change.itemType === "risk_engine_change" || change.itemType === "permission_change") {
         // TODO(CONFIRM-COMPLIANCE-ROUTE): Compliance (risk engine) or IT (permissions) FYI via the rule's route.
         await raiseAlert({ ruleCode: "ALR-UAT-05", dedupeKey: change.id, message: `GX Sprint ${fresh.sprint}: ${change.itemType === "risk_engine_change" ? "risk-engine / auto-approval" : "permission"} change: ${change.summary}`, workItemId: child.id });
@@ -293,7 +304,7 @@ export async function applyNotes(sprint: GxSprint, notes: ParsedNotes, pageVersi
     const fresh = await prisma.gxSprint.findUniqueOrThrow({ where: { id: sprint.id } });
     await raiseAlert({ ruleCode: "ALR-UAT-04", dedupeKey: `${fresh.sprint}:v${pageVersion}`, message: `GX Sprint ${fresh.sprint}: release notes changed after UAT sign-off (v${pageVersion}: ${created.length} added, ${edited.length} changed).`, workItemId: fresh.parentWorkItemId ?? undefined });
   }
-  return { newItems: created.length, updatedItems: edited.length, removedItems: removed.length, ticketsCreated };
+  return { newItems: created.length, updatedItems: edited.length, removedItems: removed.length, ticketsCreated, ticketsFailed };
 }
 
 /** Sprint-labelled GXS tickets raised by Transaction Operations: a "verify fix" item each (spec §16.3). */
@@ -332,7 +343,7 @@ export async function upsertSprint(sprint: string, data: Partial<Pick<GxSprint, 
 export async function runSprintIntake(opts: { now?: Date; force?: boolean } = {}): Promise<IntakeResult> {
   const now = opts.now ?? new Date();
   const cfg = await settings();
-  const result: IntakeResult = { sprints: [], newItems: 0, updatedItems: 0, removedItems: 0, ticketsCreated: 0, skipped: [] };
+  const result: IntakeResult = { sprints: [], newItems: 0, updatedItems: 0, removedItems: 0, ticketsCreated: 0, ticketsFailed: 0, skipped: [] };
 
   let kmnc = new Map<string, KmncSprintDates>();
   if (isAtlassianConfigured()) {
@@ -350,7 +361,13 @@ export async function runSprintIntake(opts: { now?: Date; force?: boolean } = {}
     result.skipped.push("Confluence not configured: release notes not read");
     return result;
   }
-  const pages = await releaseNotesPages(cfg["gx.releaseNotesSpace"], cfg["gx.releaseNotesParentPageId"]);
+  let pages: Awaited<ReturnType<typeof releaseNotesPages>>;
+  try {
+    pages = await releaseNotesPages(cfg["gx.releaseNotesSpace"], cfg["gx.releaseNotesParentPageId"]);
+  } catch (error) {
+    result.skipped.push(`Confluence release notes not readable: ${error instanceof Error ? error.message : String(error)}`);
+    return result;
+  }
   for (const page of pages) {
     const existing = await prisma.gxSprint.findUnique({ where: { sprint: page.sprint } });
     if (existing && existing.pageVersion === page.version && existing.releaseNotesPageId === page.id && !opts.force) continue;
@@ -374,6 +391,7 @@ export async function runSprintIntake(opts: { now?: Date; force?: boolean } = {}
     result.updatedItems += applied.updatedItems;
     result.removedItems += applied.removedItems;
     result.ticketsCreated += applied.ticketsCreated;
+    result.ticketsFailed += applied.ticketsFailed;
   }
   return result;
 }
@@ -404,7 +422,7 @@ export async function runScheduledIntake(now = new Date()): Promise<IntakeResult
       logger.warn("KMNC check failed", { error: error instanceof Error ? error.message : String(error) });
     }
   }
-  if (!trigger) return { ran: false, trigger: "none", sprints: [], newItems: 0, updatedItems: 0, removedItems: 0, ticketsCreated: 0, skipped: [] };
+  if (!trigger) return { ran: false, trigger: "none", sprints: [], newItems: 0, updatedItems: 0, removedItems: 0, ticketsCreated: 0, ticketsFailed: 0, skipped: [] };
   const result = await runSprintIntake({ now });
   await prisma.syncCursor.upsert({ where: { source: "gx.intake.lastRun" }, update: { cursor: now.toISOString() }, create: { source: "gx.intake.lastRun", cursor: now.toISOString() } });
   return { ...result, ran: true, trigger };

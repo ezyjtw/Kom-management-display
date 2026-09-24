@@ -290,3 +290,37 @@ export function pollingHealth(cycles: Array<{ startedAt: Date; finishedAt: Date;
   const onTime = onTimeSlots.size;
   return { slots, onTime, failed: [...failedSlots].filter((s) => !onTimeSlots.has(s)).length, pct: slots ? Math.round((onTime / slots) * 1000) / 10 : null };
 }
+
+// ── GX sprint UAT (spec §16.8) ──
+
+export interface UatItem {
+  createdAt: Date;
+  resolvedAt: Date | null;
+  outcome: string | null;
+  defect: boolean;
+  hasTicket: boolean;
+}
+
+/** First moment every item created by then had an outcome; null when never signed off. */
+export function signOffAt(items: UatItem[]): Date | null {
+  const times = items.map((i) => i.resolvedAt).filter((t): t is Date => !!t).sort((a, b) => a.getTime() - b.getTime());
+  for (const t of times) {
+    const existing = items.filter((i) => i.createdAt <= t);
+    if (existing.length && existing.every((i) => i.outcome && i.resolvedAt && i.resolvedAt <= t)) return t;
+  }
+  return null;
+}
+
+export function sprintUat(items: UatItem[], prodPlannedAt: Date | null) {
+  const signedOff = signOffAt(items);
+  const withOutcome = items.filter((i) => i.outcome);
+  const beforeProd = prodPlannedAt ? withOutcome.filter((i) => i.resolvedAt && i.resolvedAt <= prodPlannedAt).length : null;
+  return {
+    changeItems: items.length,
+    uatTickets: items.filter((i) => i.hasTicket).length,
+    completedBeforeProdPct: prodPlannedAt && items.length ? Math.round(((beforeProd ?? 0) / items.length) * 1000) / 10 : null,
+    fails: items.filter((i) => i.outcome === "fail").length,
+    defectsRaised: items.filter((i) => i.defect).length,
+    addedAfterSignOff: signedOff ? items.filter((i) => i.createdAt > signedOff).length : 0,
+  };
+}

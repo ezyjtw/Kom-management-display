@@ -134,6 +134,11 @@ export default function BoardsPage() {
               {card.code === "CHK-10" && <a href="/settlements" className="text-xs text-primary">Open settlement monitoring</a>}
               {card.code === "TASK-OTC" && <a href="/otc" className="text-xs text-primary">Open the OTC queue</a>}
               {card.code === "TASK-FAB" && !card.disabledByFlag && <a href="/fab" className="text-xs text-primary">Open the FAB register</a>}
+              {card.uatDue?.length > 0 && (
+                <p className="text-xs text-amber-500">UAT due this sprint: {card.uatDue.map((u) => (
+                  <a key={u.workItemId} href={`/work/${u.workItemId}`} className="mr-2 underline">{u.ticketKey ?? u.title}{u.sprint ? ` (${u.sprint})` : ""}</a>
+                ))}</p>
+              )}
               {card.banners.map((b) => (
                 <p key={b} className="text-xs text-amber-400 flex items-center gap-1"><AlertTriangle size={12} /> {b}</p>
               ))}

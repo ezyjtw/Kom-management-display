@@ -232,3 +232,12 @@ describe("schedule", () => {
     expect((await runScheduledIntake(new Date("2026-10-03T07:05:00Z"))).trigger).toBe("schedule");
   });
 });
+
+describe("no false green in the intake summary", () => {
+  it("counts only tickets Jira accepted; failures are reported separately", async () => {
+    await p().jiraProjectConfig.update({ where: { key: "TOPS" }, data: { enabled: false } });
+    const res = await runSprintIntake();
+    expect(res.ticketsCreated).toBe(0);
+    expect(res.ticketsFailed).toBeGreaterThan(0);
+  });
+});

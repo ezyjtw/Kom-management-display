@@ -44,6 +44,8 @@ export interface BoardCard {
   banners: string[];
   items: BoardItem[];
   openWorkItems: number;
+  /** Spec §16.7: open GX sprint UAT items that affect this task. */
+  uatDue: Array<{ workItemId: string; ticketKey: string | null; title: string; sprint: string | null }>;
 }
 
 export const APPROVED_VALIDATORS_MISSING = "Approved validator set not defined: control 5.1 cannot be evidenced.";
@@ -56,6 +58,10 @@ export async function buildBoard(team: string | null, opts: { now?: Date; canVie
     orderBy: { code: "asc" },
   });
   const validators = await prisma.approvedValidator.count();
+  const uatOpen = await prisma.workItem.findMany({ where: { kind: "uat_task", state: { in: [...OPEN] } }, select: { id: true, ticketKey: true, title: true, metadata: true } });
+  const uatFor = (code: string) => uatOpen
+    .filter((u) => { const m = (u.metadata ?? {}) as Record<string, unknown>; return Array.isArray(m.affectedTasks) && (m.affectedTasks as unknown[]).includes(code); })
+    .map((u) => { const m = (u.metadata ?? {}) as Record<string, unknown>; return { workItemId: u.id, ticketKey: u.ticketKey, title: u.title, sprint: typeof m.gxSprint === "string" ? m.gxSprint : null }; });
   const cards: BoardCard[] = [];
 
   for (const def of defs) {
@@ -107,6 +113,7 @@ export async function buildBoard(team: string | null, opts: { now?: Date; canVie
         proposal: parseCollected(i.autoResult),
       })),
       openWorkItems,
+      uatDue: hidden ? [] : uatFor(def.code),
     });
   }
   return cards;
