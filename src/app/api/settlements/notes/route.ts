@@ -7,6 +7,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const noteSchema = z.object({
   windowKey: z.string().regex(/^\d{4}-\d{2}-\d{2}:[a-z0-9_-]+:\d{2}:\d{2}Z$/),
@@ -22,10 +24,17 @@ export async function POST(request: NextRequest) {
   const limited = checkRateLimit(request, RATE_LIMIT_PRESETS.mutation);
   if (limited) return limited;
   try {
-    const parsed = validateBody(noteSchema, await request.json());
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const note = await prisma.settlementNote.create({ data: { ...parsed.data, authorId: auth.employeeId ?? auth.id } });
-    return apiSuccess(note, undefined, 201);
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "settlement_note_added", entityType: "settlement_note", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Add a settlement note", metadata: auditActorInfo.metadata },
+      async () => {
+        const parsed = validateBody(noteSchema, await request.json());
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const note = await prisma.settlementNote.create({ data: { ...parsed.data, authorId: auth.employeeId ?? auth.id } });
+        return apiSuccess(note, undefined, 201);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "settlement note POST");
   }

@@ -12,6 +12,8 @@ import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middlew
 import { emitHighRiskTransaction } from "@/lib/sse";
 import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { validateBody, transactionConfirmationPostSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/transaction-confirmations
@@ -76,57 +78,64 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(transactionConfirmationPostSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const validatedData = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "transaction_confirmation_action", entityType: "transaction_confirmation", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Transaction confirmation action", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(transactionConfirmationPostSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const validatedData = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    const requiredAction = validatedData.action === "create"
-      ? "create"
-      : validatedData.action === "take_ownership" ? "acknowledge" : "update";
-    const authz = requireAuthorization(auth, "transaction_confirmation", requiredAction);
-    if (authz instanceof NextResponse) return authz;
+        const requiredAction = validatedData.action === "create"
+          ? "create"
+          : validatedData.action === "take_ownership" ? "acknowledge" : "update";
+        const authz = requireAuthorization(auth, "transaction_confirmation", requiredAction);
+        if (authz instanceof NextResponse) return authz;
 
-    switch (validatedData.action) {
-      case "create": {
-        const result = await createTransactionConfirmation({
-          transactionId: validatedData.transactionId,
-          requestId: validatedData.requestId,
-          asset: validatedData.asset,
-          amount: validatedData.amount,
-          direction: validatedData.direction,
-          account: validatedData.account,
-          workspace: validatedData.workspace,
-          riskLevel: validatedData.riskLevel,
-        });
+        switch (validatedData.action) {
+          case "create": {
+            const result = await createTransactionConfirmation({
+              transactionId: validatedData.transactionId,
+              requestId: validatedData.requestId,
+              asset: validatedData.asset,
+              amount: validatedData.amount,
+              direction: validatedData.direction,
+              account: validatedData.account,
+              workspace: validatedData.workspace,
+              riskLevel: validatedData.riskLevel,
+            });
 
-        if (result.riskLevel === "high" || result.riskLevel === "critical") {
-          emitHighRiskTransaction({
-            confirmationId: result.id,
-            transactionId: validatedData.transactionId,
-            asset: validatedData.asset,
-            amount: validatedData.amount,
-            riskLevel: result.riskLevel,
-          });
+            if (result.riskLevel === "high" || result.riskLevel === "critical") {
+              emitHighRiskTransaction({
+                confirmationId: result.id,
+                transactionId: validatedData.transactionId,
+                asset: validatedData.asset,
+                amount: validatedData.amount,
+                riskLevel: result.riskLevel,
+              });
+            }
+
+            return apiSuccess(result, undefined, 201);
+          }
+
+          case "take_ownership":
+            await takeOwnership(validatedData.confirmationId, actorId);
+            return apiSuccess({ owned: true });
+
+          case "add_note":
+            await addNote(validatedData.confirmationId, actorId, validatedData.note);
+            return apiSuccess({ noteAdded: true });
+
+          case "link_ticket":
+            await linkTicket(validatedData.confirmationId, actorId, validatedData.ticketRef);
+            return apiSuccess({ ticketLinked: true });
         }
-
-        return apiSuccess(result, undefined, 201);
-      }
-
-      case "take_ownership":
-        await takeOwnership(validatedData.confirmationId, actorId);
-        return apiSuccess({ owned: true });
-
-      case "add_note":
-        await addNote(validatedData.confirmationId, actorId, validatedData.note);
-        return apiSuccess({ noteAdded: true });
-
-      case "link_ticket":
-        await linkTicket(validatedData.confirmationId, actorId, validatedData.ticketRef);
-        return apiSuccess({ ticketLinked: true });
-    }
+      },
+    );
   } catch (error) {
     return handleApiError(error, "transaction-confirmations POST");
   }

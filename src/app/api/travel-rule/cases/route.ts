@@ -6,6 +6,8 @@ import { TRAVEL_RULE_SLA } from "@/lib/sla";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createTravelRuleCaseSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/travel-rule/cases
@@ -105,73 +107,80 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createTravelRuleCaseSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
-    const {
-      transactionId,
-      txHash,
-      direction,
-      asset,
-      amount,
-      senderAddress,
-      receiverAddress,
-      matchStatus,
-    } = data;
-    const notabeneTransferId = (body as Record<string, unknown>).notabeneTransferId as string | undefined;
-    const ownerUserId = (body as Record<string, unknown>).ownerUserId as string | undefined;
-
-    // Uniqueness is enforced by transactionId + matchStatus compound key.
-    // If a case already exists for this combination, return it rather than
-    // creating a duplicate (idempotent create pattern).
-    const existing = await prisma.travelRuleCase.findUnique({
-      where: {
-        transactionId_matchStatus: { transactionId, matchStatus },
-      },
-    });
-
-    if (existing) {
-      return apiSuccess(existing);
-    }
-
-    // SLA deadline is createdAt + 48 hours — displayed on the case detail page
-    const now = new Date();
-    const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
-
-    const [travelCase] = await prisma.$transaction([
-      prisma.travelRuleCase.create({
-        data: {
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "travel_rule_case_created", entityType: "travel_rule_case", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Create a travel-rule case", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createTravelRuleCaseSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const data = parsed.data;
+        const {
           transactionId,
-          txHash: txHash || "",
-          direction: direction || "",
-          asset: asset || "",
-          amount: amount || 0,
-          senderAddress: senderAddress || "",
-          receiverAddress: receiverAddress || "",
+          txHash,
+          direction,
+          asset,
+          amount,
+          senderAddress,
+          receiverAddress,
           matchStatus,
-          notabeneTransferId: notabeneTransferId || null,
-          ownerUserId: ownerUserId || null,
-          status: ownerUserId ? "Investigating" : "Open",
-          slaDeadline,
-        },
-      }),
-      prisma.auditLog.create({
-        data: {
-          action: "travel_rule_case_created",
-          entityType: "travel_rule_case",
-          entityId: "pending",
-          userId: auth.employeeId || auth.id,
-          details: JSON.stringify({
-            transactionId,
-            matchStatus,
-            ownerUserId: ownerUserId || null,
-          }),
-        },
-      }),
-    ]);
+        } = data;
+        const notabeneTransferId = (body as Record<string, unknown>).notabeneTransferId as string | undefined;
+        const ownerUserId = (body as Record<string, unknown>).ownerUserId as string | undefined;
 
-    return apiSuccess(travelCase, undefined, 201);
+        // Uniqueness is enforced by transactionId + matchStatus compound key.
+        // If a case already exists for this combination, return it rather than
+        // creating a duplicate (idempotent create pattern).
+        const existing = await prisma.travelRuleCase.findUnique({
+          where: {
+            transactionId_matchStatus: { transactionId, matchStatus },
+          },
+        });
+
+        if (existing) {
+          return apiSuccess(existing);
+        }
+
+        // SLA deadline is createdAt + 48 hours — displayed on the case detail page
+        const now = new Date();
+        const slaDeadline = new Date(now.getTime() + TRAVEL_RULE_SLA.resolution * 3_600_000);
+
+        const [travelCase] = await prisma.$transaction([
+          prisma.travelRuleCase.create({
+            data: {
+              transactionId,
+              txHash: txHash || "",
+              direction: direction || "",
+              asset: asset || "",
+              amount: amount || 0,
+              senderAddress: senderAddress || "",
+              receiverAddress: receiverAddress || "",
+              matchStatus,
+              notabeneTransferId: notabeneTransferId || null,
+              ownerUserId: ownerUserId || null,
+              status: ownerUserId ? "Investigating" : "Open",
+              slaDeadline,
+            },
+          }),
+          prisma.auditLog.create({
+            data: {
+              action: "travel_rule_case_created",
+              entityType: "travel_rule_case",
+              entityId: "pending",
+              userId: auth.employeeId || auth.id,
+              details: JSON.stringify({
+                transactionId,
+                matchStatus,
+                ownerUserId: ownerUserId || null,
+              }),
+            },
+          }),
+        ]);
+
+        return apiSuccess(travelCase, undefined, 201);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/cases");
   }

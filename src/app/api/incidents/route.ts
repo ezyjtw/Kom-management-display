@@ -8,6 +8,8 @@ import { createAuditEntry } from "@/lib/api/audit";
 import { apiSuccess, apiValidationError, apiForbiddenError, handleApiError } from "@/lib/api/response";
 import type { IncidentFilters, IncidentUpdateType } from "@/modules/incidents/services/incident-service";
 import { validateBody, createIncidentSchema, updateIncidentSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/incidents
@@ -76,25 +78,32 @@ export async function POST(request: NextRequest) {
   if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createIncidentSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "incident_created", entityType: "incident", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Create an incident", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createIncidentSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const data = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    const incident = await incidentService.createIncident({
-      title: data.title,
-      provider: data.provider,
-      severity: data.severity,
-      description: data.description,
-      impact: data.impact,
-      reportedById: actorId,
-      linkedThreadIds: data.linkedThreadIds,
-      linkedTransactionIds: data.linkedTransactionIds,
-    });
+        const incident = await incidentService.createIncident({
+          title: data.title,
+          provider: data.provider,
+          severity: data.severity,
+          description: data.description,
+          impact: data.impact,
+          reportedById: actorId,
+          linkedThreadIds: data.linkedThreadIds,
+          linkedTransactionIds: data.linkedTransactionIds,
+        });
 
-    return apiSuccess(incident, undefined, 201);
+        return apiSuccess(incident, undefined, 201);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/incidents");
   }
@@ -114,69 +123,76 @@ export async function PATCH(request: NextRequest) {
   if (!authz.allowed) return apiForbiddenError(authz.reason);
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateIncidentSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const {
-      id, status, severity, impact, update, updateType,
-      linkedThreadIds, linkedTransactionIds, linkAlertIds,
-      rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline,
-      rcaFollowUpItems,
-      externalTicketRef, externalTicketUrl, externalTicketStatus,
-      externalTicketDisputed, externalTicketDisputeReason,
-    } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "incident_updated", entityType: "incident", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Update an incident", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateIncidentSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const {
+          id, status, severity, impact, update, updateType,
+          linkedThreadIds, linkedTransactionIds, linkAlertIds,
+          rcaStatus, rcaDocumentRef, rcaResponsibleId, rcaSlaDeadline,
+          rcaFollowUpItems,
+          externalTicketRef, externalTicketUrl, externalTicketStatus,
+          externalTicketDisputed, externalTicketDisputeReason,
+        } = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    // Use service for core update (status, severity, impact, linked items)
-    const incident = await incidentService.updateIncident(
-      id,
-      { status, severity, impact, linkedThreadIds, linkedTransactionIds },
-      actorId,
+        // Use service for core update (status, severity, impact, linked items)
+        const incident = await incidentService.updateIncident(
+          id,
+          { status, severity, impact, linkedThreadIds, linkedTransactionIds },
+          actorId,
+        );
+
+        // RCA updates via service
+        if (rcaStatus !== undefined) {
+          await incidentService.updateRca(id, {
+            rcaStatus,
+            rcaDocumentRef,
+            rcaResponsibleId,
+            rcaSlaDeadline: rcaSlaDeadline ? new Date(rcaSlaDeadline) : undefined,
+            rcaFollowUpItems,
+          }, actorId);
+        }
+
+        // External ticket fields (direct update for fields not covered by service methods)
+        const ticketFields: Record<string, unknown> = {};
+        if (externalTicketRef !== undefined) ticketFields.externalTicketRef = externalTicketRef;
+        if (externalTicketUrl !== undefined) ticketFields.externalTicketUrl = externalTicketUrl;
+        if (externalTicketStatus !== undefined) ticketFields.externalTicketStatus = externalTicketStatus;
+        if (externalTicketDisputed !== undefined) ticketFields.externalTicketDisputed = externalTicketDisputed;
+        if (externalTicketDisputeReason !== undefined) ticketFields.externalTicketDisputeReason = externalTicketDisputeReason;
+        if (Object.keys(ticketFields).length > 0) {
+          await prisma.incident.update({ where: { id }, data: ticketFields });
+        }
+
+        // Add update note if provided
+        if (update) {
+          await incidentService.addUpdate(id, actorId, update, (updateType || "update") as IncidentUpdateType);
+        }
+
+        // Link existing alerts to this incident
+        if (linkAlertIds && Array.isArray(linkAlertIds) && linkAlertIds.length > 0) {
+          await prisma.$transaction(
+            linkAlertIds.map((alertId: string) =>
+              prisma.alert.update({
+                where: { id: alertId },
+                data: { incidentId: id },
+              }),
+            ),
+          );
+        }
+
+        // Re-fetch for complete response
+        const updated = await incidentService.getIncidentById(id);
+        return apiSuccess(updated ?? incident);
+      },
     );
-
-    // RCA updates via service
-    if (rcaStatus !== undefined) {
-      await incidentService.updateRca(id, {
-        rcaStatus,
-        rcaDocumentRef,
-        rcaResponsibleId,
-        rcaSlaDeadline: rcaSlaDeadline ? new Date(rcaSlaDeadline) : undefined,
-        rcaFollowUpItems,
-      }, actorId);
-    }
-
-    // External ticket fields (direct update for fields not covered by service methods)
-    const ticketFields: Record<string, unknown> = {};
-    if (externalTicketRef !== undefined) ticketFields.externalTicketRef = externalTicketRef;
-    if (externalTicketUrl !== undefined) ticketFields.externalTicketUrl = externalTicketUrl;
-    if (externalTicketStatus !== undefined) ticketFields.externalTicketStatus = externalTicketStatus;
-    if (externalTicketDisputed !== undefined) ticketFields.externalTicketDisputed = externalTicketDisputed;
-    if (externalTicketDisputeReason !== undefined) ticketFields.externalTicketDisputeReason = externalTicketDisputeReason;
-    if (Object.keys(ticketFields).length > 0) {
-      await prisma.incident.update({ where: { id }, data: ticketFields });
-    }
-
-    // Add update note if provided
-    if (update) {
-      await incidentService.addUpdate(id, actorId, update, (updateType || "update") as IncidentUpdateType);
-    }
-
-    // Link existing alerts to this incident
-    if (linkAlertIds && Array.isArray(linkAlertIds) && linkAlertIds.length > 0) {
-      await prisma.$transaction(
-        linkAlertIds.map((alertId: string) =>
-          prisma.alert.update({
-            where: { id: alertId },
-            data: { incidentId: id },
-          }),
-        ),
-      );
-    }
-
-    // Re-fetch for complete response
-    const updated = await incidentService.getIncidentById(id);
-    return apiSuccess(updated ?? incident);
   } catch (error) {
     if (error instanceof TicketWriteError) {
       return NextResponse.json({ success: false, error: `The timeline update was not saved: ${error.message}` }, { status: 409 });

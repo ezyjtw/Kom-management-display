@@ -10,6 +10,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiNotFoundError, apiSuccess, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { discoverIssueTypes, isAtlassianConfigured } from "@/lib/integrations/atlassian/client";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const auth = await requireAuth();
@@ -20,19 +22,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (limited) return limited;
 
   try {
-    const { key } = await params;
-    const project = await prisma.jiraProjectConfig.findUnique({ where: { key } });
-    if (!project) return apiNotFoundError("Jira project");
-    if (!isAtlassianConfigured()) return NextResponse.json({ success: false, error: "Atlassian is not configured." }, { status: 409 });
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "jira_project_discovered", entityType: "jira_project", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Discover a Jira project's issue types", metadata: auditActorInfo.metadata },
+      async () => {
+        const { key } = await params;
+        const project = await prisma.jiraProjectConfig.findUnique({ where: { key } });
+        if (!project) return apiNotFoundError("Jira project");
+        if (!isAtlassianConfigured()) return NextResponse.json({ success: false, error: "Atlassian is not configured." }, { status: 409 });
 
-    const discovered = await discoverIssueTypes(key);
-    const current = (project.issueTypeIds ?? {}) as Record<string, string>;
-    const keepDefault = current._default && Object.values(discovered).includes(current._default) ? { _default: current._default } : {};
-    const updated = await prisma.jiraProjectConfig.update({
-      where: { key },
-      data: { issueTypeIds: { ...discovered, ...keepDefault } as Prisma.InputJsonValue },
-    });
-    return apiSuccess(updated);
+        const discovered = await discoverIssueTypes(key);
+        const current = (project.issueTypeIds ?? {}) as Record<string, string>;
+        const keepDefault = current._default && Object.values(discovered).includes(current._default) ? { _default: current._default } : {};
+        const updated = await prisma.jiraProjectConfig.update({
+          where: { key },
+          data: { issueTypeIds: { ...discovered, ...keepDefault } as Prisma.InputJsonValue },
+        });
+        return apiSuccess(updated);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "admin jira-project discover");
   }

@@ -14,6 +14,8 @@ import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
 import { absDiff, dec, type DecimalValue } from "@/lib/decimal";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 const recheckParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -49,132 +51,139 @@ export async function POST(
   }
 
   try {
-    if (!(await isNotabeneEnabled())) {
-      return apiValidationError("Notabene is not configured");
-    }
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "travel_rule_case_rechecked", entityType: "travel_rule_case", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Recheck a travel-rule case", metadata: auditActorInfo.metadata },
+      async () => {
+        if (!(await isNotabeneEnabled())) {
+          return apiValidationError("Notabene is not configured");
+        }
 
-    const lastRecheck = recheckTimestamps.get(params.id);
-    if (lastRecheck && Date.now() - lastRecheck < RECHECK_COOLDOWN_MS) {
-      const waitSec = Math.ceil((RECHECK_COOLDOWN_MS - (Date.now() - lastRecheck)) / 1000);
-      return apiValidationError(`Please wait ${waitSec}s before rechecking this case again`);
-    }
+        const lastRecheck = recheckTimestamps.get(params.id);
+        if (lastRecheck && Date.now() - lastRecheck < RECHECK_COOLDOWN_MS) {
+          const waitSec = Math.ceil((RECHECK_COOLDOWN_MS - (Date.now() - lastRecheck)) / 1000);
+          return apiValidationError(`Please wait ${waitSec}s before rechecking this case again`);
+        }
 
-    const travelCase = await prisma.travelRuleCase.findUnique({
-      where: { id: params.id },
-    });
+        const travelCase = await prisma.travelRuleCase.findUnique({
+          where: { id: params.id },
+        });
 
-    if (!travelCase) {
-      return apiNotFoundError("Case");
-    }
+        if (!travelCase) {
+          return apiNotFoundError("Case");
+        }
 
-    if (travelCase.ownerUserId) {
-      const ownerEmp = await prisma.employee.findUnique({
-        where: { id: travelCase.ownerUserId },
-        select: { team: true },
-      });
-      const accessError = requireRecordAccess(auth, authz.scope, {
-        ownerId: travelCase.ownerUserId,
-        team: ownerEmp?.team ?? null,
-      });
-      if (accessError) return accessError;
-    }
+        if (travelCase.ownerUserId) {
+          const ownerEmp = await prisma.employee.findUnique({
+            where: { id: travelCase.ownerUserId },
+            select: { team: true },
+          });
+          const accessError = requireRecordAccess(auth, authz.scope, {
+            ownerId: travelCase.ownerUserId,
+            team: ownerEmp?.team ?? null,
+          });
+          if (accessError) return accessError;
+        }
 
-    if (travelCase.status === "Resolved") {
-      return apiValidationError("Case is already resolved");
-    }
+        if (travelCase.status === "Resolved") {
+          return apiValidationError("Case is already resolved");
+        }
 
-    // If we already have a Notabene transfer ID, fetch that specific transfer
-    // Otherwise search for a match by fetching all recent transfers
-    let matchedTransfer: NotabeneTransfer | null = null;
-    let newMatchStatus: TravelRuleMatchStatus = "unmatched";
+        // If we already have a Notabene transfer ID, fetch that specific transfer
+        // Otherwise search for a match by fetching all recent transfers
+        let matchedTransfer: NotabeneTransfer | null = null;
+        let newMatchStatus: TravelRuleMatchStatus = "unmatched";
 
-    if (travelCase.notabeneTransferId) {
-      // Direct fetch of the known transfer
-      const { fetchTransfer } = await import("@/lib/integrations/notabene");
-      try {
-        matchedTransfer = await fetchTransfer(travelCase.notabeneTransferId);
-      } catch {
-        // Transfer may no longer exist; fall through to search
-      }
-    }
+        if (travelCase.notabeneTransferId) {
+          // Direct fetch of the known transfer
+          const { fetchTransfer } = await import("@/lib/integrations/notabene");
+          try {
+            matchedTransfer = await fetchTransfer(travelCase.notabeneTransferId);
+          } catch {
+            // Transfer may no longer exist; fall through to search
+          }
+        }
 
-    if (!matchedTransfer) {
-      // Search by tx hash or address+amount
-      const { transfers } = await fetchTransfers({ perPage: 200 });
-      matchedTransfer = findMatchForCase(travelCase, transfers);
-    }
+        if (!matchedTransfer) {
+          // Search by tx hash or address+amount
+          const { transfers } = await fetchTransfers({ perPage: 200 });
+          matchedTransfer = findMatchForCase(travelCase, transfers);
+        }
 
-    // Derive new match status
-    if (matchedTransfer) {
-      if (!hasOriginatorData(matchedTransfer)) {
-        newMatchStatus = "missing_originator";
-      } else if (!hasBeneficiaryData(matchedTransfer)) {
-        newMatchStatus = "missing_beneficiary";
-      } else {
-        newMatchStatus = "matched";
-      }
-    }
+        // Derive new match status
+        if (matchedTransfer) {
+          if (!hasOriginatorData(matchedTransfer)) {
+            newMatchStatus = "missing_originator";
+          } else if (!hasBeneficiaryData(matchedTransfer)) {
+            newMatchStatus = "missing_beneficiary";
+          } else {
+            newMatchStatus = "matched";
+          }
+        }
 
-    const previousMatchStatus = travelCase.matchStatus;
-    const improved = newMatchStatus !== previousMatchStatus;
-    const canAutoResolve = newMatchStatus === "matched";
+        const previousMatchStatus = travelCase.matchStatus;
+        const improved = newMatchStatus !== previousMatchStatus;
+        const canAutoResolve = newMatchStatus === "matched";
 
-    // Update the case if the match status improved
-    const updateData: Record<string, unknown> = {};
-    if (improved) {
-      updateData.matchStatus = newMatchStatus;
-    }
-    if (matchedTransfer && !travelCase.notabeneTransferId) {
-      updateData.notabeneTransferId = matchedTransfer.id;
-    }
+        // Update the case if the match status improved
+        const updateData: Record<string, unknown> = {};
+        if (improved) {
+          updateData.matchStatus = newMatchStatus;
+        }
+        if (matchedTransfer && !travelCase.notabeneTransferId) {
+          updateData.notabeneTransferId = matchedTransfer.id;
+        }
 
-    if (Object.keys(updateData).length > 0) {
-      await prisma.travelRuleCase.update({
-        where: { id: params.id },
-        data: updateData,
-      });
-    }
+        if (Object.keys(updateData).length > 0) {
+          await prisma.travelRuleCase.update({
+            where: { id: params.id },
+            data: updateData,
+          });
+        }
 
-    recheckTimestamps.set(params.id, Date.now());
+        recheckTimestamps.set(params.id, Date.now());
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    // Build detail info for the response and audit
-    const originatorName = matchedTransfer
-      ? extractPartyName(matchedTransfer.originator, "originator")
-      : null;
-    const beneficiaryName = matchedTransfer
-      ? extractPartyName(matchedTransfer.beneficiary, "beneficiary")
-      : null;
+        // Build detail info for the response and audit
+        const originatorName = matchedTransfer
+          ? extractPartyName(matchedTransfer.originator, "originator")
+          : null;
+        const beneficiaryName = matchedTransfer
+          ? extractPartyName(matchedTransfer.beneficiary, "beneficiary")
+          : null;
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        action: "travel_rule_case_updated",
-        entityType: "travel_rule_case",
-        entityId: params.id,
-        userId: actorId,
-        details: JSON.stringify({
-          description: improved
-            ? `Notabene recheck: ${previousMatchStatus} → ${newMatchStatus}`
-            : `Notabene recheck: no change (${newMatchStatus})`,
+        // Audit log
+        await prisma.auditLog.create({
+          data: {
+            action: "travel_rule_case_updated",
+            entityType: "travel_rule_case",
+            entityId: params.id,
+            userId: actorId,
+            details: JSON.stringify({
+              description: improved
+                ? `Notabene recheck: ${previousMatchStatus} → ${newMatchStatus}`
+                : `Notabene recheck: no change (${newMatchStatus})`,
+              previousMatchStatus,
+              newMatchStatus,
+              notabeneTransferId: matchedTransfer?.id ?? null,
+            }),
+          },
+        });
+
+        return apiSuccess({
           previousMatchStatus,
           newMatchStatus,
+          improved,
+          canAutoResolve,
           notabeneTransferId: matchedTransfer?.id ?? null,
-        }),
+          notabeneStatus: matchedTransfer?.status ?? null,
+          originatorName,
+          beneficiaryName,
+        });
       },
-    });
-
-    return apiSuccess({
-      previousMatchStatus,
-      newMatchStatus,
-      improved,
-      canAutoResolve,
-      notabeneTransferId: matchedTransfer?.id ?? null,
-      notabeneStatus: matchedTransfer?.status ?? null,
-      originatorName,
-      beneficiaryName,
-    });
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/cases/[id]/recheck");
   }

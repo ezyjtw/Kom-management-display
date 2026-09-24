@@ -88,22 +88,9 @@ export const ROUTE_AUDIT_CATEGORY: ReadonlyArray<{ prefix: string; category: Aud
  * next release gate (review remediation), not an exception.
  */
 export const AUDIT_GAPS: Readonly<Record<string, string>> = {
-  "/api/admin/imports": "No write path yet: every upload is refused until its template exists (CONFIRM-IMPORT-FILENAMES). Convert with the first parser.",
-  "/api/admin/jira-projects/[key]/discover": "Reads Jira metadata into the discovery cache only; convert with the Jira config review.",
-  "/api/incidents": "Legacy incident log (fail-open audit today); superseded by client-incidents, convert or retire.",
-  "/api/rca/tickets": "Creates an RCA ticket through the work item module; convert with the incident retirement.",
-  "/api/travel-rule/cases": "Legacy travel-rule case records: convert at the next gate.",
-  "/api/travel-rule/cases/[id]": "Legacy travel-rule case records: convert at the next gate.",
-  "/api/travel-rule/cases/[id]/notes": "Legacy travel-rule case records: convert at the next gate.",
-  "/api/travel-rule/cases/[id]/recheck": "Legacy travel-rule case records: convert at the next gate.",
-  "/api/travel-rule/cases/bulk": "Legacy travel-rule case records: convert at the next gate.",
-  "/api/travel-rule/vasp-directory": "Legacy travel-rule reference data: convert at the next gate.",
-  "/api/screening": "Legacy screening records: convert at the next gate.",
-  "/api/staking": "Legacy staking records: convert at the next gate.",
-  "/api/usdc-ramp": "Module off by default (module.usdc_ramp); convert before enabling.",
-  "/api/transaction-confirmations": "Legacy confirmation records: convert at the next gate.",
-  "/api/settlements/notes": "Legacy settlement notes: convert at the next gate.",
-  "/api/tokens": "Token review records (AI-assisted path off): convert at the next gate.",
+  // Empty since Phase 12g: every fail-closed route writes its audit trail
+  // through auditedAction / auditedResponse. Add an entry only with a reason
+  // and a plan; the test fails once the route is converted.
 };
 
 export function auditCategoryFor(routePath: string): { category: AuditCategory; note?: string } | null {

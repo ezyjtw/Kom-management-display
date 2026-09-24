@@ -5,6 +5,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createVaspSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/travel-rule/vasp-directory
@@ -41,33 +43,40 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createVaspSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { vaspDid, vaspName, email, notes } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "vasp_contact_changed", entityType: "vasp_contact", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Change a VASP directory entry", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createVaspSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { vaspDid, vaspName, email, notes } = body;
 
-    if (!vaspDid || !vaspName || !email) {
-      return apiValidationError("vaspDid, vaspName, and email are required");
-    }
+        if (!vaspDid || !vaspName || !email) {
+          return apiValidationError("vaspDid, vaspName, and email are required");
+        }
 
-    const [contact] = await prisma.$transaction([
-      prisma.vaspContact.upsert({
-        where: { vaspDid },
-        update: { vaspName, email, notes: notes || "" },
-        create: { vaspDid, vaspName, email, notes: notes || "" },
-      }),
-      prisma.auditLog.create({
-        data: {
-          action: "vasp_contact_upsert",
-          entityType: "vasp_contact",
-          entityId: "pending",
-          userId: auth.employeeId || auth.id,
-          details: JSON.stringify({ vaspDid, vaspName, email }),
-        },
-      }),
-    ]);
+        const [contact] = await prisma.$transaction([
+          prisma.vaspContact.upsert({
+            where: { vaspDid },
+            update: { vaspName, email, notes: notes || "" },
+            create: { vaspDid, vaspName, email, notes: notes || "" },
+          }),
+          prisma.auditLog.create({
+            data: {
+              action: "vasp_contact_upsert",
+              entityType: "vasp_contact",
+              entityId: "pending",
+              userId: auth.employeeId || auth.id,
+              details: JSON.stringify({ vaspDid, vaspName, email }),
+            },
+          }),
+        ]);
 
-    return apiSuccess(contact);
+        return apiSuccess(contact);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/vasp-directory");
   }

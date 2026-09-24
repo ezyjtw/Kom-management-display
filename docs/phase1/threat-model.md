@@ -125,7 +125,7 @@ Every mutation route is classified in `src/lib/api/audit-policy.ts`:
 
 - **Control, security, financial, configuration and administration** changes are fail-closed. A "requested" entry is written first; if it cannot be written, the action does not run (HTTP 503). The outcome is then recorded as "completed" or "failed" with the same correlation id. ALR-AUD-01 flags any "requested" entry that never got an outcome.
 - **Normal operational work** (inbox triage) may be fail-open.
-- The legacy routes not yet converted are listed as tracked gaps that can only shrink (test `control-mutations-fail-closed`).
+- Every fail-closed route now uses the fail-closed helpers; the tracked-gap list (`AUDIT_GAPS`) has been empty since Phase 12g, and the test `control-mutations-fail-closed` keeps it that way.
 
 ## 7. Reviewed exceptions
 
@@ -141,7 +141,6 @@ Every mutation route is classified in `src/lib/api/audit-policy.ts`:
 ## 8. Residual risks and future work
 
 - **MFA step-up.** Session freshness is not proof of MFA. Use the Entra authentication context (the `acrs` claim) for role changes, security settings, bulk export and destructive admin actions.
-- **Legacy fail-open routes.** travel-rule, screening, staking, confirmations and settlement notes. See `AUDIT_GAPS`; convert them at the next gate.
 - **Signed commits and images, and signature verification at deploy (SLSA 1).** Not wired yet. TODO(CONFIRM-SIGNING).
 - **Log shipping.** Depends on the platform's collector (see `logging.md`).
 - **Competency-based cover.** Cover eligibility is currently the deputy plus the configured team members. Competency is not modelled.

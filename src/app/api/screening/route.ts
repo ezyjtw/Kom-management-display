@@ -5,6 +5,8 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createScreeningSchema, updateScreeningSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/screening
@@ -64,30 +66,37 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createScreeningSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const data = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "screening_entry_created", entityType: "screening", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Create a screening entry", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createScreeningSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const data = parsed.data;
 
-    const entry = await prisma.screeningEntry.create({
-      data: {
-        transactionId: data.transactionId,
-        txHash: data.txHash ?? "",
-        asset: data.asset,
-        amount: data.amount ?? 0,
-        direction: data.direction ?? "IN",
-        screeningStatus: data.screeningStatus ?? "not_submitted",
-        classification: data.classification ?? "unclassified",
-        isKnownException: data.isKnownException ?? false,
-        exceptionReason: data.exceptionReason ?? "",
-        analyticsAlertId: data.analyticsAlertId ?? "",
-        analyticsStatus: data.analyticsStatus ?? "none",
-        complianceReviewStatus: data.complianceReviewStatus ?? "none",
-        notes: data.notes ?? "",
+        const entry = await prisma.screeningEntry.create({
+          data: {
+            transactionId: data.transactionId,
+            txHash: data.txHash ?? "",
+            asset: data.asset,
+            amount: data.amount ?? 0,
+            direction: data.direction ?? "IN",
+            screeningStatus: data.screeningStatus ?? "not_submitted",
+            classification: data.classification ?? "unclassified",
+            isKnownException: data.isKnownException ?? false,
+            exceptionReason: data.exceptionReason ?? "",
+            analyticsAlertId: data.analyticsAlertId ?? "",
+            analyticsStatus: data.analyticsStatus ?? "none",
+            complianceReviewStatus: data.complianceReviewStatus ?? "none",
+            notes: data.notes ?? "",
+          },
+        });
+
+        return apiSuccess(entry, undefined, 201);
       },
-    });
-
-    return apiSuccess(entry, undefined, 201);
+    );
   } catch (error) {
     return handleApiError(error, "screening POST");
   }
@@ -106,46 +115,53 @@ export async function PATCH(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(updateScreeningSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { id, ...fields } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "screening_entry_updated", entityType: "screening", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Update a screening entry", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(updateScreeningSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { id, ...fields } = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
-    const updateData: Record<string, unknown> = {};
+        const actorId = auth.employeeId || auth.id;
+        const updateData: Record<string, unknown> = {};
 
-    if (fields.classification !== undefined) {
-      updateData.classification = fields.classification;
-      updateData.reclassifiedAt = new Date();
-      updateData.reclassifiedById = actorId;
-    }
-    if (fields.screeningStatus !== undefined) updateData.screeningStatus = fields.screeningStatus;
-    if (fields.analyticsStatus !== undefined) updateData.analyticsStatus = fields.analyticsStatus;
-    if (fields.complianceReviewStatus !== undefined) updateData.complianceReviewStatus = fields.complianceReviewStatus;
-    if (fields.notes !== undefined) updateData.notes = fields.notes;
-    if (fields.isKnownException !== undefined) {
-      updateData.isKnownException = fields.isKnownException;
-      updateData.exceptionReason = fields.exceptionReason || "";
-    }
+        if (fields.classification !== undefined) {
+          updateData.classification = fields.classification;
+          updateData.reclassifiedAt = new Date();
+          updateData.reclassifiedById = actorId;
+        }
+        if (fields.screeningStatus !== undefined) updateData.screeningStatus = fields.screeningStatus;
+        if (fields.analyticsStatus !== undefined) updateData.analyticsStatus = fields.analyticsStatus;
+        if (fields.complianceReviewStatus !== undefined) updateData.complianceReviewStatus = fields.complianceReviewStatus;
+        if (fields.notes !== undefined) updateData.notes = fields.notes;
+        if (fields.isKnownException !== undefined) {
+          updateData.isKnownException = fields.isKnownException;
+          updateData.exceptionReason = fields.exceptionReason || "";
+        }
 
-    const [entry] = await prisma.$transaction([
-      prisma.screeningEntry.update({ where: { id }, data: updateData }),
-      ...(fields.classification !== undefined
-        ? [
-            prisma.auditLog.create({
-              data: {
-                action: "screening_reclassified",
-                entityType: "screening",
-                entityId: id,
-                userId: actorId,
-                details: JSON.stringify({ classification: fields.classification }),
-              },
-            }),
-          ]
-        : []),
-    ]);
+        const [entry] = await prisma.$transaction([
+          prisma.screeningEntry.update({ where: { id }, data: updateData }),
+          ...(fields.classification !== undefined
+            ? [
+                prisma.auditLog.create({
+                  data: {
+                    action: "screening_reclassified",
+                    entityType: "screening",
+                    entityId: id,
+                    userId: actorId,
+                    details: JSON.stringify({ classification: fields.classification }),
+                  },
+                }),
+              ]
+            : []),
+        ]);
 
-    return apiSuccess(entry);
+        return apiSuccess(entry);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "screening PATCH");
   }

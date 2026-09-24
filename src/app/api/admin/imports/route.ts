@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth-user";
 import { apiSuccess, apiValidationError } from "@/lib/api/response";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 import { filenameIssues, IMPORT_TEMPLATES, templateStatus } from "@/modules/imports/templates";
 
 /** GET /api/admin/imports — import templates and whether each is usable yet. */
@@ -27,17 +29,24 @@ const uploadSchema = z.object({
 export async function POST(request: NextRequest) {
   const auth = await requireRole("admin");
   if (auth instanceof NextResponse) return auth;
-  const parsed = uploadSchema.safeParse(await request.json().catch(() => ({})));
-  if (!parsed.success) return apiValidationError("template, filename and dataDate (YYYY-MM-DD) are required");
-  const template = IMPORT_TEMPLATES.find((t) => t.id === parsed.data.template);
-  if (!template) return apiValidationError("Unknown import template");
-  const issues = await filenameIssues(template.id, parsed.data.filename, parsed.data.dataDate);
-  if (issues.length) return NextResponse.json({ success: false, error: issues.join(" "), issues }, { status: 422 });
-  if (!template.parse) {
-    return NextResponse.json(
-      { success: false, error: `Import template "${template.id}" is not defined yet (${template.confirmId}). A real export is needed to build it.` },
-      { status: 422 },
-    );
-  }
-  return apiValidationError("Uploads are enabled per template once defined");
+  const actor = auditActor(auth);
+  // Fail-closed audit: an import changes control evidence (spec §17.7).
+  return auditedResponse(
+    { action: "import_upload_requested", entityType: "import", entityId: "upload", userId: actor.userId, summary: "Upload an import file", metadata: actor.metadata },
+    async () => {
+      const parsed = uploadSchema.safeParse(await request.json().catch(() => ({})));
+      if (!parsed.success) return apiValidationError("template, filename and dataDate (YYYY-MM-DD) are required");
+      const template = IMPORT_TEMPLATES.find((t) => t.id === parsed.data.template);
+      if (!template) return apiValidationError("Unknown import template");
+      const issues = await filenameIssues(template.id, parsed.data.filename, parsed.data.dataDate);
+      if (issues.length) return NextResponse.json({ success: false, error: issues.join(" "), issues }, { status: 422 });
+      if (!template.parse) {
+        return NextResponse.json(
+          { success: false, error: `Import template "${template.id}" is not defined yet (${template.confirmId}). A real export is needed to build it.` },
+          { status: 422 },
+        );
+      }
+      return apiValidationError("Uploads are enabled per template once defined");
+    },
+  );
 }

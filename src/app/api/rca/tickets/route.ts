@@ -8,6 +8,8 @@ import { z } from "zod";
 import { validateBody } from "@/lib/validation";
 import { browseUrl, getIssue, isAtlassianConfigured } from "@/lib/integrations/atlassian/client";
 import { env } from "@/lib/env";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * Only tickets on the Komainu Jira site are read here. Vendor tickets on other
@@ -203,62 +205,69 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const parsed = validateBody(rcaActionSchema, await request.json());
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const body = parsed.data;
-    const { incidentId } = body;
-    const actorId = auth.employeeId || auth.id;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "rca_ticket_action", entityType: "incident", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "RCA ticket action", metadata: auditActorInfo.metadata },
+      async () => {
+        const parsed = validateBody(rcaActionSchema, await request.json());
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const body = parsed.data;
+        const { incidentId } = body;
+        const actorId = auth.employeeId || auth.id;
 
-    switch (body.action) {
-      case "link": {
-        const url = body.ticketUrl || browseUrl(body.ticketRef) || "";
-        await prisma.$transaction([
-          prisma.incident.update({ where: { id: incidentId }, data: { externalTicketRef: body.ticketRef, externalTicketUrl: url } }),
-          prisma.externalTicketEvent.create({
-            data: { incidentId, event: "status_changed", toStatus: "linked", performedBy: actorId, reason: `Linked external ticket ${body.ticketRef}` },
-          }),
-        ]);
-        return apiSuccess(undefined);
-      }
+        switch (body.action) {
+          case "link": {
+            const url = body.ticketUrl || browseUrl(body.ticketRef) || "";
+            await prisma.$transaction([
+              prisma.incident.update({ where: { id: incidentId }, data: { externalTicketRef: body.ticketRef, externalTicketUrl: url } }),
+              prisma.externalTicketEvent.create({
+                data: { incidentId, event: "status_changed", toStatus: "linked", performedBy: actorId, reason: `Linked external ticket ${body.ticketRef}` },
+              }),
+            ]);
+            return apiSuccess(undefined);
+          }
 
-      case "dispute": {
-        await prisma.$transaction([
-          prisma.incident.update({ where: { id: incidentId }, data: { externalTicketDisputed: true, externalTicketDisputeReason: body.reason } }),
-          prisma.externalTicketEvent.create({
-            data: { incidentId, event: "disputed", performedBy: actorId, reason: body.reason, jiraComment: body.draftComment ? `DRAFT (not sent): ${body.draftComment}` : "" },
-          }),
-        ]);
-        return apiSuccess({ draftComment: body.draftComment ?? null, sent: false });
-      }
+          case "dispute": {
+            await prisma.$transaction([
+              prisma.incident.update({ where: { id: incidentId }, data: { externalTicketDisputed: true, externalTicketDisputeReason: body.reason } }),
+              prisma.externalTicketEvent.create({
+                data: { incidentId, event: "disputed", performedBy: actorId, reason: body.reason, jiraComment: body.draftComment ? `DRAFT (not sent): ${body.draftComment}` : "" },
+              }),
+            ]);
+            return apiSuccess({ draftComment: body.draftComment ?? null, sent: false });
+          }
 
-      case "reopen_request": {
-        await prisma.externalTicketEvent.create({
-          data: {
-            incidentId, event: "reopen_requested", performedBy: actorId,
-            reason: body.reason || "Requested provider to reopen ticket",
-            jiraComment: `DRAFT (not sent): ${body.draftComment}`,
-          },
-        });
-        return apiSuccess({ draftComment: body.draftComment, sent: false });
-      }
+          case "reopen_request": {
+            await prisma.externalTicketEvent.create({
+              data: {
+                incidentId, event: "reopen_requested", performedBy: actorId,
+                reason: body.reason || "Requested provider to reopen ticket",
+                jiraComment: `DRAFT (not sent): ${body.draftComment}`,
+              },
+            });
+            return apiSuccess({ draftComment: body.draftComment, sent: false });
+          }
 
-      case "comment_sent": {
-        await prisma.externalTicketEvent.create({
-          data: { incidentId, event: "comment_sent_by_human", performedBy: actorId, reason: body.note || "Drafted comment sent to the provider by a person" },
-        });
-        return apiSuccess(undefined);
-      }
+          case "comment_sent": {
+            await prisma.externalTicketEvent.create({
+              data: { incidentId, event: "comment_sent_by_human", performedBy: actorId, reason: body.note || "Drafted comment sent to the provider by a person" },
+            });
+            return apiSuccess(undefined);
+          }
 
-      case "resolve_dispute": {
-        await prisma.$transaction([
-          prisma.incident.update({ where: { id: incidentId }, data: { externalTicketDisputed: false, externalTicketDisputeReason: "" } }),
-          prisma.externalTicketEvent.create({
-            data: { incidentId, event: "reopen_confirmed", performedBy: actorId, reason: body.reason || "Dispute resolved — ticket reopened or satisfactory" },
-          }),
-        ]);
-        return apiSuccess(undefined);
-      }
-    }
+          case "resolve_dispute": {
+            await prisma.$transaction([
+              prisma.incident.update({ where: { id: incidentId }, data: { externalTicketDisputed: false, externalTicketDisputeReason: "" } }),
+              prisma.externalTicketEvent.create({
+                data: { incidentId, event: "reopen_confirmed", performedBy: actorId, reason: body.reason || "Dispute resolved — ticket reopened or satisfactory" },
+              }),
+            ]);
+            return apiSuccess(undefined);
+          }
+        }
+      },
+    );
   } catch (error) {
     return handleApiError(error, "rca/tickets POST");
   }

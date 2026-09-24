@@ -9,7 +9,10 @@ import { NextRequest } from "next/server";
 const settings = vi.hoisted(() => ({ patterns: {} as Record<string, string> }));
 vi.mock("@/lib/auth-user", () => ({ requireRole: vi.fn(async () => ({ id: "u", role: "admin", employeeId: "e" })) }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { appSetting: { findUnique: vi.fn(async () => ({ key: "imports.filenamePatterns", value: settings.patterns })) } },
+  prisma: {
+    appSetting: { findUnique: vi.fn(async () => ({ key: "imports.filenamePatterns", value: settings.patterns })) },
+    auditLog: { create: vi.fn(async () => ({})) }, // uploads are audited fail-closed
+  },
 }));
 
 import { GET, POST } from "@/app/api/admin/imports/route";

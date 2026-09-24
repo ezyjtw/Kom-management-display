@@ -5,6 +5,8 @@ import { requireAuthorization, requireRecordAccess } from "@/modules/auth/servic
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createTravelRuleCaseNoteSchema } from "@/lib/validation";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * POST /api/travel-rule/cases/:id/notes
@@ -27,60 +29,67 @@ export async function POST(
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(createTravelRuleCaseNoteSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { content } = body;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "travel_rule_case_note_added", entityType: "travel_rule_case", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Add a travel-rule case note", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(createTravelRuleCaseNoteSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { content } = body;
 
-    if (!content || typeof content !== "string" || !content.trim()) {
-      return apiValidationError("content is required");
-    }
+        if (!content || typeof content !== "string" || !content.trim()) {
+          return apiValidationError("content is required");
+        }
 
-    const travelCase = await prisma.travelRuleCase.findUnique({
-      where: { id: params.id },
-    });
+        const travelCase = await prisma.travelRuleCase.findUnique({
+          where: { id: params.id },
+        });
 
-    if (!travelCase) {
-      return apiNotFoundError("Case");
-    }
+        if (!travelCase) {
+          return apiNotFoundError("Case");
+        }
 
-    if (travelCase.ownerUserId) {
-      const ownerEmp = await prisma.employee.findUnique({
-        where: { id: travelCase.ownerUserId },
-        select: { team: true },
-      });
-      const accessError = requireRecordAccess(auth, authz.scope, {
-        ownerId: travelCase.ownerUserId,
-        team: ownerEmp?.team ?? null,
-      });
-      if (accessError) return accessError;
-    }
+        if (travelCase.ownerUserId) {
+          const ownerEmp = await prisma.employee.findUnique({
+            where: { id: travelCase.ownerUserId },
+            select: { team: true },
+          });
+          const accessError = requireRecordAccess(auth, authz.scope, {
+            ownerId: travelCase.ownerUserId,
+            team: ownerEmp?.team ?? null,
+          });
+          if (accessError) return accessError;
+        }
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    const [note] = await prisma.$transaction([
-      prisma.caseNote.create({
-        data: {
-          caseId: params.id,
-          authorId: actorId,
-          content: content.trim(),
-        },
-        include: { author: { select: { name: true } } },
-      }),
-      prisma.auditLog.create({
-        data: {
-          action: "case_note_added",
-          entityType: "travel_rule_case",
-          entityId: params.id,
-          userId: actorId,
-          details: JSON.stringify({
-            description: `Note added by ${auth.name || "analyst"}`,
+        const [note] = await prisma.$transaction([
+          prisma.caseNote.create({
+            data: {
+              caseId: params.id,
+              authorId: actorId,
+              content: content.trim(),
+            },
+            include: { author: { select: { name: true } } },
           }),
-        },
-      }),
-    ]);
+          prisma.auditLog.create({
+            data: {
+              action: "case_note_added",
+              entityType: "travel_rule_case",
+              entityId: params.id,
+              userId: actorId,
+              details: JSON.stringify({
+                description: `Note added by ${auth.name || "analyst"}`,
+              }),
+            },
+          }),
+        ]);
 
-    return apiSuccess(note, undefined, 201);
+        return apiSuccess(note, undefined, 201);
+      },
+    );
   } catch (error) {
     return handleApiError(error, "POST /api/travel-rule/cases/[id]/notes");
   }

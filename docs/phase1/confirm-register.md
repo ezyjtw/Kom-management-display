@@ -82,7 +82,7 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-GRAPH-DELTA | `src/lib/integrations/graph/client.ts` |
 | CONFIRM-GRAPH-MAIL-SEND | `src/lib/integrations/graph/client.ts`, `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-IAI-INCIDENT-CRITERIA | `src/modules/incidents/services/incident-service.ts`, `src/modules/settings/registry.ts` |
-| CONFIRM-IMPORT-FILENAMES | `src/__tests__/imports.test.ts`, `src/lib/api/audit-policy.ts`, `src/modules/imports/templates.ts`, `src/modules/settings/registry.ts` |
+| CONFIRM-IMPORT-FILENAMES | `src/__tests__/imports.test.ts`, `src/modules/imports/templates.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-JIRA-AUTOMATION-API | `docs/phase1/jira-inventory.md`, `src/__tests__/jira-inventory.test.ts`, `src/modules/jira-inventory/collect.ts` |
 | CONFIRM-JIRA-CONSOLIDATION | `docs/phase1/jira-consolidation.json`, `docs/phase1/jira-inventory.md`, `src/__tests__/jira-inventory.test.ts`, `src/modules/jira-inventory/report.ts` |
 | CONFIRM-KOMAINU-OPENAPI | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `scripts/check-komainu-api-spec.ts`, `src/__tests__/integration/komainu-api-contract.test.ts` +5 |

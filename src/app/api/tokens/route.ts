@@ -9,6 +9,8 @@ import { validateBody, tokenActionSchema } from "@/lib/validation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { jiraView, ticketTokenReview, writeTokenChange } from "@/modules/tokens/jira-sync";
 import { TicketWriteError } from "@/modules/work-items/ticket-writeback";
+import { auditedResponse } from "@/lib/api/audit";
+import { auditActor } from "@/modules/core-data/audit-actor";
 
 /**
  * GET /api/tokens
@@ -163,215 +165,222 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = await request.json();
-    const parsed = validateBody(tokenActionSchema, body);
-    if (!parsed.success) return apiValidationError(parsed.error);
-    const { action } = parsed.data;
+    const auditActorInfo = auditActor(auth);
+    // Fail-closed audit (spec §17.7, audit policy: src/lib/api/audit-policy.ts).
+    return await auditedResponse(
+      { action: "token_review_action", entityType: "token_review", entityId: new URL(request.url).pathname, userId: auditActorInfo.userId, summary: "Token review action", metadata: auditActorInfo.metadata },
+      async () => {
+        const body = await request.json();
+        const parsed = validateBody(tokenActionSchema, body);
+        if (!parsed.success) return apiValidationError(parsed.error);
+        const { action } = parsed.data;
 
-    const actorId = auth.employeeId || auth.id;
+        const actorId = auth.employeeId || auth.id;
 
-    switch (action) {
-      case "create": {
-        const { symbol, name, network, contractAddress, tokenType, riskLevel, marketCapTier, notes, custodianSupport, stakingAvailable } = body;
-        if (!symbol || !name) {
-          return apiValidationError("symbol and name are required");
+        switch (action) {
+          case "create": {
+            const { symbol, name, network, contractAddress, tokenType, riskLevel, marketCapTier, notes, custodianSupport, stakingAvailable } = body;
+            if (!symbol || !name) {
+              return apiValidationError("symbol and name are required");
+            }
+
+            // Auto-detect vendor support from Ledger Enterprise & Fireblocks reference data
+            const vendorDetection = detectVendorSupport(
+              symbol,
+              network || "",
+              tokenType || "native",
+            );
+            const vendorNotesAuto = getVendorNotes(
+              symbol,
+              network || "",
+              tokenType || "native",
+            );
+
+            const token = await prisma.tokenReview.create({
+              data: {
+                symbol: symbol.toUpperCase(),
+                name,
+                network: network || "",
+                contractAddress: contractAddress || "",
+                tokenType: tokenType || "native",
+                riskLevel: riskLevel || "medium",
+                marketCapTier: marketCapTier || "unknown",
+                notes: notes || "",
+                custodianSupport: custodianSupport ? JSON.stringify(custodianSupport) : "[]",
+                stakingAvailable: stakingAvailable || false,
+                proposedById: actorId,
+                status: "proposed",
+                fireblocksSupport: body.fireblocksSupport || vendorDetection.fireblocksSupport,
+                ledgerSupport: body.ledgerSupport || vendorDetection.ledgerSupport,
+                notabeneSupport: body.notabeneSupport || vendorDetection.notabeneSupport,
+                vendorNotes: JSON.stringify(vendorNotesAuto),
+                // Token listing checklist fields
+                jiraTicket: body.jiraTicket || "",
+                complianceDoc: body.complianceDoc || "",
+                launchDate: body.launchDate || "",
+                founders: body.founders || "",
+                website: body.website || "",
+                supportedNetworks: body.supportedNetworks ? JSON.stringify(body.supportedNetworks) : "",
+                whitepaper: body.whitepaper || "",
+                explorer: body.explorer || "",
+                blockchainAnalytics: body.blockchainAnalytics || "unknown",
+                travelRuleNotabene: body.travelRuleNotabene || false,
+                priceFeedCoingecko: body.priceFeedCoingecko || false,
+                consensusMechanism: body.consensusMechanism || "",
+                privacyToken: body.privacyToken || false,
+                smartContractReview: body.smartContractReview || false,
+                smartContractReviewNotes: body.smartContractReviewNotes || "",
+                jurisdictionStatus: body.jurisdictionStatus ? JSON.stringify(body.jurisdictionStatus) : "",
+              },
+            });
+
+            // CHK-13: open or link the TOKENS ticket (failures are kept for the unticketed report).
+            const item = await ticketTokenReview(token.id).catch(() => null);
+            return apiSuccess({ id: token.id, jiraTicket: item?.ticketKey ?? null });
+          }
+
+          case "update_status": {
+            const { tokenId, newStatus, reason } = body;
+            if (!tokenId || !newStatus) {
+              return apiValidationError("tokenId and newStatus are required");
+            }
+
+            const validStatuses = ["proposed", "under_review", "compliance_review", "approved", "rejected", "live"];
+            if (!validStatuses.includes(newStatus)) {
+              return apiValidationError(`Invalid status: ${newStatus}`);
+            }
+
+            const updateData: Record<string, unknown> = { status: newStatus };
+
+            // Set timestamps and reviewer fields based on status
+            if (newStatus === "under_review") {
+              updateData.reviewedById = actorId;
+              updateData.reviewedAt = new Date();
+            } else if (newStatus === "compliance_review") {
+              updateData.complianceById = actorId;
+              updateData.complianceAt = new Date();
+            } else if (newStatus === "approved") {
+              updateData.approvedAt = new Date();
+            } else if (newStatus === "rejected") {
+              updateData.rejectedAt = new Date();
+              updateData.rejectionReason = reason || "";
+            } else if (newStatus === "live") {
+              updateData.liveAt = new Date();
+            }
+
+            await writeTokenChange(tokenId, `Review status changed to ${newStatus}${reason ? `: ${reason}` : ""}.`);
+            await prisma.tokenReview.update({
+              where: { id: tokenId },
+              data: updateData,
+            });
+
+            return apiSuccess(undefined);
+          }
+
+          case "add_signal": {
+            const { tokenId, signalType, source, description, weight } = body;
+            if (!tokenId || !signalType) {
+              return apiValidationError("tokenId and signalType are required");
+            }
+
+            await prisma.$transaction(async (tx) => {
+              await tx.tokenDemandSignal.create({
+                data: {
+                  tokenReviewId: tokenId,
+                  signalType,
+                  source: source || "",
+                  description: description || "",
+                  weight: weight || 1,
+                  recordedById: actorId,
+                },
+              });
+
+              // Recompute demand score: sum of signal weights, capped at 100
+              const signals = await tx.tokenDemandSignal.findMany({
+                where: { tokenReviewId: tokenId },
+              });
+              const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0) * 10);
+              await tx.tokenReview.update({
+                where: { id: tokenId },
+                data: { demandScore: score },
+              });
+            });
+
+            return apiSuccess(undefined);
+          }
+
+          case "update": {
+            const { tokenId } = body;
+            if (!tokenId) {
+              return apiValidationError("tokenId is required");
+            }
+
+            const updateData: Record<string, unknown> = {};
+            const allowedFields = [
+              "riskLevel", "riskNotes", "regulatoryNotes", "sanctionsCheck",
+              "amlRiskAssessed", "stakingAvailable", "marketCapTier", "notes",
+              "network", "contractAddress",
+              "chainalysisSupport", "notabeneSupport", "fireblocksSupport", "ledgerSupport",
+              // Token listing checklist fields
+              "jiraTicket", "complianceDoc", "launchDate", "founders", "website",
+              "whitepaper", "explorer", "blockchainAnalytics",
+              "travelRuleNotabene", "priceFeedCoingecko", "consensusMechanism", "privacyToken",
+              "smartContractReview", "smartContractReviewNotes",
+            ];
+            for (const field of allowedFields) {
+              if (body[field] !== undefined) updateData[field] = body[field];
+            }
+            if (body.custodianSupport !== undefined) {
+              updateData.custodianSupport = JSON.stringify(body.custodianSupport);
+            }
+            if (body.vendorNotes !== undefined) {
+              updateData.vendorNotes = JSON.stringify(body.vendorNotes);
+            }
+            if (body.supportedNetworks !== undefined) {
+              updateData.supportedNetworks = JSON.stringify(body.supportedNetworks);
+            }
+            if (body.jurisdictionStatus !== undefined) {
+              updateData.jurisdictionStatus = JSON.stringify(body.jurisdictionStatus);
+            }
+
+            const changed = Object.keys(updateData).filter((k) => k !== "jiraTicket");
+            if (changed.length) await writeTokenChange(tokenId, `Review fields updated in KOMmand Centre: ${changed.join(", ")}.`);
+            await prisma.tokenReview.update({
+              where: { id: tokenId },
+              data: updateData,
+            });
+            if (updateData.jiraTicket) await ticketTokenReview(tokenId).catch(() => null);
+
+            return apiSuccess(undefined);
+          }
+
+          case "save_research": {
+            // AI research and discovery are disabled (spec §12 CHK-13, H3).
+            if (!(await isFeatureEnabled("ai.enabled"))) {
+              return NextResponse.json({ success: false, error: "AI research is disabled." }, { status: 404 });
+            }
+            const { tokenId, researchResult, recommendation } = body;
+            if (!tokenId || !researchResult) {
+              return apiValidationError("tokenId and researchResult are required");
+            }
+
+            await prisma.tokenReview.update({
+              where: { id: tokenId },
+              data: {
+                aiResearchResult: JSON.stringify(researchResult),
+                aiResearchedAt: new Date(),
+                aiRecommendation: recommendation || "",
+              },
+            });
+
+            return apiSuccess(undefined);
+          }
+
+          default:
+            return apiValidationError(`Unknown action: ${action}`);
         }
-
-        // Auto-detect vendor support from Ledger Enterprise & Fireblocks reference data
-        const vendorDetection = detectVendorSupport(
-          symbol,
-          network || "",
-          tokenType || "native",
-        );
-        const vendorNotesAuto = getVendorNotes(
-          symbol,
-          network || "",
-          tokenType || "native",
-        );
-
-        const token = await prisma.tokenReview.create({
-          data: {
-            symbol: symbol.toUpperCase(),
-            name,
-            network: network || "",
-            contractAddress: contractAddress || "",
-            tokenType: tokenType || "native",
-            riskLevel: riskLevel || "medium",
-            marketCapTier: marketCapTier || "unknown",
-            notes: notes || "",
-            custodianSupport: custodianSupport ? JSON.stringify(custodianSupport) : "[]",
-            stakingAvailable: stakingAvailable || false,
-            proposedById: actorId,
-            status: "proposed",
-            fireblocksSupport: body.fireblocksSupport || vendorDetection.fireblocksSupport,
-            ledgerSupport: body.ledgerSupport || vendorDetection.ledgerSupport,
-            notabeneSupport: body.notabeneSupport || vendorDetection.notabeneSupport,
-            vendorNotes: JSON.stringify(vendorNotesAuto),
-            // Token listing checklist fields
-            jiraTicket: body.jiraTicket || "",
-            complianceDoc: body.complianceDoc || "",
-            launchDate: body.launchDate || "",
-            founders: body.founders || "",
-            website: body.website || "",
-            supportedNetworks: body.supportedNetworks ? JSON.stringify(body.supportedNetworks) : "",
-            whitepaper: body.whitepaper || "",
-            explorer: body.explorer || "",
-            blockchainAnalytics: body.blockchainAnalytics || "unknown",
-            travelRuleNotabene: body.travelRuleNotabene || false,
-            priceFeedCoingecko: body.priceFeedCoingecko || false,
-            consensusMechanism: body.consensusMechanism || "",
-            privacyToken: body.privacyToken || false,
-            smartContractReview: body.smartContractReview || false,
-            smartContractReviewNotes: body.smartContractReviewNotes || "",
-            jurisdictionStatus: body.jurisdictionStatus ? JSON.stringify(body.jurisdictionStatus) : "",
-          },
-        });
-
-        // CHK-13: open or link the TOKENS ticket (failures are kept for the unticketed report).
-        const item = await ticketTokenReview(token.id).catch(() => null);
-        return apiSuccess({ id: token.id, jiraTicket: item?.ticketKey ?? null });
-      }
-
-      case "update_status": {
-        const { tokenId, newStatus, reason } = body;
-        if (!tokenId || !newStatus) {
-          return apiValidationError("tokenId and newStatus are required");
-        }
-
-        const validStatuses = ["proposed", "under_review", "compliance_review", "approved", "rejected", "live"];
-        if (!validStatuses.includes(newStatus)) {
-          return apiValidationError(`Invalid status: ${newStatus}`);
-        }
-
-        const updateData: Record<string, unknown> = { status: newStatus };
-
-        // Set timestamps and reviewer fields based on status
-        if (newStatus === "under_review") {
-          updateData.reviewedById = actorId;
-          updateData.reviewedAt = new Date();
-        } else if (newStatus === "compliance_review") {
-          updateData.complianceById = actorId;
-          updateData.complianceAt = new Date();
-        } else if (newStatus === "approved") {
-          updateData.approvedAt = new Date();
-        } else if (newStatus === "rejected") {
-          updateData.rejectedAt = new Date();
-          updateData.rejectionReason = reason || "";
-        } else if (newStatus === "live") {
-          updateData.liveAt = new Date();
-        }
-
-        await writeTokenChange(tokenId, `Review status changed to ${newStatus}${reason ? `: ${reason}` : ""}.`);
-        await prisma.tokenReview.update({
-          where: { id: tokenId },
-          data: updateData,
-        });
-
-        return apiSuccess(undefined);
-      }
-
-      case "add_signal": {
-        const { tokenId, signalType, source, description, weight } = body;
-        if (!tokenId || !signalType) {
-          return apiValidationError("tokenId and signalType are required");
-        }
-
-        await prisma.$transaction(async (tx) => {
-          await tx.tokenDemandSignal.create({
-            data: {
-              tokenReviewId: tokenId,
-              signalType,
-              source: source || "",
-              description: description || "",
-              weight: weight || 1,
-              recordedById: actorId,
-            },
-          });
-
-          // Recompute demand score: sum of signal weights, capped at 100
-          const signals = await tx.tokenDemandSignal.findMany({
-            where: { tokenReviewId: tokenId },
-          });
-          const score = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0) * 10);
-          await tx.tokenReview.update({
-            where: { id: tokenId },
-            data: { demandScore: score },
-          });
-        });
-
-        return apiSuccess(undefined);
-      }
-
-      case "update": {
-        const { tokenId } = body;
-        if (!tokenId) {
-          return apiValidationError("tokenId is required");
-        }
-
-        const updateData: Record<string, unknown> = {};
-        const allowedFields = [
-          "riskLevel", "riskNotes", "regulatoryNotes", "sanctionsCheck",
-          "amlRiskAssessed", "stakingAvailable", "marketCapTier", "notes",
-          "network", "contractAddress",
-          "chainalysisSupport", "notabeneSupport", "fireblocksSupport", "ledgerSupport",
-          // Token listing checklist fields
-          "jiraTicket", "complianceDoc", "launchDate", "founders", "website",
-          "whitepaper", "explorer", "blockchainAnalytics",
-          "travelRuleNotabene", "priceFeedCoingecko", "consensusMechanism", "privacyToken",
-          "smartContractReview", "smartContractReviewNotes",
-        ];
-        for (const field of allowedFields) {
-          if (body[field] !== undefined) updateData[field] = body[field];
-        }
-        if (body.custodianSupport !== undefined) {
-          updateData.custodianSupport = JSON.stringify(body.custodianSupport);
-        }
-        if (body.vendorNotes !== undefined) {
-          updateData.vendorNotes = JSON.stringify(body.vendorNotes);
-        }
-        if (body.supportedNetworks !== undefined) {
-          updateData.supportedNetworks = JSON.stringify(body.supportedNetworks);
-        }
-        if (body.jurisdictionStatus !== undefined) {
-          updateData.jurisdictionStatus = JSON.stringify(body.jurisdictionStatus);
-        }
-
-        const changed = Object.keys(updateData).filter((k) => k !== "jiraTicket");
-        if (changed.length) await writeTokenChange(tokenId, `Review fields updated in KOMmand Centre: ${changed.join(", ")}.`);
-        await prisma.tokenReview.update({
-          where: { id: tokenId },
-          data: updateData,
-        });
-        if (updateData.jiraTicket) await ticketTokenReview(tokenId).catch(() => null);
-
-        return apiSuccess(undefined);
-      }
-
-      case "save_research": {
-        // AI research and discovery are disabled (spec §12 CHK-13, H3).
-        if (!(await isFeatureEnabled("ai.enabled"))) {
-          return NextResponse.json({ success: false, error: "AI research is disabled." }, { status: 404 });
-        }
-        const { tokenId, researchResult, recommendation } = body;
-        if (!tokenId || !researchResult) {
-          return apiValidationError("tokenId and researchResult are required");
-        }
-
-        await prisma.tokenReview.update({
-          where: { id: tokenId },
-          data: {
-            aiResearchResult: JSON.stringify(researchResult),
-            aiResearchedAt: new Date(),
-            aiRecommendation: recommendation || "",
-          },
-        });
-
-        return apiSuccess(undefined);
-      }
-
-      default:
-        return apiValidationError(`Unknown action: ${action}`);
-    }
+      },
+    );
   } catch (error) {
     if (error instanceof TicketWriteError) {
       return NextResponse.json({ success: false, error: `Not saved: ${error.message}` }, { status: 409 });

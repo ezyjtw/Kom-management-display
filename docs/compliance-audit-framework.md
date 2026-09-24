@@ -10,7 +10,7 @@
 > - Sessions are Entra SSO with a 12 h lifetime, not 24 h password sessions.
 > - AI and scoring are off (H3, H4).
 >
-> Where a control is a known gap, it says so and points to `AUDIT_GAPS` or `docs/phase1/schema-drift.md`. The authoritative security documents are in `docs/phase1/`: `threat-model.md`, `data-inventory.md`, `credentials.md`, `logging.md` and `slack-scopes.md`.
+> Where a control is a known gap, it says so and points to where it is tracked. The authoritative security documents are in `docs/phase1/`: `threat-model.md`, `data-inventory.md`, `credentials.md`, `logging.md` and `slack-scopes.md`.
 
 ## KOMmand Centre — Regulatory & Audit Readiness
 
@@ -60,7 +60,7 @@ KOMmand Centre is an internal operations platform used by a 10-person digital as
 This document maps KOMmand Centre's technical and operational controls to the requirements of SOC 1, SOC 2, ISO 27001/27701, and the regulatory frameworks of the FCA (UK), JFSC (Jersey), VARA (UAE), MiCAR (EU), and MAS (Singapore).
 
 **Key Control Principles:**
-- Every mutation route has an audit category (src/lib/api/audit-policy.ts); control, security, financial, configuration and administration changes are audited fail-closed. Listed legacy routes are tracked gaps (see §3.1 CO-3).
+- Every mutation route has an audit category (src/lib/api/audit-policy.ts); control, security, financial, configuration and administration changes are audited fail-closed. The former legacy gaps were converted in Phase 12g; none remain.
 - Role-based access control (RBAC) with four roles: Admin, Lead, Employee, Auditor
 - Every API route is authenticated (middleware plus route guards; test api-route-guards) and authorised (AUTHORIZATION_MATRIX, record and client scope).
 - All user input is validated with Zod schemas before processing
@@ -91,10 +91,10 @@ SOC 1 examines controls relevant to user entities' financial reporting (ICFR). F
 | Control Objective | Control Activity | KOMmand Centre Evidence | Type I (Design) | Type II (Operating) |
 |---|---|---|---|---|
 | **CO-1: Transaction processing is authorised** | **Not a KOMmand control.** KOMmand has no transaction approval path (H1): transactions are approved in the custody platform, and the Komainu API client is read-only (H2). KOMmand evidences *monitoring* of settlements, not their authorisation. | `OesSettlement` has `makerById`/`checkerById` fields, but **no KOMmand route sets the checker today**, so no maker-checker control on settlements is claimed. | n/a | Authorisation evidence comes from the custody platform's own records. |
-| **CO-2: Transactions are recorded completely and accurately** | Transaction confirmation workflow | `TransactionConfirmation` model tracks high-risk transactions with acknowledgment, sign-off and escalation states. Expiry deadlines trigger alerts. | ConfirmationStatus enum enforces valid states. | **Gap:** the confirmation routes do not yet write audit entries (listed in `AUDIT_GAPS`, to be converted to fail-closed audit at the next gate). Until then, evidence is the record's own `acknowledgedById` / `signedOffById` fields. |
+| **CO-2: Transactions are recorded completely and accurately** | Transaction confirmation workflow | `TransactionConfirmation` model tracks high-risk transactions with acknowledgment, sign-off and escalation states. Expiry deadlines trigger alerts. | ConfirmationStatus enum enforces valid states. | Every confirmation action is audited fail-closed (`transaction_confirmation_action`: requested, then completed or failed, with a correlation id; Phase 12g). Evidence is also on the record (`acknowledgedById`, `signedOffById`). |
 | **CO-3: Data changes are authorised and tracked** | Append-only audit trail | Mutations write to `AuditLog` with the Employee (`userId`, "system" when none), the signed-in principal (`actorUserId`), `actorType`, action, entity and JSON details. A database trigger normalises the actor on every insert; triggers reject UPDATE, DELETE and TRUNCATE (migration 0037). | Control-relevant actions (work item ownership/state/close, handover, alert acknowledgement, client incident actions, admin and configuration changes) use `auditedAction()`: a "requested" entry is written first and the action does not run if it cannot be written (fail-closed, HTTP 503); the outcome is appended as "completed" or "failed" with the same `correlationId`. Other entries use `createAuditEntry()` (fail-open, logged as AUDIT_WRITE_FAILED). Writes inside `prisma.$transaction` with the mutation are atomic. | Pairs of requested/outcome entries per `correlationId`; ALR-AUD-01 raises any requested entry without an outcome after 10 minutes. `src/__tests__/audit-integrity.test.ts`. Still to do: a database role without UPDATE/DELETE on AuditLog (TODO(CONFIRM-DB-ROLES)). |
 | **CO-4: Access to processing is restricted** | RBAC with team and client scoping | `AUTHORIZATION_MATRIX` defines per-role permissions; `applyScopeFilter()` limits team/own scope; client isolation through one helper (`src/modules/auth/client-scope.ts`). | CI: `api-route-guards`, `client-scoping-enforced`, `route-permissions`. Roles come from Entra groups (admin PIM-eligible). | `permission_denied` and `role_changed` audit entries; ALR-SEC-01/02; periodic access review. |
-| **CO-5: USDC on/off ramp accuracy** | Multi-step ramp workflow with maker/checker | `UsdcRampRequest` tracks the onramp and offramp steps; the route records maker and checker and refuses self-checking. **The module is off by default (`module.usdc_ramp`)** and its audit conversion is a tracked gap. | Maker/checker fields; the module flag. | Only once the module is enabled and its audit converted. |
+| **CO-5: USDC on/off ramp accuracy** | Multi-step ramp workflow with maker/checker | `UsdcRampRequest` tracks the onramp and offramp steps; the route records maker and checker and refuses self-checking. **The module is off by default (`module.usdc_ramp`)** and its changes are audited fail-closed (`usdc_ramp_created`, `usdc_ramp_updated`). | Maker/checker fields; the module flag. | Only once the module is enabled and its audit converted. |
 
 ### 3.2 SOC 1 Type II Testing Procedures
 
@@ -365,7 +365,7 @@ SOC 2 Trust Services Criteria: Security, Availability, Processing Integrity, Con
 | Change management | Git commit history | CI pipeline run logs | Version control + CI platform |
 | Access review | `User` table, `Employee` table | `AuditLog` (`role_changed`, `user_created`) | CONFIRM-AUDIT-RETENTION |
 | Vendor management | `ServiceProvider`, `VendorReliabilityScore` | `StatusPageEvent`, `ClientServiceDependency` | Indefinite (operational) |
-| Transaction processing (monitoring only) | `TransactionConfirmation`, `OesSettlement` | Record fields; audit conversion is a tracked gap | CONFIRM-RETENTION |
+| Transaction processing (monitoring only) | `TransactionConfirmation`, `OesSettlement` | `AuditLog` (`transaction_confirmation_action`) and the record fields | CONFIRM-RETENTION |
 | Communications governance | `ClientCommsDraft`, `CommsThread` | `AuditLog` for sent communications | CONFIRM-RETENTION |
 | Travel rule compliance | `TravelRuleCase`, `VaspContact` | `CaseNote`, `AuditLog` | CONFIRM-RETENTION |
 
