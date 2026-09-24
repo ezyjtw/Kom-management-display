@@ -49,10 +49,11 @@ export default function ReferenceDataTab() {
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Team leads (fixed teams, no rotation)</h3>
         {teams.map((t) => (
-          <form key={String(t.team)} className="flex gap-2 items-center flex-wrap" onSubmit={form((f) => call("team-config", "PUT", { team: t.team, leadEmployeeId: String(f.get("lead") || "") || null, deputyEmployeeId: String(f.get("deputy") || "") || null }))}>
+          <form key={String(t.team)} className="flex gap-2 items-center flex-wrap" onSubmit={form((f) => call("team-config", "PUT", { team: t.team, leadEmployeeId: String(f.get("lead") || "") || null, deputyEmployeeId: String(f.get("deputy") || "") || null, memberEmployeeIds: String(f.get("members") || "").split(",").map((x) => x.trim()).filter(Boolean) }))}>
             <span className="text-xs w-16">{String(t.team)}</span>
             <input name="lead" aria-label={`${t.team} lead employee id`} placeholder="Lead employee id" defaultValue={String(t.leadEmployeeId ?? "")} className={input} />
             <input name="deputy" aria-label={`${t.team} deputy employee id`} placeholder="Deputy employee id" defaultValue={String(t.deputyEmployeeId ?? "")} className={input} />
+            <input name="members" aria-label={`${t.team} member employee ids`} placeholder="Member employee ids, comma-separated" defaultValue={Array.isArray(t.memberEmployeeIds) ? (t.memberEmployeeIds as string[]).join(", ") : ""} className={input} />
             <button type="submit" className="px-2 py-1 text-xs border border-border rounded-md">Save</button>
           </form>
         ))}

@@ -22,6 +22,7 @@ const ALL_EVENT_TYPES = [
   "token_review_update",
   "compliance_deadline",
   "staking_anomaly",
+  "work_item_update",
 ] as const;
 
 export type SSEEventType = (typeof ALL_EVENT_TYPES)[number];

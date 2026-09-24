@@ -52,6 +52,9 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
   workItem: {
     slaPolicy: { model: "slaPolicy", kind: "one", localKey: "slaPolicyId", remoteKey: "id" },
     ticketLinks: { model: "ticketLink", kind: "many", localKey: "id", remoteKey: "workItemId" },
+    client: { model: "client", kind: "one", localKey: "clientId", remoteKey: "id" },
+    owner: { model: "employee", kind: "one", localKey: "ownerEmployeeId", remoteKey: "id" },
+    alerts: { model: "alert", kind: "many", localKey: "id", remoteKey: "workItemId" },
   },
   onCallSchedule: { employee: { model: "employee", kind: "one", localKey: "employeeId", remoteKey: "id" } },
   commsMessage: { thread: { model: "commsThread", kind: "one", localKey: "threadId", remoteKey: "id" } },
@@ -80,6 +83,7 @@ const DEFAULTS: Record<string, () => Row> = {
   clientUpdate: () => ({ kind: "update", status: "pending_approval", approverId: null, postedAt: null, targetStatus: null }),
   incidentCategory: () => ({ isActive: true, sortOrder: 0, complianceSensitive: false }),
   ticketLink: () => ({ role: "primary" }),
+  teamConfig: () => ({ leadEmployeeId: null, deputyEmployeeId: null, memberEmployeeIds: [] }),
 };
 
 function cmp(a: unknown, b: unknown): number {

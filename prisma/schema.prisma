@@ -258,7 +258,7 @@ model KnowledgeScore {
   mappedScore              Float    @default(3) // 3-8 mapped
   notes                    String   @default("")
   scoredBy                 String   @default("") // display name — prefer scoredById FK for lookups
-  scoredById               String?  // FK to User who scored
+  scoredById               String? // FK to User who scored
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
@@ -332,19 +332,19 @@ model CommsThread {
   linkedRecords      Json           @default("[]") // JSON: Jira tickets, Confluence, transaction IDs
 
   // Stream 2: Slack thread fields
-  slackChannelId    String? // FK -> SlackChannel
-  slackRootTs       String? // root message ts — the thread identifier in Slack
-  slackThreadTs     String? // same as slackRootTs for root messages
-  isSlackThread     Boolean   @default(false) // true if reply_count > 0
-  slackReplyCount   Int?      // latest known reply count
-  slackLastReplyTs  String?   // ts of newest reply — reply sync cursor
+  slackChannelId   String? // FK -> SlackChannel
+  slackRootTs      String? // root message ts — the thread identifier in Slack
+  slackThreadTs    String? // same as slackRootTs for root messages
+  isSlackThread    Boolean   @default(false) // true if reply_count > 0
+  slackReplyCount  Int? // latest known reply count
+  slackLastReplyTs String? // ts of newest reply — reply sync cursor
   // Stream 3: AI classification fields
-  aiClassification  Json?
-  aiClassifiedAt    DateTime?
-  aiUrgencyScore    Int       @default(0)
+  aiClassification Json?
+  aiClassifiedAt   DateTime?
+  aiUrgencyScore   Int       @default(0)
 
   owner               Employee?            @relation("ThreadOwner", fields: [ownerUserId], references: [id])
-  slackChannel        SlackChannel?         @relation(fields: [slackChannelId], references: [id])
+  slackChannel        SlackChannel?        @relation(fields: [slackChannelId], references: [id])
   messages            CommsMessage[]
   ownershipChanges    OwnershipChange[]
   alerts              Alert[]
@@ -376,11 +376,11 @@ model CommsMessage {
   bodyLink       String    @default("") // link to full content
   attachments    Json      @default("[]") // JSON: [{name, size, type}]
   // Stream 2: Slack message fields
-  slackTs        String?   // Slack message ts — unique within thread
-  slackUserId    String?   // Slack user ID of author
-  slackThreadTs  String?   // thread_ts of parent thread
+  slackTs        String? // Slack message ts — unique within thread
+  slackUserId    String? // Slack user ID of author
+  slackThreadTs  String? // thread_ts of parent thread
   isRootMessage  Boolean   @default(false)
-  slackReactions Json?     // [{name: string, count: number}]
+  slackReactions Json? // [{name: string, count: number}]
   editedAt       DateTime?
 
   thread             CommsThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -546,33 +546,33 @@ model VaspContact {
 // ─── Client Contact Preferences ───
 
 model ClientContactPreference {
-  id                String   @id @default(cuid())
-  clientName        String   @unique // Matches CommsThread.clientOrPartnerTag
-  displayName       String   @default("") // Friendly name for UI
-  preferredChannel  String   @default("email") // email | slack | phone | portal
-  primaryEmail      String   @default("")
-  secondaryEmail    String   @default("")
-  slackChannel      String   @default("") // e.g. #client-acme
-  phoneNumber       String   @default("")
-  timezone          String   @default("UTC") // IANA timezone
-  businessHoursStart String  @default("09:00")
-  businessHoursEnd  String   @default("17:00")
-  businessDays      String   @default("mon,tue,wed,thu,fri") // CSV of days
-  language          String   @default("en")
+  id                 String    @id @default(cuid())
+  clientName         String    @unique // Matches CommsThread.clientOrPartnerTag
+  displayName        String    @default("") // Friendly name for UI
+  preferredChannel   String    @default("email") // email | slack | phone | portal
+  primaryEmail       String    @default("")
+  secondaryEmail     String    @default("")
+  slackChannel       String    @default("") // e.g. #client-acme
+  phoneNumber        String    @default("")
+  timezone           String    @default("UTC") // IANA timezone
+  businessHoursStart String    @default("09:00")
+  businessHoursEnd   String    @default("17:00")
+  businessDays       String    @default("mon,tue,wed,thu,fri") // CSV of days
+  language           String    @default("en")
   // Travel rule specific
-  vaspDid           String   @default("") // Links to VaspContact if applicable
-  travelRuleContact String   @default("") // Dedicated TR contact email
+  vaspDid            String    @default("") // Links to VaspContact if applicable
+  travelRuleContact  String    @default("") // Dedicated TR contact email
   // Escalation
-  escalationEmail   String   @default("") // For urgent/P0 matters
-  escalationPhone   String   @default("")
+  escalationEmail    String    @default("") // For urgent/P0 matters
+  escalationPhone    String    @default("")
   // Metadata
-  notes             String   @default("")
-  tags              String   @default("[]") // JSON array of tags
-  active            Boolean  @default(true)
-  lastContactedAt   DateTime?
-  createdById       String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  notes              String    @default("")
+  tags               String    @default("[]") // JSON array of tags
+  active             Boolean   @default(true)
+  lastContactedAt    DateTime?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   createdBy Employee @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
 
@@ -816,51 +816,51 @@ model Alert {
 // ─── 3rd Party Incidents ───
 
 model Incident {
-  id                          String                @id @default(cuid())
+  id                          String           @id @default(cuid())
   workItemId                  String? // our GXS/VSR ticket (spec §12 CHK-11); timeline updates post there as comments
   title                       String // e.g. "Fireblocks signing service degraded"
   provider                    String // Fireblocks, Ledger, GX, Custody, Notabene, etc.
-  severity                    IncidentSeverity      @default(medium)
-  status                      IncidentStatus        @default(active)
-  description                 String                @default("")
-  impact                      String                @default("") // what ops impact this causes
-  startedAt                   DateTime              @default(now())
+  severity                    IncidentSeverity @default(medium)
+  status                      IncidentStatus   @default(active)
+  description                 String           @default("")
+  impact                      String           @default("") // what ops impact this causes
+  startedAt                   DateTime         @default(now())
   resolvedAt                  DateTime?
   reportedById                String // employee who raised it
   resolvedById                String?
-  linkedThreadIds             Json                  @default("[]") // JSON array of commsThread IDs
-  linkedTransactionIds        Json                  @default("[]") // JSON array of transaction IDs (custody)
+  linkedThreadIds             Json             @default("[]") // JSON array of commsThread IDs
+  linkedTransactionIds        Json             @default("[]") // JSON array of transaction IDs (custody)
   // ─── RCA Tracker Fields ───
-  rcaStatus                   String                @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
-  rcaDocumentRef              String                @default("") // link to RCA document
+  rcaStatus                   String           @default("none") // none, raised, awaiting_rca, rca_received, follow_up_pending, closed
+  rcaDocumentRef              String           @default("") // link to RCA document
   rcaResponsibleId            String? // person responsible for chasing RCA
   rcaSlaDeadline              DateTime? // SLA for receiving RCA
   rcaReceivedAt               DateTime?
-  rcaFollowUpItems            Json                  @default("[]") // JSON array: [{title, status, assigneeId}]
+  rcaFollowUpItems            Json             @default("[]") // JSON array: [{title, status, assigneeId}]
   rcaRaisedAt                 DateTime? // when RCA was formally raised
   // ─── External Provider Ticket Tracking ───
-  externalTicketRef           String                @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
-  externalTicketUrl           String                @default("") // full URL to provider ticket
-  externalTicketStatus        String                @default("") // last known status from Jira sync
+  externalTicketRef           String           @default("") // Jira issue key e.g. "FB-1234", "LEDGER-567"
+  externalTicketUrl           String           @default("") // full URL to provider ticket
+  externalTicketStatus        String           @default("") // last known status from Jira sync
   externalTicketLastSyncAt    DateTime? // when we last polled the ticket
-  externalTicketDisputed      Boolean               @default(false) // true if provider closed prematurely and we dispute
-  externalTicketDisputeReason String                @default("") // why we disagree with closure
+  externalTicketDisputed      Boolean          @default(false) // true if provider closed prematurely and we dispute
+  externalTicketDisputeReason String           @default("") // why we disagree with closure
   // Stream 3: Impact chain fields
-  affectedServices            Json                  @default("[]")
-  detectionSource             String                @default("manual") // manual|ai_slack|status_page
-  clientImpactCount           Int                   @default(0)
-  clientNotifiedCount         Int                   @default(0)
+  affectedServices            Json             @default("[]")
+  detectionSource             String           @default("manual") // manual|ai_slack|status_page
+  clientImpactCount           Int              @default(0)
+  clientNotifiedCount         Int              @default(0)
   firstClientNotifiedAt       DateTime?
 
-  updates                     IncidentUpdate[]
-  alerts                      Alert[]
-  ticketEvents                ExternalTicketEvent[]
-  clientImpacts               ClientImpactRecord[]
-  reportedBy                  Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
-  resolvedBy                  Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
-  rcaResponsible              Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
-  createdAt                   DateTime              @default(now())
-  updatedAt                   DateTime              @updatedAt
+  updates        IncidentUpdate[]
+  alerts         Alert[]
+  ticketEvents   ExternalTicketEvent[]
+  clientImpacts  ClientImpactRecord[]
+  reportedBy     Employee              @relation("IncidentReporter", fields: [reportedById], references: [id])
+  resolvedBy     Employee?             @relation("IncidentResolver", fields: [resolvedById], references: [id])
+  rcaResponsible Employee?             @relation("RcaResponsible", fields: [rcaResponsibleId], references: [id])
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([status])
   @@index([provider])
@@ -1173,70 +1173,70 @@ model ScreeningEntry {
 // ─── Token Review & Onboarding ───
 
 model TokenReview {
-  id                 String              @id @default(cuid())
-  symbol             String // e.g. "BTC", "ETH", "SOL"
-  name               String // e.g. "Bitcoin", "Ethereum"
-  network            String              @default("") // e.g. "Ethereum", "Solana", "Polkadot"
-  contractAddress    String              @default("") // for ERC-20/SPL tokens
-  tokenType          String              @default("native") // native, erc20, spl, substrate, other
+  id                       String              @id @default(cuid())
+  symbol                   String // e.g. "BTC", "ETH", "SOL"
+  name                     String // e.g. "Bitcoin", "Ethereum"
+  network                  String              @default("") // e.g. "Ethereum", "Solana", "Polkadot"
+  contractAddress          String              @default("") // for ERC-20/SPL tokens
+  tokenType                String              @default("native") // native, erc20, spl, substrate, other
   // Review pipeline
-  status             String              @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
-  proposedById       String? // employee who proposed
-  proposedAt         DateTime            @default(now())
-  reviewedById       String? // ops reviewer
-  reviewedAt         DateTime?
-  complianceById     String? // compliance reviewer
-  complianceAt       DateTime?
-  approvedAt         DateTime?
-  rejectedAt         DateTime?
-  liveAt             DateTime? // when token went live in custody
-  rejectionReason    String              @default("")
+  status                   String              @default("proposed") // proposed, under_review, compliance_review, approved, rejected, live
+  proposedById             String? // employee who proposed
+  proposedAt               DateTime            @default(now())
+  reviewedById             String? // ops reviewer
+  reviewedAt               DateTime?
+  complianceById           String? // compliance reviewer
+  complianceAt             DateTime?
+  approvedAt               DateTime?
+  rejectedAt               DateTime?
+  liveAt                   DateTime? // when token went live in custody
+  rejectionReason          String              @default("")
   // Risk & compliance assessment
-  riskLevel          String              @default("medium") // low, medium, high, critical
-  riskNotes          String              @default("") // free-form risk assessment
-  regulatoryNotes    String              @default("") // regulatory considerations
-  sanctionsCheck     Boolean             @default(false) // sanctions screening completed
-  amlRiskAssessed    Boolean             @default(false) // AML risk assessed
+  riskLevel                String              @default("medium") // low, medium, high, critical
+  riskNotes                String              @default("") // free-form risk assessment
+  regulatoryNotes          String              @default("") // regulatory considerations
+  sanctionsCheck           Boolean             @default(false) // sanctions screening completed
+  amlRiskAssessed          Boolean             @default(false) // AML risk assessed
   // Custody support details
-  custodianSupport   String              @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
-  stakingAvailable   Boolean             @default(false)
+  custodianSupport         String              @default("[]") // JSON: ["Fireblocks", "Ledger"] — which custodians support it
+  stakingAvailable         Boolean             @default(false)
   // Third-party vendor support tracking
-  chainalysisSupport String              @default("unknown") // supported, partial, not_supported, unknown
-  notabeneSupport    String              @default("unknown") // supported, partial, not_supported, unknown
-  fireblocksSupport  String              @default("unknown") // supported, partial, not_supported, unknown
-  ledgerSupport      String              @default("unknown") // supported, partial, not_supported, unknown
-  vendorNotes        String              @default("") // JSON: per-vendor notes/caveats
+  chainalysisSupport       String              @default("unknown") // supported, partial, not_supported, unknown
+  notabeneSupport          String              @default("unknown") // supported, partial, not_supported, unknown
+  fireblocksSupport        String              @default("unknown") // supported, partial, not_supported, unknown
+  ledgerSupport            String              @default("unknown") // supported, partial, not_supported, unknown
+  vendorNotes              String              @default("") // JSON: per-vendor notes/caveats
   // Institutional demand
-  demandScore        Int                 @default(0) // 0-100 computed from demand signals
-  demandSignals      TokenDemandSignal[]
+  demandScore              Int                 @default(0) // 0-100 computed from demand signals
+  demandSignals            TokenDemandSignal[]
   // AI research persistence
-  aiResearchResult   String              @default("") // JSON: full AI research output
-  aiResearchedAt     DateTime? // when AI research was last run
-  aiRecommendation   String              @default("") // approve, approve_with_conditions, further_review, reject
+  aiResearchResult         String              @default("") // JSON: full AI research output
+  aiResearchedAt           DateTime? // when AI research was last run
+  aiRecommendation         String              @default("") // approve, approve_with_conditions, further_review, reject
   // Token listing checklist fields
-  jiraTicket         String              @default("") // Jira ticket reference
-  complianceDoc      String              @default("") // link to compliance document
-  launchDate         String              @default("") // token launch date
-  founders           String              @default("") // founder(s) names
-  website            String              @default("") // project website URL
-  supportedNetworks  String              @default("") // JSON array of supported networks
-  whitepaper         String              @default("") // whitepaper URL
-  explorer           String              @default("") // block explorer URL
-  blockchainAnalytics String             @default("unknown") // pre_growth, emerging, mature
-  travelRuleNotabene Boolean             @default(false) // Notabene travel rule compliance
-  priceFeedCoingecko Boolean             @default(false) // CoinGecko price feed available
-  consensusMechanism String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
-  privacyToken       Boolean             @default(false) // whether this is a privacy token
+  jiraTicket               String              @default("") // Jira ticket reference
+  complianceDoc            String              @default("") // link to compliance document
+  launchDate               String              @default("") // token launch date
+  founders                 String              @default("") // founder(s) names
+  website                  String              @default("") // project website URL
+  supportedNetworks        String              @default("") // JSON array of supported networks
+  whitepaper               String              @default("") // whitepaper URL
+  explorer                 String              @default("") // block explorer URL
+  blockchainAnalytics      String              @default("unknown") // pre_growth, emerging, mature
+  travelRuleNotabene       Boolean             @default(false) // Notabene travel rule compliance
+  priceFeedCoingecko       Boolean             @default(false) // CoinGecko price feed available
+  consensusMechanism       String              @default("") // proof_of_work, proof_of_stake, proof_of_authority, proof_of_history, other
+  privacyToken             Boolean             @default(false) // whether this is a privacy token
   // Smart contract review — required when tokenType is not "native"
-  smartContractReview Boolean             @default(false) // smart contract audit/review completed
-  smartContractReviewNotes String         @default("") // auditor, audit date, findings summary
+  smartContractReview      Boolean             @default(false) // smart contract audit/review completed
+  smartContractReviewNotes String              @default("") // auditor, audit date, findings summary
   // Per-jurisdiction compliance guidance
-  jurisdictionStatus String              @default("") // JSON: per-jurisdiction compliance status & guidance
+  jurisdictionStatus       String              @default("") // JSON: per-jurisdiction compliance status & guidance
   // Metadata
-  marketCapTier      String              @default("unknown") // mega, large, mid, small, micro, unknown
-  notes              String              @default("")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  marketCapTier            String              @default("unknown") // mega, large, mid, small, micro, unknown
+  notes                    String              @default("")
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 
   @@unique([symbol, network])
   @@index([status])
@@ -1349,36 +1349,36 @@ enum ConfirmationStatus {
 }
 
 model TransactionConfirmation {
-  id                String             @id @default(cuid())
-  transactionId     String // Custody transaction ID
-  requestId         String? // Custody request ID (if applicable)
-  riskLevel         TransactionRiskLevel @default(unknown) // from GX only (H5)
-  asset             String
-  amount            Float
-  direction         String // IN, OUT
-  account           String             @default("")
-  workspace         String             @default("")
+  id               String               @id @default(cuid())
+  transactionId    String // Custody transaction ID
+  requestId        String? // Custody request ID (if applicable)
+  riskLevel        TransactionRiskLevel @default(unknown) // from GX only (H5)
+  asset            String
+  amount           Float
+  direction        String // IN, OUT
+  account          String               @default("")
+  workspace        String               @default("")
   // Read-only tracking of GX items awaiting human action in GX
-  status            ConfirmationStatus @default(pending)
-  ownedById         String?
-  ownedAt           DateTime?
-  closedById        String? // legacy sign-off actor; null for automatic closure
-  closedInSourceAt  DateTime?
-  ticketRef         String             @default("")
-  escalatedById     String?
-  escalatedAt       DateTime?
-  escalationReason  String             @default("")
+  status           ConfirmationStatus   @default(pending)
+  ownedById        String?
+  ownedAt          DateTime?
+  closedById       String? // legacy sign-off actor; null for automatic closure
+  closedInSourceAt DateTime?
+  ticketRef        String               @default("")
+  escalatedById    String?
+  escalatedAt      DateTime?
+  escalationReason String               @default("")
   // Notification tracking
-  slackNotifiedAt   DateTime?
-  slackChannel      String             @default("")
-  slackMessageTs    String             @default("") // Slack message timestamp for threading
-  emailNotifiedAt   DateTime?
-  emailSentTo       String             @default("") // comma-separated emails
+  slackNotifiedAt  DateTime?
+  slackChannel     String               @default("")
+  slackMessageTs   String               @default("") // Slack message timestamp for threading
+  emailNotifiedAt  DateTime?
+  emailSentTo      String               @default("") // comma-separated emails
   // Metadata
-  expiresAt         DateTime? // auto-expire unacknowledged confirmations
-  notes             String             @default("")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  expiresAt        DateTime? // auto-expire unacknowledged confirmations
+  notes            String               @default("")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([transactionId])
   @@index([status])
@@ -1423,7 +1423,7 @@ model BackgroundJob {
   type             String // sync_slack, sync_email, sync_jira, check_sla, check_staking, poll_custody
   status           JobStatus @default(pending)
   payload          Json      @default("{}") // job-specific configuration
-  result           Json?     // job output
+  result           Json? // job output
   error            String    @default("")
   attempts         Int       @default(0)
   maxAttempts      Int       @default(3)
@@ -1436,7 +1436,7 @@ model BackgroundJob {
   lastRunAt        DateTime?
   // Stream 1: priority + deduplication
   priority         Int       @default(2) // 0=critical 1=high 2=normal 3=low
-  deduplicationKey String?   // unique job identity for dedup
+  deduplicationKey String? // unique job identity for dedup
   deadLetteredAt   DateTime?
   deadLetterReason String    @default("")
   createdAt        DateTime  @default(now())
@@ -1473,25 +1473,25 @@ model SlackChannel {
 // ─── Stream 3: Intelligent Comms & Impact Chain ───
 
 model ServiceProvider {
-  id               String    @id @default(cuid())
-  name             String    @unique
-  providerType     String // wallet_tech|travel_rule|analytics|exchange|other
-  services         Json // string[] of service names this provider offers
-  slackChannelId   String? // references SlackChannel.channelId
-  statusPageUrl    String?
-  statusPageType   String? // statuspage | pagerduty | custom
-  contactEmail     String?
-  isActive         Boolean   @default(true)
+  id             String  @id @default(cuid())
+  name           String  @unique
+  providerType   String // wallet_tech|travel_rule|analytics|exchange|other
+  services       Json // string[] of service names this provider offers
+  slackChannelId String? // references SlackChannel.channelId
+  statusPageUrl  String?
+  statusPageType String? // statuspage | pagerduty | custom
+  contactEmail   String?
+  isActive       Boolean @default(true)
 
-  dependencies     ClientServiceDependency[]
-  statusEvents     StatusPageEvent[]
+  dependencies      ClientServiceDependency[]
+  statusEvents      StatusPageEvent[]
   reliabilityScores VendorReliabilityScore[]
 }
 
 model ClientServiceDependency {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   clientName      String // matches ClientContactPreference.clientName
-  clientAccountId String   @default("")
+  clientAccountId String    @default("")
   providerId      String
   serviceNames    Json // string[] of specific services used
   source          String // custody_api | manual
@@ -1503,18 +1503,18 @@ model ClientServiceDependency {
 }
 
 model ClientImpactRecord {
-  id                    String    @id @default(cuid())
-  incidentId            String
-  clientName            String
-  clientAccountId       String    @default("")
-  affectedServices      Json
-  impactStatus          String    @default("potential") // potential|confirmed|resolved
-  estimatedImpact       String    @default("")
-  clientNotifiedAt      DateTime?
-  notifiedByEmployeeId  String?
-  impactStartAt         DateTime?
-  impactEndAt           DateTime?
-  impactDurationMins    Int?
+  id                   String    @id @default(cuid())
+  incidentId           String
+  clientName           String
+  clientAccountId      String    @default("")
+  affectedServices     Json
+  impactStatus         String    @default("potential") // potential|confirmed|resolved
+  estimatedImpact      String    @default("")
+  clientNotifiedAt     DateTime?
+  notifiedByEmployeeId String?
+  impactStartAt        DateTime?
+  impactEndAt          DateTime?
+  impactDurationMins   Int?
 
   incident Incident @relation(fields: [incidentId], references: [id])
 
@@ -1522,21 +1522,21 @@ model ClientImpactRecord {
 }
 
 model ClientCommsDraft {
-  id                    String    @id @default(cuid())
-  incidentId            String
-  clientImpactRecordId  String
-  clientName            String
-  aiDraft               String    @default("") // original AI draft — never overwritten
-  finalMessage          String    @default("") // as-sent, after any human edits
-  sendChannel           String // slack | email
-  sendChannelId         String // Slack channel ID or email address
-  status                String    @default("draft") // draft|approved|sent|dismissed|failed
-  approvedByEmployeeId  String?
-  approvedAt            DateTime?
-  sentAt                DateTime?
-  deliveryStatus        String    @default("pending") // pending|delivered|failed
-  deliveryError         String    @default("")
-  createdAt             DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  incidentId           String
+  clientImpactRecordId String
+  clientName           String
+  aiDraft              String    @default("") // original AI draft — never overwritten
+  finalMessage         String    @default("") // as-sent, after any human edits
+  sendChannel          String // slack | email
+  sendChannelId        String // Slack channel ID or email address
+  status               String    @default("draft") // draft|approved|sent|dismissed|failed
+  approvedByEmployeeId String?
+  approvedAt           DateTime?
+  sentAt               DateTime?
+  deliveryStatus       String    @default("pending") // pending|delivered|failed
+  deliveryError        String    @default("")
+  createdAt            DateTime  @default(now())
 }
 
 model StatusPageEvent {
@@ -1578,19 +1578,19 @@ model VendorReliabilityScore {
 // ─── Core data model (spec §7) ───
 
 model Client {
-  id                String   @id @default(cuid())
-  displayName       String
-  komainuOrgId      String?  @unique // Komainu API `organization`
-  komainuAccountNos Json     @default("[]") // Komainu API account numbers
-  jsmOrganizationId String?  @unique // JSM organisation
-  jurisdiction      String   @default("") // UK | JE | AE | EU (entity servicing)
-  isActive          Boolean  @default(true)
+  id                  String    @id @default(cuid())
+  displayName         String
+  komainuOrgId        String?   @unique // Komainu API `organization`
+  komainuAccountNos   Json      @default("[]") // Komainu API account numbers
+  jsmOrganizationId   String?   @unique // JSM organisation
+  jurisdiction        String    @default("") // UK | JE | AE | EU (entity servicing)
+  isActive            Boolean   @default(true)
   /// Client-attested inbound reporting threshold (spec §12 CHK-05).
   inboundThresholdUsd Float?
   /// When the threshold was last reviewed (CF-31); ALR-CLI-01 when older than 12 months (CONFIRM).
   thresholdReviewedAt DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   channels      ClientChannel[]
   workItems     WorkItem[]
@@ -1649,35 +1649,35 @@ enum WorkItemState {
 
 /// The single queue. Every actionable thing is one WorkItem linked to one ticket.
 model WorkItem {
-  id              String        @id @default(cuid())
-  kind            WorkItemKind
-  title           String
-  team            String // "Team 1" | "Team 2" | "Team 3" | "All" (spec §12)
-  taskCode        String // e.g. "CHK-01" (spec §12) or "CLIENT-Q"
-  clientId        String?
-  priority        String        @default("P2") // P0..P3
-  riskScore       String? // required before closure (spec §10.2)
-  state           WorkItemState @default(open)
-  ownerEmployeeId String?
-  sourceSystem    String // komainu_api | slack | email | teams | jira | jsm | manual | system
-  sourceId        String // dedupe key in source
-  ticketSystem    String? // jsm | jira
-  ticketKey       String? // e.g. OTC-1234
-  ticketUrl       String?
-  slaPolicyId     String?
-  clockStartedAt  DateTime // event time in source, not ingest time
-  firstResponseAt DateTime?
-  ownedAt         DateTime?
-  resolvedAt      DateTime?
-  resolutionNote  String?
-  rootCause       String? // controlled list (spec §10.2)
-  exposureUsd     Float? // where relevant (OES, FAB)
+  id               String        @id @default(cuid())
+  kind             WorkItemKind
+  title            String
+  team             String // "Team 1" | "Team 2" | "Team 3" | "All" (spec §12)
+  taskCode         String // e.g. "CHK-01" (spec §12) or "CLIENT-Q"
+  clientId         String?
+  priority         String        @default("P2") // P0..P3
+  riskScore        String? // required before closure (spec §10.2)
+  state            WorkItemState @default(open)
+  ownerEmployeeId  String?
+  sourceSystem     String // komainu_api | slack | email | teams | jira | jsm | manual | system
+  sourceId         String // dedupe key in source
+  ticketSystem     String? // jsm | jira
+  ticketKey        String? // e.g. OTC-1234
+  ticketUrl        String?
+  slaPolicyId      String?
+  clockStartedAt   DateTime // event time in source, not ingest time
+  firstResponseAt  DateTime?
+  ownedAt          DateTime?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+  rootCause        String? // controlled list (spec §10.2)
+  exposureUsd      Float? // where relevant (OES, FAB)
   clientTicketKey  String? // client-visible JSM request (spec §9.7), separate from ticketKey
   clientTicketUrl  String? // portal URL shared with the client
   sourceMessageRef String? // Slack permalink or Graph message id the entry was raised from
-  metadata        Json          @default("{}") // client_request: { threadId }
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  metadata         Json          @default("{}") // client_request: { threadId }
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   owner       Employee?    @relation("WorkItemOwner", fields: [ownerEmployeeId], references: [id], onDelete: SetNull)
@@ -1736,15 +1736,15 @@ model SlaEvent {
 
 /// Admin-tunable alert rule (spec §7.4). Changes require admin and are audit-logged.
 model AlertRule {
-  code      String   @id
-  enabled   Boolean  @default(false)
-  severity  String // low | medium | high | critical
-  params    Json // thresholds, windows, channels
-  route     Json // { businessHours: [...targets], outOfHours: [...targets] }
-  version   Int      @default(1)
+  code            String    @id
+  enabled         Boolean   @default(false)
+  severity        String // low | medium | high | critical
+  params          Json // thresholds, windows, channels
+  route           Json // { businessHours: [...targets], outOfHours: [...targets] }
+  version         Int       @default(1)
   lastEvaluatedAt DateTime? // engine cadence (spec §11.1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([enabled])
 }
@@ -1852,20 +1852,20 @@ model SettlementStatusMap {
 
 /// Jira/JSM project mapping (spec §8.3). Ids are discovered at runtime; nothing is hard-coded.
 model JiraProjectConfig {
-  key                String   @id // OTC, TOPS, VSR, ...
-  name               String
-  purpose            String   @default("")
-  kind               String   @default("jira") // jira | jsm
-  enabled            Boolean  @default(false)
-  syncInbound        Boolean  @default(true)
-  defaultWorkItemKind String  @default("internal_task")
-  defaultTeam        String   @default("All")
-  defaultTaskCode    String   @default("")
-  serviceDeskId      String? // JSM only
-  issueTypeIds       Json     @default("{}") // name -> id, discovered at runtime
-  allowedCustomFields Json    @default("[]") // custom field ids KOMmand Centre may set
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  key                 String   @id // OTC, TOPS, VSR, ...
+  name                String
+  purpose             String   @default("")
+  kind                String   @default("jira") // jira | jsm
+  enabled             Boolean  @default(false)
+  syncInbound         Boolean  @default(true)
+  defaultWorkItemKind String   @default("internal_task")
+  defaultTeam         String   @default("All")
+  defaultTaskCode     String   @default("")
+  serviceDeskId       String? // JSM only
+  issueTypeIds        Json     @default("{}") // name -> id, discovered at runtime
+  allowedCustomFields Json     @default("[]") // custom field ids KOMmand Centre may set
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([enabled])
 }
@@ -1933,11 +1933,13 @@ model RiskRuleTier {
 
 /// Team ownership (spec §12): team -> lead and deputy. Teams are fixed, no rotation.
 model TeamConfig {
-  team             String   @id // "Team 1" | "Team 2" | "Team 3"
-  leadEmployeeId   String?
-  deputyEmployeeId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  team              String   @id // "Team 1" | "Team 2" | "Team 3"
+  leadEmployeeId    String?
+  deputyEmployeeId  String?
+  /// Team members (employee ids) for "my team" in the work queue (spec §14.1).
+  memberEmployeeIds Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 /// Operator-maintained asset status (CF-26). "known_degraded" suppresses CHK-01 exception tickets, with a reason.

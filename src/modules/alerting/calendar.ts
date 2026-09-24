@@ -113,3 +113,22 @@ export function nextBusinessDayEod(cal: BusinessCalendar, from: Date): Date {
   }
   return new Date(from.getTime() + 86_400_000);
 }
+
+/** The instant `mins` business minutes after `from` (for SLA due times). */
+export function addBusinessMinutes(cal: BusinessCalendar, from: Date, mins: number): Date {
+  if (mins <= 0) return from;
+  if (cal.is24x7) return new Date(from.getTime() + mins * 60_000);
+  let remaining = mins * 60_000;
+  let date = londonParts(from).date;
+  for (let guard = 0; guard < 400; guard++, date = addDays(date, 1)) {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    if (!isBusinessDay(cal, date, weekday)) continue;
+    const open = londonInstant(date, cal.startMin).getTime();
+    const close = londonInstant(date, cal.endMin).getTime();
+    const s = Math.max(open, from.getTime());
+    if (close <= s) continue;
+    if (s + remaining <= close) return new Date(s + remaining);
+    remaining -= close - s;
+  }
+  return new Date(from.getTime() + mins * 60_000);
+}

@@ -1,6 +1,6 @@
 /**
  * Admin reference data for daily coverage (spec §12), audit-logged:
- * - team-config: team -> lead and deputy (teams are fixed, no rotation);
+ * - team-config: team -> lead, deputy and members (teams are fixed, no rotation);
  * - asset-status: known degraded / sunset assets (CF-26) suppress CHK-01 tickets with a reason;
  * - approved-validators: the approved validator set (CF-10, CF-24), shipped empty;
  * - incident-categories: §9.7 categories and whether each is compliance-sensitive (DELETE deactivates);
@@ -22,6 +22,7 @@ const teamConfig = z.object({
   team: z.enum(["Team 1", "Team 2", "Team 3"]),
   leadEmployeeId: z.string().min(1).max(100).nullable(),
   deputyEmployeeId: z.string().min(1).max(100).nullable(),
+  memberEmployeeIds: z.array(z.string().min(1).max(100)).max(100).default([]),
 });
 const assetStatus = z.object({
   asset: z.string().trim().toUpperCase().regex(/^[A-Z0-9._-]{1,20}$/),
@@ -98,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (table === "team-config") {
       const v = validateBody(teamConfig, body);
       if (!v.success) return apiValidationError(v.error);
-      for (const id of [v.data.leadEmployeeId, v.data.deputyEmployeeId].filter((x): x is string => !!x)) {
+      for (const id of [v.data.leadEmployeeId, v.data.deputyEmployeeId, ...v.data.memberEmployeeIds].filter((x): x is string => !!x)) {
         if (!(await prisma.employee.findUnique({ where: { id }, select: { id: true } }))) return apiValidationError(`Unknown employee ${id}`);
       }
       key = v.data.team;

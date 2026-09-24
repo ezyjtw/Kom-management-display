@@ -38,6 +38,8 @@ export const ATLASSIAN_ALLOWLIST: ReadonlyArray<{ method: Method; pattern: RegEx
   { method: "GET", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/transition$`), purpose: "discover client-visible status transitions" },
   { method: "POST", pattern: new RegExp(`^/rest/servicedeskapi/request/${KEY}/transition$`), purpose: "move a client request through its client-visible statuses" },
   { method: "GET", pattern: /^\/rest\/servicedeskapi\/organization\/\d+\/user$/, purpose: "portal users of a client organisation" },
+  // Spec §14.2 work item timeline
+  { method: "GET", pattern: new RegExp(`^/rest/api/3/issue/${KEY}/comment$`), purpose: "read issue comments (timeline)" },
 ]);
 
 export class AtlassianForbiddenError extends Error {
@@ -329,4 +331,27 @@ export async function listRequestTransitions(key: string): Promise<JsmTransition
 
 export function performRequestTransition(key: string, transitionId: string): Promise<void> {
   return atlassianRequest("POST", `/rest/servicedeskapi/request/${key}/transition`, { body: { id: transitionId } });
+}
+
+/** Plain text of an Atlassian Document Format node (paragraphs joined by newlines). */
+export function adfToText(node: unknown): string {
+  if (!node || typeof node !== "object") return typeof node === "string" ? node : "";
+  const n = node as { type?: string; text?: string; content?: unknown[] };
+  if (n.type === "text") return n.text ?? "";
+  if (n.type === "hardBreak") return "\n";
+  const inner = (n.content ?? []).map(adfToText).join("");
+  return ["paragraph", "heading", "listItem", "codeBlock", "blockquote"].includes(n.type ?? "") ? `${inner}\n` : inner;
+}
+
+export interface IssueComment {
+  id: string;
+  body: unknown;
+  author?: { displayName?: string };
+  created?: string;
+  jsdPublic?: boolean;
+}
+
+export async function listIssueComments(key: string): Promise<IssueComment[]> {
+  const res = await atlassianRequest<{ comments?: IssueComment[] }>("GET", `/rest/api/3/issue/${key}/comment`);
+  return res.comments ?? [];
 }
