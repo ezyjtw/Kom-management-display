@@ -109,34 +109,34 @@ export async function responsiveness(period: Period, now = new Date()) {
       firstResponse: p.firstRespMins ?? "target not set",
       resolution: p.resolveMins ?? (p.resolveRule === "next_business_day_eod" ? "next business day (end of day)" : "target not set"),
     })),
-    freshness: await freshness(now, ["atlassian", "graph", "slack", "komainu_api.requests"]),
+    freshness: await freshness(now, ["atlassian", "graph", "slack", "custody_api.requests"]),
   };
 }
 
 // ── Clients (effort and volume ranked, month-on-month) ──
 
 async function clientVolumes(period: Period) {
-  const clients = await prisma.client.findMany({ where: { isActive: true }, select: { id: true, displayName: true, komainuOrgId: true, komainuAccountNos: true } });
+  const clients = await prisma.client.findMany({ where: { isActive: true }, select: { id: true, displayName: true, custodyOrgId: true, custodyAccountNos: true } });
   const [logs, requests, records, threads] = await Promise.all([
     prisma.timeLog.findMany({ where: { loggedAt: { gte: period.from, lt: period.to } }, select: { clientId: true, bucketMins: true } }),
     prisma.workItem.findMany({ where: { kind: "client_request", clockStartedAt: { gte: period.from, lt: period.to } }, select: { clientId: true } }),
-    prisma.sourceRecord.findMany({ where: { source: "komainu_api", kind: { in: ["transaction", "request"] }, occurredAt: { gte: period.from, lt: period.to } }, select: { kind: true, fields: true } }),
+    prisma.sourceRecord.findMany({ where: { source: "custody_api", kind: { in: ["transaction", "request"] }, occurredAt: { gte: period.from, lt: period.to } }, select: { kind: true, fields: true } }),
     prisma.commsThread.findMany({ where: { createdAt: { gte: period.from, lt: period.to }, slackChannel: { clientId: { not: null } } }, select: { slackChannel: { select: { clientId: true } } } }),
   ]);
   const effort = clientEffortHours(logs);
-  const orgToClient = new Map(clients.filter((c) => c.komainuOrgId).map((c) => [c.komainuOrgId!, c.id]));
+  const orgToClient = new Map(clients.filter((c) => c.custodyOrgId).map((c) => [c.custodyOrgId!, c.id]));
   const accountToClient = new Map<string, string>();
-  for (const c of clients) for (const a of Array.isArray(c.komainuAccountNos) ? (c.komainuAccountNos as string[]) : []) accountToClient.set(a, c.id);
+  for (const c of clients) for (const a of Array.isArray(c.custodyAccountNos) ? (c.custodyAccountNos as string[]) : []) accountToClient.set(a, c.id);
 
-  const volume = new Map<string, { requestsCreated: number; komainuTransactions: number; komainuRequests: number; slackThreads: number }>();
-  const v = (id: string) => volume.get(id) ?? volume.set(id, { requestsCreated: 0, komainuTransactions: 0, komainuRequests: 0, slackThreads: 0 }).get(id)!;
+  const volume = new Map<string, { requestsCreated: number; custodyTransactions: number; custodyRequests: number; slackThreads: number }>();
+  const v = (id: string) => volume.get(id) ?? volume.set(id, { requestsCreated: 0, custodyTransactions: 0, custodyRequests: 0, slackThreads: 0 }).get(id)!;
   for (const r of requests) if (r.clientId) v(r.clientId).requestsCreated++;
   for (const r of records) {
     const f = (r.fields ?? {}) as Record<string, unknown>;
     const id = (typeof f.organization === "string" && orgToClient.get(f.organization)) || (typeof f.account === "string" && accountToClient.get(f.account));
     if (!id) continue;
-    if (r.kind === "transaction") v(id).komainuTransactions++;
-    else v(id).komainuRequests++;
+    if (r.kind === "transaction") v(id).custodyTransactions++;
+    else v(id).custodyRequests++;
   }
   for (const t of threads) if (t.slackChannel?.clientId) v(t.slackChannel.clientId).slackThreads++;
   return { clients, effort, volume };
@@ -146,13 +146,13 @@ export async function clientsSection(period: Period, now = new Date()) {
   const length = period.to.getTime() - period.from.getTime();
   const previous: Period = { from: new Date(period.from.getTime() - length), to: period.from };
   const [cur, prev] = await Promise.all([clientVolumes(period), clientVolumes(previous)]);
-  const total = (x: { requestsCreated: number; komainuTransactions: number; komainuRequests: number; slackThreads: number } | undefined) =>
-    x ? x.requestsCreated + x.komainuTransactions + x.komainuRequests + x.slackThreads : 0;
+  const total = (x: { requestsCreated: number; custodyTransactions: number; custodyRequests: number; slackThreads: number } | undefined) =>
+    x ? x.requestsCreated + x.custodyTransactions + x.custodyRequests + x.slackThreads : 0;
 
   const rows = cur.clients.map((c) => {
     const effort = Math.round((cur.effort.get(c.id) ?? 0) * 100) / 100;
     const prevEffort = prev.effort.get(c.id) ?? 0;
-    const vol = cur.volume.get(c.id) ?? { requestsCreated: 0, komainuTransactions: 0, komainuRequests: 0, slackThreads: 0 };
+    const vol = cur.volume.get(c.id) ?? { requestsCreated: 0, custodyTransactions: 0, custodyRequests: 0, slackThreads: 0 };
     return {
       clientId: c.id,
       client: c.displayName,
@@ -168,7 +168,7 @@ export async function clientsSection(period: Period, now = new Date()) {
     labels: { effort: "logged effort", volume: "volume, not effort" },
     byEffort: [...rows].sort((a, b) => b.loggedEffortHours - a.loggedEffortHours),
     byVolume: [...rows].sort((a, b) => b.volume.total - a.volume.total),
-    freshness: await freshness(now, ["komainu_api", "slack", "graph"]),
+    freshness: await freshness(now, ["custody_api", "slack", "graph"]),
   };
 }
 
@@ -186,7 +186,7 @@ async function oesHealth(period: Period, now: Date) {
   const to = new Date(Math.min(period.to.getTime(), now.getTime()));
   const from = new Date(Math.max(period.from.getTime(), to.getTime() - 31 * 86_400_000));
   const settlements = await prisma.sourceRecord.findMany({
-    where: { source: "komainu_api", kind: "settlement", occurredAt: { gte: new Date(from.getTime() - 3_600_000), lt: new Date(to.getTime() + 6 * 3_600_000) } },
+    where: { source: "custody_api", kind: "settlement", occurredAt: { gte: new Date(from.getTime() - 3_600_000), lt: new Date(to.getTime() + 6 * 3_600_000) } },
     select: { mappedStatus: true, occurredAt: true, fields: true },
   });
   const byExchange: Record<string, Record<WindowOutcome, number>> = {};
@@ -233,7 +233,7 @@ export async function operationsHealth(period: Period, now = new Date()) {
     oesWindows: await oesHealth(period, now),
     alerts: alertLoad(alerts),
     mtdBreakClosure: mtdClosure(breaks, cal, now),
-    freshness: await freshness(now, ["komainu_api.collateral", "komainu_api.transactions", "atlassian"]),
+    freshness: await freshness(now, ["custody_api.collateral", "custody_api.transactions", "atlassian"]),
   };
 }
 
@@ -358,15 +358,15 @@ export async function pollingHealthSection(period: Period, now = new Date()) {
   };
 }
 
-// ── GX sprint UAT (per sprint, team level) ──
+// ── Platform sprint UAT (per sprint, team level) ──
 
-export async function gxSprintUat(period: Period, now = new Date()) {
+export async function platformSprintUat(period: Period, now = new Date()) {
   void now;
-  const sprints = await prisma.gxSprint.findMany({
+  const sprints = await prisma.platformSprint.findMany({
     where: { OR: [{ prodPlannedAt: { gte: period.from, lt: period.to } }, { createdAt: { gte: period.from, lt: period.to } }] },
     orderBy: { sprint: "asc" },
   });
-  const changes = await prisma.gxChange.findMany({ where: { sprintId: { in: sprints.map((s) => s.id) }, removedAt: null, qualifies: true } });
+  const changes = await prisma.platformChange.findMany({ where: { sprintId: { in: sprints.map((s) => s.id) }, removedAt: null, qualifies: true } });
   const workItems = await prisma.workItem.findMany({
     where: { id: { in: changes.map((c) => c.workItemId).filter((x): x is string => !!x) } },
     select: { id: true, resolvedAt: true, metadata: true },
@@ -378,7 +378,7 @@ export async function gxSprintUat(period: Period, now = new Date()) {
       const items = changes.filter((c) => c.sprintId === s.id).map((c) => {
         const w = c.workItemId ? byId.get(c.workItemId) : undefined;
         const m = (w?.metadata ?? {}) as Record<string, unknown>;
-        return { createdAt: c.createdAt, resolvedAt: w?.resolvedAt ?? null, outcome: c.uatOutcome, defect: typeof m.gxsDefectKey === "string", hasTicket: !!c.uatTicketKey };
+        return { createdAt: c.createdAt, resolvedAt: w?.resolvedAt ?? null, outcome: c.uatOutcome, defect: typeof m.platformDefectDefectKey === "string", hasTicket: !!c.uatTicketKey };
       });
       return { sprint: s.sprint, prodPlannedAt: s.prodPlannedAt?.toISOString() ?? null, ...sprintUat(items, s.prodPlannedAt) };
     }),
@@ -393,7 +393,7 @@ export const SECTIONS = {
   hygiene,
   client_incidents: clientIncidentComms,
   polling: pollingHealthSection,
-  gx_uat: gxSprintUat,
+  platform_uat: platformSprintUat,
 } as const;
 export type SectionName = keyof typeof SECTIONS;
 

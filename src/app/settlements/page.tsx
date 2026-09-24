@@ -2,7 +2,7 @@
 
 /**
  * OES settlement monitoring (spec §12 CHK-10): a read-only matching view from
- * the Komainu API, one row per portfolio per settlement window. There are no
+ * the custody API, one row per portfolio per settlement window. There are no
  * approval actions: settlement approvals happen in the platforms (H1).
  */
 
@@ -56,7 +56,7 @@ export default function SettlementsPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2"><ArrowDownUp size={24} className="text-primary" /> OES Settlement Monitoring</h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1">Read-only matching view from the Komainu API. Approvals happen in the platforms, not here.</p>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">Read-only matching view from the custody API. Approvals happen in the platforms, not here.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground">Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="ml-1 h-8 rounded-md border border-border bg-background px-2 text-sm" /></label>
@@ -98,7 +98,7 @@ export default function SettlementsPage() {
                               <p className="text-xs">{view.clientTemplateUrl
                                 ? <a href={view.clientTemplateUrl} target="_blank" rel="noreferrer" className="text-primary">Client-notification template (FB OES Collateral Settlement Monitoring)</a>
                                 : "Client-notification template: Confluence \"FB OES Collateral Settlement Monitoring\" (link not configured yet)."}</p>
-                              <p className="text-xs text-amber-400">{view.cf39}</p>
+                              <p className="text-xs text-amber-400">{view.exposureBandNotice}</p>
                               <p className="text-xs">Exposure: {r.exposure.exposureUsd != null ? `USD ${r.exposure.exposureUsd}` : "not recorded"}. Band: {r.exposure.band ?? <strong>not chosen (required)</strong>}</p>
                               <form className="flex gap-2 items-end" onSubmit={(e) => { e.preventDefault(); void post(`/api/work-items/${r.exposure!.workItemId}/exposure-band`, { band: String(new FormData(e.currentTarget).get("band") ?? "") }, "Exposure band recorded."); }}>
                                 {view.exposureBands.length ? (

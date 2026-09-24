@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const OUT = "docs/phase1/confirm-register.md";
-const SPEC = "docs/phase1/PHASE1_BUILD_SPEC.md";
+const SPEC = "docs/PRODUCT_SPEC.md";
 const ROOTS = ["src", "prisma", "scripts", "docs", ".github", "deploy"];
 const FILES = ["Dockerfile", ".env.example", "next.config.js"];
 const SKIP = new Set([OUT, SPEC, "scripts/confirm-register.ts"]);
@@ -19,7 +19,7 @@ const ID = /CONFIRM-[A-Z0-9]+(?:-[A-Z0-9]+)*/g;
 
 export interface SpecItem { ids: string[]; groups: string[][]; label: string; needed: string; blocks: string }
 
-/** Rows of the §20 table; "CONFIRM-FAB-TEMPLATES / ACK-MINS" expands to both ids. */
+/** Rows of the §20 table; "CONFIRM-BANK-TEMPLATES / ACK-MINS" expands to both ids. */
 export function specItems(spec: string): SpecItem[] {
   const section = spec.split(/^## 20\./m)[1]?.split(/^## 21\./m)[0] ?? "";
   const out: SpecItem[] = [];

@@ -5,7 +5,7 @@
  * src/lib/http/client.ts.
  */
 
-export type ConnectorId = "komainu_api" | "atlassian" | "slack" | "graph_mail" | "graph_teams" | "notabene";
+export type ConnectorId = "custody_api" | "atlassian" | "slack" | "graph_mail" | "graph_teams" | "notabene";
 
 export interface HeartbeatSpec {
   source: string;

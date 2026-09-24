@@ -25,8 +25,8 @@ if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then 
   echo "Running database migrations (production — fail-fast)..."
 
   # Auto-resolve previously failed migrations (P3009).
-  # Our migrations use idempotent SQL (IF NOT EXISTS, DO $$ EXCEPTION blocks),
-  # so marking them as rolled-back and re-running is safe.
+  # The baseline runs in one transaction and later migrations are idempotent
+  # or transactional, so marking them rolled back and re-running is safe.
   FAILED_MIGRATIONS=$(node -e "
     const { PrismaClient } = require('@prisma/client');
     const p = new PrismaClient();

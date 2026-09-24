@@ -4,7 +4,7 @@ This inventory covers spec §17.5 and the D5 dataset cataloguing.
 
 **Classification:** the application holds **confidential** data: client names, wallet addresses, transaction ids and amounts, client contact details, and staff identities. It also holds personal data (staff names, emails and absences; client contact names). That is recorded in the IT Services inventory entry (TODO(CONFIRM-SERVICE-OWNER)).
 
-**Minimisation:** the application stores what each feature uses. It keeps identifiers and the fields each check needs, and does not mirror full GX transaction history. Message bodies are kept for the inbox with the shortest retention that serves the audit need.
+**Minimisation:** the application stores what each feature uses. It keeps identifiers and the fields each check needs, and does not mirror full Platform transaction history. Message bodies are kept for the inbox with the shortest retention that serves the audit need.
 
 **Owners:** TODO(CONFIRM-DATA-OWNERS). Each group below needs a named owner. Until then, the service owner owns everything.
 
@@ -41,17 +41,17 @@ The test `data-inventory-covers-every-model` fails if a Prisma model is not list
 |---|---|---|---|
 | WorkItem, TimeLog, TicketLink, SlaPolicy, SlaEvent | Work queue, effort buckets, ticket links, SLA clocks | App, Jira/JSM | CONFIRM-RETENTION |
 | CommsThread, CommsMessage, OwnershipChange, ThreadNote, ThreadParticipant, ThreadLinkedRecord, MessageAttachment | Inbox threads and **message bodies** from Slack and mail | Slack, Graph | Message bodies: 365 days once `retention.enabled` is on |
-| Incident, IncidentUpdate, IncidentCategory, IaiDraft | Incidents, updates, categories, IAI drafts | Staff | CONFIRM-RETENTION |
+| Incident, IncidentUpdate, IncidentCategory, IncidentLogDraft | Incidents, updates, categories, incident log drafts | Staff | CONFIRM-RETENTION |
 | Project, ProjectMember, ProjectUpdate, ProjectTag, DailyTask | Internal projects and tasks | Staff | CONFIRM-RETENTION |
 
 ## 4. Custody and operations records (confidential)
 
-Read from Komainu (GET only), GX, Confluence and imports. Addresses, transaction ids and amounts are **redacted in logs** (H8).
+Read from the custody provider (GET only), Platform, Confluence and imports. Addresses, transaction ids and amounts are **redacted in logs** (H8).
 
 | Model | Contents | Source | Retention |
 |---|---|---|---|
-| SourceRecord | Normalised records from each source (identifiers and the fields the checks use) | Komainu API, GX, imports | CONFIRM-RETENTION |
-| OesSettlement, OesWindow, SettlementStatusMap, SettlementNote | Exchange settlements, windows, status mapping, notes | Komainu, admin | CONFIRM-RETENTION |
+| SourceRecord | Normalised records from each source (identifiers and the fields the checks use) | custody API, Platform, imports | CONFIRM-RETENTION |
+| OesSettlement, OesWindow, SettlementStatusMap, SettlementNote | Exchange settlements, windows, status mapping, notes | The custody provider, admin | CONFIRM-RETENTION |
 | TransactionConfirmation | Transaction confirmation records | Staff | CONFIRM-RETENTION |
 | TravelRuleCase, CaseNote, VaspContact | Travel-rule cases (Notabene off, H11) | Staff | CONFIRM-RETENTION (regulatory) |
 | ScreeningEntry | Screening results entered by staff | Staff / Chainalysis export | CONFIRM-RETENTION (regulatory) |
@@ -59,7 +59,7 @@ Read from Komainu (GET only), GX, Confluence and imports. Addresses, transaction
 | TokenReview, TokenDemandSignal | Token onboarding reviews | Staff | CONFIRM-RETENTION |
 | UsdcRampRequest | USDC ramp workflow (module off by default) | Staff | CONFIRM-RETENTION |
 | AssetThreshold, AssetStatus, RiskRuleTier | Thresholds and risk tier mapping (risk levels come from the source system, never computed locally, H5) | Admin | Configuration |
-| FabInstruction, FabSettlementLog, FabFeeBalance, OtcBreakType | FAB settlements and OTC break types | Mail / staff | CONFIRM-RETENTION |
+| BankInstruction, BankSettlementLog, BankFeeBalance, OtcBreakType | partner bank settlements and OTC break types | Mail / staff | CONFIRM-RETENTION |
 | DailyCheckRun, DailyCheckItem, DailyCheckDefinition | Daily control checks and evidence | Staff, collectors | CONFIRM-RETENTION (control evidence) |
 
 ## 5. Alerts, monitoring and change
@@ -69,7 +69,7 @@ Read from Komainu (GET only), GX, Confluence and imports. Addresses, transaction
 | Alert, AlertRule | Raised alerts and rule configuration | Engine, admin | Resolved alerts: 90 days once retention runs |
 | SourceHeartbeat, PollCycle, SyncCursor | Polling health and cursors | Worker | **Enforced:** poll cycles deleted after 90 days |
 | StatusPageEvent, ServiceProvider, VendorReliabilityScore | Vendor status and reliability | Vendors | CONFIRM-RETENTION |
-| GxSprint, GxChange, GxImpactRule, UatTemplate | GX release notes, changes, impact rules, UAT templates | Confluence, admin | CONFIRM-RETENTION |
+| PlatformSprint, PlatformChange, PlatformImpactRule, UatTemplate | Platform release notes, changes, impact rules, UAT templates | Confluence, admin | CONFIRM-RETENTION |
 
 ## 6. Integration state
 

@@ -23,7 +23,7 @@ export async function GET() {
     const integrations = await getAllHealth();
     const summary = await getHealthSummary();
     const breakers = CircuitBreaker.getAllStatus();
-    const byConnector: Record<string, string> = { komainu_api: "komainu_api", atlassian: "atlassian", slack: "slack_channel_sync", graph_mail: "graph", graph_teams: "graph", notabene: "notabene" };
+    const byConnector: Record<string, string> = { custody_api: "custody_api", atlassian: "atlassian", slack: "slack_channel_sync", graph_mail: "graph", graph_teams: "graph", notabene: "notabene" };
 
     const dependencies = integrations.map((h) => {
       const breaker = breakers[byConnector[h.source]];

@@ -65,18 +65,18 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
     issues.push(`Risk score must be one of: ${scale.join(", ")}.`);
   }
 
-  // Spec §12 CHK-10: after ALR-OES-06 the client exposure band must be chosen (CF-39).
+  // Spec §12 CHK-10: after ALR-OES-06 the client exposure band must be chosen.
   if (item.kind === "oes_settlement" && (await prisma.alert.count({ where: { workItemId: item.id, ruleCode: "ALR-OES-06" } })) > 0) {
     const meta = (item.metadata ?? {}) as Record<string, unknown>;
     if (typeof meta.exposureBand !== "string" || !meta.exposureBand) issues.push("Choose the client exposure band (ALR-OES-06) before closing.");
   }
 
-  // Spec §12 CHK-06: the client advisory is recorded; a client override of Komainu's scam assessment needs the client decision attached (CF-35).
+  // Spec §12 CHK-06: the client advisory is recorded; a client override of the custody provider's scam assessment needs the client decision attached.
   if (item.kind === "scam_dust_case") {
     const meta = (item.metadata ?? {}) as Record<string, unknown>;
     if (typeof meta.clientAdvisory !== "string" || !meta.clientAdvisory) issues.push("Record the client advisory before closing.");
     if (meta.clientOverride === true && (typeof meta.clientDecisionUrl !== "string" || !meta.clientDecisionUrl)) {
-      issues.push("The client overrode Komainu's scam assessment: attach the client decision before closing (CF-35).");
+      issues.push("The client overrode the custody provider's scam assessment: attach the client decision before closing.");
     }
   }
 
@@ -87,15 +87,15 @@ export async function closureIssues(item: Pick<WorkItem, "id" | "kind"> & { meta
     }
   }
 
-  // Spec §16.5: a UAT child closes with its outcome and evidence; a fail needs a linked GXS defect.
+  // Spec §16.5: a UAT child closes with its outcome and evidence; a fail needs a linked PDEF defect.
   if (item.kind === "uat_task") {
     const uat = basis.writeUp.uat;
     if (!uat || !(UAT_OUTCOMES as readonly string[]).includes(uat.outcome)) {
       issues.push(`Record the UAT outcome: ${UAT_OUTCOMES.join(", ")}.`);
     } else {
       if ((uat.evidence ?? "").trim().length < 3) issues.push("Add the UAT evidence (a screenshot link or a reference).");
-      if (uat.outcome === "fail" && !/^GXS-\d+$/.test((uat.defectKey ?? "").trim())) {
-        issues.push("A failed UAT item needs a linked GXS defect ticket (for example GXS-123): create it from the item or enter the key.");
+      if (uat.outcome === "fail" && !/^PDEF-\d+$/.test((uat.defectKey ?? "").trim())) {
+        issues.push("A failed UAT item needs a linked PDEF defect ticket (for example PDEF-123): create it from the item or enter the key.");
       }
     }
   }

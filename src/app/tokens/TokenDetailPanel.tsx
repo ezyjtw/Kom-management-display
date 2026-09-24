@@ -2,6 +2,7 @@
 
 import { Plus, ArrowRight, TrendingUp, Shield, ExternalLink, Sparkles, RefreshCw, Clock, Globe, CheckCircle2, XCircle, AlertCircle, HelpCircle, FileText, Users, Link, Cpu, Eye, BarChart3 } from "lucide-react";
 import type { TokenEntry, JurisdictionGuidance } from "./types";
+import { licensedJurisdictionList } from "@/lib/licensed-jurisdictions";
 import {
   STATUS_FLOW, SIGNAL_TYPE_LABELS, MARKET_CAP_LABELS,
   VENDOR_STATUS_COLORS, VENDOR_STATUS_LABELS, JURISDICTION_LABELS,
@@ -106,7 +107,7 @@ function renderJurisdictionGuidance(token: TokenEntry) {
       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
         <Globe size={12} /> Per-Jurisdiction Compliance Guidance
         <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded font-normal">
-          Licensed: UK, EU, Jersey, VARA
+          Licensed: {licensedJurisdictionList()}
         </span>
         {token.privacyToken && (
           <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-400 rounded font-normal">
@@ -180,11 +181,6 @@ function renderJurisdictionGuidance(token: TokenEntry) {
               {token.privacyToken && jKey === "UK" && (
                 <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                   <AlertCircle size={10} /> FCA has signalled concerns about unhosted wallet transfers for privacy tokens.
-                </p>
-              )}
-              {token.privacyToken && jKey === "Jersey" && (
-                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                  <AlertCircle size={10} /> JFSC AML/CFT Handbook requires enhanced due diligence; privacy tokens may conflict with traceability obligations.
                 </p>
               )}
             </div>

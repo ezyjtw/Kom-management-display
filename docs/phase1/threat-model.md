@@ -1,7 +1,7 @@
 # KOMmand Centre threat model
 
 **Scope:** Phase 1, this repository at the end of Phase 12.
-**Method:** STRIDE for each trust boundary, plus the Komainu-specific abuse cases in spec §17.8.
+**Method:** STRIDE for each trust boundary, plus the custody-specific abuse cases in spec §17.8.
 **Status:** a draft for the design review with Platform Security. Nothing here has been reviewed yet.
 **Owner:** TODO(CONFIRM-SERVICE-OWNER).
 
@@ -9,7 +9,7 @@
 
 KOMmand Centre is an operations dashboard. It:
 
-- reads from Komainu (GET only), Jira and JSM, Confluence, Slack and Microsoft Graph;
+- reads from the custody provider (GET only), Jira and JSM, Confluence, Slack and Microsoft Graph;
 - turns what it reads into work items, alerts and checks for the operations team;
 - writes to Jira and JSM, to Slack channels, and to mailboxes through Graph.
 
@@ -21,14 +21,14 @@ It sits entirely **outside the custody trust boundary**:
 - It has no signing, vault or custody domain.
 - It has no code path that approves, rejects, confirms, cancels, initiates or signs a transaction or request on any custody platform (H1).
 
-The Komainu API client allows only GET, plus `POST /v1/auth/token`, and only against a frozen allowlist of endpoints (H2). A test enforces this (`custody-client-is-read-only`). This is the architectural answer to the most serious abuse case: a compromised dashboard cannot move client funds, because the capability does not exist.
+The custody API client allows only GET, plus `POST /v1/auth/token`, and only against a frozen allowlist of endpoints (H2). A test enforces this (`custody-client-is-read-only`). This is the architectural answer to the most serious abuse case: a compromised dashboard cannot move client funds, because the capability does not exist.
 
 ## 2. Components and trust boundaries
 
 ```
 Browser ──(1)── Web app (Next.js, Node 22) ──(2)── PostgreSQL
                       │
-Worker (same image) ──┼──(3) Komainu API (read only)
+Worker (same image) ──┼──(3) custody API (read only)
                       ├──(4) Atlassian (Jira, JSM, Confluence)
                       ├──(5) Slack
                       ├──(6) Microsoft Graph (mail, Teams)
@@ -65,18 +65,18 @@ The in-code controls below assume those exist, and do not replace them.
 
 | Threat | Mitigation |
 |---|---|
-| Tampering with the audit trail | AuditLog is append-only by trigger: UPDATE, DELETE and TRUNCATE are rejected (migration 0037). The application's database role has SELECT and INSERT only on AuditLog, cannot drop or disable triggers, and cannot alter the trigger functions (`docs/phase1/db-roles.sql`, verified on PostgreSQL 16). BackgroundJobRun gets the same treatment, except that deletion is allowed after the retention period (migration 0042). |
+| Tampering with the audit trail | AuditLog is append-only by trigger: UPDATE, DELETE and TRUNCATE are rejected (baseline migration). The application's database role has SELECT and INSERT only on AuditLog, cannot drop or disable triggers, and cannot alter the trigger functions (`docs/phase1/db-roles.sql`, verified on PostgreSQL 16). BackgroundJobRun gets the same treatment, except that deletion is allowed after the retention period (baseline migration). |
 | Spoofing: a stolen connection string | Production connects with the workload's managed identity (no password in `DATABASE_URL`, TODO(CONFIRM-DB-IDENTITY)); a private endpoint only; TLS enforced. |
 | Injection | Prisma parameterises all queries. The few raw statements use tagged templates (`$queryRaw`), never string concatenation. External content is never used to build a query (§17.4). |
-| Schema drift weakening a control | Migration drift check that blocks CI (baseline empty since migration 0043; `schema-drift.md`). |
+| Schema drift weakening a control | Migration drift check that blocks CI (the drift baseline is empty; `schema-drift.md`). |
 
-### (3) App to Komainu API
+### (3) App to custody API
 
 | Threat | Mitigation |
 |---|---|
-| The dashboard is used to act on custody | GET only, with a frozen endpoint allowlist; the Komainu API user is read-only on the Komainu side (H2). |
+| The dashboard is used to act on custody | GET only, with a frozen endpoint allowlist; the custody API user is read-only on the custody-provider side (H2). |
 | Credential theft | Secret held in Key Vault and mounted as a tmpfs file (never an environment variable, which fails startup in production). Every use is audited with the credential label and the workload (`integration_credential_used`). Repeated 401/403 raises ALR-SEC-05. |
-| Wrong environment | Only `api-demo.komainu.io` or mocks in code and tests; `.env.example` holds no production endpoint (H9). |
+| Wrong environment | Only `custody-demo.example.com` or mocks in code and tests; `.env.example` holds no production endpoint (H9). |
 
 ### (4) App to Atlassian, (5) Slack, (6) Graph
 
@@ -99,11 +99,11 @@ The in-code controls below assume those exist, and do not replace them.
 
 The worker is the same image and code, with the same egress allowlist and the same secret loader, labelled `KOM_WORKLOAD=worker` for credential-use audit. Polling runs 24/7 and is never paused out of hours. Heartbeats raise ALR-HB-* when polling stops. Durable run history (BackgroundJobRun) keeps failures and dead letters as evidence.
 
-## 4. Komainu-specific abuse cases (spec §17.8)
+## 4. Custody-provider-specific abuse cases (spec §17.8)
 
 | Abuse case | Mitigation | Where |
 |---|---|---|
-| A compromised dashboard session is used to move client funds | No custody write path exists (H1, H2); the Komainu API user cannot write | `custody-client-is-read-only`, `no-approval-routes` |
+| A compromised dashboard session is used to move client funds | No custody write path exists (H1, H2); the custody API user cannot write | `custody-client-is-read-only`, `no-approval-routes` |
 | An operator leaks one client's data to another through a client ticket | Server-side client scoping and cross-client text checks | `client-scoping-enforced`, `client-ticket-scoped-to-one-client` |
 | Tipping off a client under investigation | Compliance-sensitive categories never auto-create client-visible tickets | `compliance-sensitive-blocks-client-ticket` |
 | An attacker suppresses an alert to hide an incident | Alerts cannot be cleared without a ticket; audit is append-only in the database and for the application role; SecOps receives the log stream | `ticket-enforcement`, `audit-log-is-append-only` |

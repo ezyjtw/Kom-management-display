@@ -35,18 +35,18 @@ export type JobType =
   | "draft_client_comms"
   | "poll_status_pages"
   | "score_vendor_reliability"
-  | "komainu_poll_requests"
-  | "komainu_poll_transactions"
-  | "komainu_poll_collateral"
-  | "komainu_poll_audit_logs"
-  | "komainu_poll_eod_balances"
-  | "komainu_poll_staking"
-  | "komainu_poll_stakes"
+  | "custody_poll_requests"
+  | "custody_poll_transactions"
+  | "custody_poll_collateral"
+  | "custody_poll_audit_logs"
+  | "custody_poll_eod_balances"
+  | "custody_poll_staking"
+  | "custody_poll_stakes"
   | "sync_mail"
   | "graph_teams_sync"
   | "report_unticketed"
   | "reconcile_tickets"
-  | "iai_overdue"
+  | "incident_log_overdue"
   | "evaluate_alerts"
   | "alert_digest"
   | "poll_risk_signals"
@@ -55,7 +55,7 @@ export type JobType =
   | "mtd_autoclose"
   | "poll_client_ticket_comments"
   | "morning_handover"
-  | "gx_sprint_intake"
+  | "platform_sprint_intake"
   | "data_retention";
 
 /**
@@ -99,27 +99,27 @@ export async function registerDefaultJobs(): Promise<void> {
     // Spec §6.1: every registered Slack channel and shared mailbox, every 5 minutes, 24/7. Never paused out of hours.
     { type: "sync_slack", cronExpression: "*/5 * * * *" },
     { type: "sync_mail", cronExpression: "*/5 * * * *" },
-    { type: "komainu_poll_requests", cronExpression: "*/1 * * * *" },
-    { type: "komainu_poll_transactions", cronExpression: "*/2 * * * *" },
+    { type: "custody_poll_requests", cronExpression: "*/1 * * * *" },
+    { type: "custody_poll_transactions", cronExpression: "*/2 * * * *" },
     // Every 10 min; the per-window 60-second cadence comes with OesWindow in Phase 6.
-    { type: "komainu_poll_collateral", cronExpression: "*/10 * * * *" },
-    { type: "komainu_poll_audit_logs", cronExpression: "*/5 * * * *" },
-    { type: "komainu_poll_eod_balances", cronExpression: "0 7 * * *" },
-    { type: "komainu_poll_staking", cronExpression: "30 7 * * *" },
-    { type: "komainu_poll_stakes", cronExpression: "45 7 * * *" },
+    { type: "custody_poll_collateral", cronExpression: "*/10 * * * *" },
+    { type: "custody_poll_audit_logs", cronExpression: "*/5 * * * *" },
+    { type: "custody_poll_eod_balances", cronExpression: "0 7 * * *" },
+    { type: "custody_poll_staking", cronExpression: "30 7 * * *" },
+    { type: "custody_poll_stakes", cronExpression: "45 7 * * *" },
     { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
     { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
     { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
     { type: "reconcile_tickets", cronExpression: "15 * * * *" },   // spec §10.3: hourly
-    { type: "iai_overdue", cronExpression: "5 * * * *" },          // spec §10.4
+    { type: "incident_log_overdue", cronExpression: "5 * * * *" },          // spec §10.4
     { type: "evaluate_alerts", cronExpression: "*/1 * * * *" },    // spec §11.1: every 60 s; rules may declare their own cadence
     { type: "alert_digest", cronExpression: "TZ=Europe/London 0 8 * * *" }, // spec §11.3: daily digest of medium config rules
     { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
     { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
     { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
-    { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily TOPS MTD ticket
+    { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily OPS MTD ticket
     { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
-    { type: "gx_sprint_intake", cronExpression: "20 * * * *" }, // spec §16.1: hourly check; full intake on gx.sprint_intake.cron or KMNC changes
+    { type: "platform_sprint_intake", cronExpression: "20 * * * *" }, // spec §16.1: hourly check; full intake on platform.sprint_intake.cron or CHG changes
     // Retention: runs daily and records its outcome; deletes nothing until retention.enabled is set (CONFIRM-RETENTION).
     { type: "data_retention", cronExpression: "TZ=Europe/London 0 3 * * *" },
     { type: "morning_handover", cronExpression: "TZ=Europe/London */15 9-11 * * 1-5" }, // spec §14.3: from 09:00 UK post handovers, retry failed tickets, remind when missing

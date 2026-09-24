@@ -1,8 +1,8 @@
 /**
  * Read helpers over SourceRecord snapshots written by the pollers (spec §8.1).
- * Field names follow the Komainu API payloads as stored; the ones not yet in
+ * Field names follow the custody API payloads as stored; the ones not yet in
  * the committed OpenAPI file are looked up under several candidate names.
- * TODO(CONFIRM-KOMAINU-OPENAPI): pin these to the schema once it is committed.
+ * TODO(CONFIRM-CUSTODY-OPENAPI): pin these to the schema once it is committed.
  */
 
 import type { SourceRecord } from "@prisma/client";
@@ -37,8 +37,8 @@ export function pickNumber(r: Pick<SourceRecord, "fields">, ...names: string[]):
   return null;
 }
 
-export function komainuRecords(kind: string, where: Record<string, unknown> = {}): Promise<Rec[]> {
-  return prisma.sourceRecord.findMany({ where: { source: "komainu_api", kind, ...where }, select: SELECT, take: 5000 });
+export function custodyRecords(kind: string, where: Record<string, unknown> = {}): Promise<Rec[]> {
+  return prisma.sourceRecord.findMany({ where: { source: "custody_api", kind, ...where }, select: SELECT, take: 5000 });
 }
 
 /** Records the latest poll still returned (not marked no_longer_listed). */

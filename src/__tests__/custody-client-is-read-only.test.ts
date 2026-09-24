@@ -6,14 +6,14 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   assertPermitted,
-  komainuRequest,
+  custodyRequest,
   ForbiddenMethodError,
   ForbiddenPathError,
-} from "@/lib/integrations/komainu-api/client";
-import { isAllowedEndpoint } from "@/lib/integrations/komainu-api/endpoints";
+} from "@/lib/integrations/custody-api/client";
+import { isAllowedEndpoint } from "@/lib/integrations/custody-api/endpoints";
 
 const SRC = path.resolve(__dirname, "..");
-const READS_BASE_URL = /(env\(\s*["']KOMAINU_API_BASE_URL["']\s*\)|process\.env\.KOMAINU_API_BASE_URL)/;
+const READS_BASE_URL = /(env\(\s*["']CUSTODY_API_BASE_URL["']\s*\)|process\.env\.CUSTODY_API_BASE_URL)/;
 
 function sourceFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -26,7 +26,7 @@ function sourceFiles(dir: string): string[] {
 describe("custody-client-is-read-only", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("static scan: every Komainu HTTP call is GET, except POST /v1/auth/token", () => {
+  it("static scan: every the custody provider HTTP call is GET, except POST /v1/auth/token", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const src = fs.readFileSync(file, "utf8");
@@ -43,14 +43,14 @@ describe("custody-client-is-read-only", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("static scan: only the komainu-api client (and the egress allowlist, for the hostname) reads the Komainu base URL", () => {
+  it("static scan: only the custody-api client (and the egress allowlist, for the hostname) reads the custody base URL", () => {
     const readers = sourceFiles(SRC)
       .filter((f) => READS_BASE_URL.test(fs.readFileSync(f, "utf8")))
       .map((f) => path.relative(SRC, f))
       .sort();
     expect(readers).toEqual([
       path.join("lib", "http", "allowed-hosts.ts"),
-      path.join("lib", "integrations", "komainu-api", "client.ts"),
+      path.join("lib", "integrations", "custody-api", "client.ts"),
     ]);
     const allowlist = fs.readFileSync(path.join(SRC, "lib", "http", "allowed-hosts.ts"), "utf8");
     expect(allowlist).not.toMatch(/fetch\(/);
@@ -65,7 +65,7 @@ describe("custody-client-is-read-only", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     expect(() => assertPermitted(method, "/v1/requests")).toThrow(ForbiddenMethodError);
-    await expect(komainuRequest(method, "/v1/requests/req_1/approve")).rejects.toBeInstanceOf(ForbiddenMethodError);
+    await expect(custodyRequest(method, "/v1/requests/req_1/approve")).rejects.toBeInstanceOf(ForbiddenMethodError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

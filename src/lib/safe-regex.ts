@@ -1,6 +1,6 @@
 /**
- * Admin-configured regular expressions run against external text (GX release
- * notes, Komainu audit event names, import filenames). A pattern with nested
+ * Admin-configured regular expressions run against external text (Platform release
+ * notes, the custody provider audit event names, import filenames). A pattern with nested
  * quantifiers such as (a+)+ can backtrack catastrophically (ReDoS), so such
  * patterns are refused when saved and ignored when run, and the text tested is
  * capped. The check is a conservative heuristic: it refuses a quantified group

@@ -5,9 +5,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 
 import { assertInventoryPermitted, INVENTORY_ALLOWLIST } from "@/modules/jira-inventory/client";
 import { issueTypesInJql, projectsInJql } from "@/modules/jira-inventory/jql";
@@ -25,13 +25,13 @@ function stubJira() {
     const c: Call = { method: init?.method ?? "GET", path: url.pathname, query: Object.fromEntries(url.searchParams), body: init?.body ? JSON.parse(String(init.body)) : null };
     calls.push(c);
     const p = c.path;
-    if (p === "/rest/api/3/project/TOPS") return json({ id: "100", key: "TOPS", name: "Transaction Operations", issueTypes: [{ id: "1", name: "Task" }, { id: "2", name: "Sub-task", subtask: true }, { id: "3", name: "Daily Check" }] });
+    if (p === "/rest/api/3/project/OPS") return json({ id: "100", key: "OPS", name: "Transaction Operations", issueTypes: [{ id: "1", name: "Task" }, { id: "2", name: "Sub-task", subtask: true }, { id: "3", name: "Daily Check" }] });
     if (p === "/rest/api/3/project/OLD") return json({ id: "200", key: "OLD", name: "Old project", issueTypes: [{ id: "9", name: "Task" }] });
     if (p === "/rest/api/3/project/NOPE") return json({ errorMessages: ["No project"] }, 404);
-    if (p === "/rest/agile/1.0/board") return json({ values: c.query.projectKeyOrId === "TOPS" ? [{ id: 5, name: "TOPS board", type: "kanban" }] : [], isLast: true });
+    if (p === "/rest/agile/1.0/board") return json({ values: c.query.projectKeyOrId === "OPS" ? [{ id: 5, name: "OPS board", type: "kanban" }] : [], isLast: true });
     if (p === "/rest/api/3/workflowscheme/project") {
       if (c.query.projectId === "200") return json({ errorMessages: ["forbidden"] }, 403);
-      return json({ values: [{ workflowScheme: { name: "TOPS scheme", defaultWorkflow: "TOPS workflow", issueTypeMappings: { "3": "Daily check workflow" } } }] });
+      return json({ values: [{ workflowScheme: { name: "OPS scheme", defaultWorkflow: "OPS workflow", issueTypeMappings: { "3": "Daily check workflow" } } }] });
     }
     if (p === "/rest/api/3/search/jql") {
       const jql = String(c.body?.jql);
@@ -42,8 +42,8 @@ function stubJira() {
     }
     if (p === "/rest/api/3/user/search") return json(c.query.query === "ann@k.com" ? [{ accountId: "acc-ann", emailAddress: "ann@k.com" }] : []);
     if (p === "/rest/api/3/filter/search") return json({ values: [
-      { id: "10001", name: "My daily checks", jql: 'project = TOPS AND issuetype = "Daily Check" ORDER BY created', owner: { displayName: "Ann" } },
-      { id: "10002", name: "All TOPS", jql: "project in (TOPS, OTC) AND statusCategory != Done", owner: { displayName: "Ann" } },
+      { id: "10001", name: "My daily checks", jql: 'project = OPS AND issuetype = "Daily Check" ORDER BY created', owner: { displayName: "Ann" } },
+      { id: "10002", name: "All OPS", jql: "project in (OPS, OTC) AND statusCategory != Done", owner: { displayName: "Ann" } },
     ], isLast: true });
     if (p === "/rest/api/3/dashboard/search") return json({ values: [{ id: "7", name: "Ops dashboard" }, { id: "8", name: "Other" }], isLast: true });
     if (p === "/rest/api/3/dashboard/7/gadget") return json({ gadgets: [{ id: 70 }] });
@@ -64,15 +64,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("JQL parsing", () => {
   it("finds issue types in = / in / != clauses, quoted or not", () => {
-    expect(issueTypesInJql('project = TOPS AND issuetype = "Daily Check"')).toEqual(["daily check"]);
+    expect(issueTypesInJql('project = OPS AND issuetype = "Daily Check"')).toEqual(["daily check"]);
     expect(issueTypesInJql("type in (Task, 'Sub-task') AND status = Open").sort()).toEqual(["sub-task", "task"]);
     expect(issueTypesInJql("issuetype != Epic OR issueType not in (Bug)").sort()).toEqual(["bug", "epic"]);
-    expect(issueTypesInJql("project = TOPS AND statusCategory != Done")).toEqual([]);
+    expect(issueTypesInJql("project = OPS AND statusCategory != Done")).toEqual([]);
   });
 
   it("finds project keys", () => {
-    expect(projectsInJql("project in (TOPS, otc) AND x = 1").sort()).toEqual(["OTC", "TOPS"]);
-    expect(projectsInJql('project = "VSR"')).toEqual(["VSR"]);
+    expect(projectsInJql("project in (OPS, otc) AND x = 1").sort()).toEqual(["OPS", "OTC"]);
+    expect(projectsInJql('project = "VND"')).toEqual(["VND"]);
   });
 
   it("finds filter references in gadget configuration", () => {
@@ -87,14 +87,14 @@ describe("read-only guarantee", () => {
     for (const e of INVENTORY_ALLOWLIST) {
       if (e.method !== "GET") expect(String(e.pattern)).toContain("search\\/jql");
     }
-    expect(() => assertInventoryPermitted("PUT", "/rest/api/3/issue/TOPS-1")).toThrow(/read-only/);
+    expect(() => assertInventoryPermitted("PUT", "/rest/api/3/issue/OPS-1")).toThrow(/read-only/);
     expect(() => assertInventoryPermitted("POST", "/rest/api/3/issue")).toThrow(/read-only/);
     expect(() => assertInventoryPermitted("DELETE", "/rest/api/3/filter/10001")).toThrow(/read-only/);
     expect(() => assertInventoryPermitted("PUT", "/rest/api/3/workflowscheme/project")).toThrow(/read-only/);
   });
 
   it("a full run makes only GET requests and JQL searches", async () => {
-    await collectInventory({ projects: ["TOPS", "OLD", "NOPE"], teamEmails: ["ann@k.com", "ghost@k.com"] });
+    await collectInventory({ projects: ["OPS", "OLD", "NOPE"], teamEmails: ["ann@k.com", "ghost@k.com"] });
     expect(calls.length).toBeGreaterThan(10);
     expect(calls.filter((c) => !(c.method === "GET" || (c.method === "POST" && c.path === "/rest/api/3/search/jql")))).toEqual([]);
   });
@@ -102,34 +102,34 @@ describe("read-only guarantee", () => {
 
 describe("inventory and report", () => {
   it("collects boards, issue types, workflows, open counts (paged) and team filters, tolerating unreadable parts", async () => {
-    const inv = await collectInventory({ projects: ["TOPS", "OLD", "NOPE"], teamEmails: ["ann@k.com", "ghost@k.com"], now: new Date("2026-09-24T00:00:00Z") });
-    const tops = inv.projects[0];
-    expect(tops.boards.value).toEqual([{ id: 5, name: "TOPS board", type: "kanban" }]);
-    expect(tops.workflows.value[0]).toEqual({ scheme: "TOPS scheme", defaultWorkflow: "TOPS workflow", byIssueType: { "Daily Check": "Daily check workflow" } });
-    expect(tops.openCounts.value).toEqual({ byTypeAndStatus: { Task: { "In Progress": 1, "To Do": 2 } }, total: 3, truncated: false });
+    const inv = await collectInventory({ projects: ["OPS", "OLD", "NOPE"], teamEmails: ["ann@k.com", "ghost@k.com"], now: new Date("2026-09-24T00:00:00Z") });
+    const ops = inv.projects[0];
+    expect(ops.boards.value).toEqual([{ id: 5, name: "OPS board", type: "kanban" }]);
+    expect(ops.workflows.value[0]).toEqual({ scheme: "OPS scheme", defaultWorkflow: "OPS workflow", byIssueType: { "Daily Check": "Daily check workflow" } });
+    expect(ops.openCounts.value).toEqual({ byTypeAndStatus: { Task: { "In Progress": 1, "To Do": 2 } }, total: 3, truncated: false });
     expect(inv.projects[1].workflows).toMatchObject({ ok: false, note: "not readable with the configured account (permission)" });
     expect(inv.projects[2]).toMatchObject({ found: false });
     expect(inv.teamUsers).toEqual({ requested: 2, resolved: 1, unresolved: 1 });
     expect(inv.filters.value.map((f) => f.id)).toEqual(["10002", "10001"]);
     expect(inv.dashboards.value).toEqual([{ id: "7", name: "Ops dashboard", filterIds: ["10001"] }, { id: "8", name: "Other", filterIds: ["10002"] }]);
-    expect(tops.automation.note).toMatch(/CONFIRM-JIRA-AUTOMATION-API/);
+    expect(ops.automation.note).toMatch(/CONFIRM-JIRA-AUTOMATION-API/);
   });
 
   it("flags filters and dashboards that use an issue type proposed for consolidation, and writes proposals for humans", async () => {
-    const inv = await collectInventory({ projects: ["TOPS", "OLD", "NOPE"], teamEmails: ["ann@k.com"], now: new Date("2026-09-24T00:00:00Z") });
-    const md = renderInventory(inv, { issueTypes: [{ project: "TOPS", issueType: "Daily Check", mergeInto: "Task" }] });
+    const inv = await collectInventory({ projects: ["OPS", "OLD", "NOPE"], teamEmails: ["ann@k.com"], now: new Date("2026-09-24T00:00:00Z") });
+    const md = renderInventory(inv, { issueTypes: [{ project: "OPS", issueType: "Daily Check", mergeInto: "Task" }] });
     expect(md).toContain("Do not change any Jira configuration");
-    expect(md).toMatch(/\| My daily checks \(10001\) \| Ann \| TOPS \| daily check \| \*\*yes\*\*: Daily Check \|/);
+    expect(md).toMatch(/\| My daily checks \(10001\) \| Ann \| OPS \| daily check \| \*\*yes\*\*: Daily Check \|/);
     expect(md).toContain("Filters at risk: My daily checks (10001).");
     expect(md).toContain("Dashboards using those filters: Ops dashboard (7).");
     expect(md).not.toContain("Other (8)");
     expect(md).toMatch(/OLD: no open issues and no new issue for \d+ days — candidate to retire or archive/);
     expect(md).toContain("NOPE: not readable with the inventory account");
-    expect(md).toMatch(/TOPS: issue types with no open issues \(Sub-task, Daily Check\)/);
+    expect(md).toMatch(/OPS: issue types with no open issues \(Sub-task, Daily Check\)/);
   });
 
   it("says when no consolidation list has been agreed yet", async () => {
-    const inv = await collectInventory({ projects: ["TOPS"], teamEmails: [] });
+    const inv = await collectInventory({ projects: ["OPS"], teamEmails: [] });
     expect(renderInventory(inv, { issueTypes: [] })).toContain("TODO(CONFIRM-JIRA-CONSOLIDATION)");
   });
 });

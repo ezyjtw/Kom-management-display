@@ -133,7 +133,7 @@ describe("mailbox cycle (Graph delta)", () => {
     }));
     return calls;
   }
-  const mailbox = { label: "vendor", address: "vendors@komainu.example", purpose: "vendor_notifications" as const };
+  const mailbox = { label: "vendor", address: "vendors@example.com", purpose: "vendor_notifications" as const };
 
   it("stores the delta link and continues from it on the next cycle, skipping removed items", async () => {
     const now = new Date("2026-09-23T02:00:00Z");

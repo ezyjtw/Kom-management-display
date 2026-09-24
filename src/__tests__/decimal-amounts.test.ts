@@ -60,9 +60,10 @@ describe("schema guard", () => {
     expect(floats).toEqual([]);
   });
 
-  it("migration 0038 converts all sixteen columns", () => {
-    const sql = readFileSync("prisma/migrations/0038_decimal_amounts/migration.sql", "utf8");
-    expect((sql.match(/TYPE DECIMAL\(38,18\)/g) ?? []).length).toBe(12);
-    expect((sql.match(/TYPE DECIMAL\(20,2\)/g) ?? []).length).toBe(4);
+  it("the baseline creates the amount columns as DECIMAL", () => {
+    const sql = readFileSync("prisma/migrations/0001_baseline/migration.sql", "utf8");
+    expect(sql).not.toMatch(/"\w*(amount|balance|usd|fiat|exposure)\w*" DOUBLE PRECISION/i);
+    expect((sql.match(/DECIMAL\(38,18\)/g) ?? []).length).toBeGreaterThanOrEqual(12);
+    expect((sql.match(/DECIMAL\(20,2\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
   });
 });

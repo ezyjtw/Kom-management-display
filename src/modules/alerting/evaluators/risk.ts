@@ -1,15 +1,15 @@
 /**
  * Risk-flagged transactions awaiting a human (spec §11.2, ALR-RSK-01..09).
- * Read-only: approval stays in GX (H1). Risk levels come from GX signals
+ * Read-only: approval stays in Platform (H1). Risk levels come from Platform signals
  * (spec §11.4); the rule-number -> tier mapping is config (RiskRuleTier,
- * seeded with every rule at High, TODO(CONFIRM-RISKCO)). Nothing is scored
+ * seeded with every rule at High, TODO(CONFIRM-RISK-COMMITTEE)). Nothing is scored
  * locally (H5).
  */
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { RiskLevel } from "@/modules/risk/signal-source";
-import { fieldsOf, komainuRecords, minsSince, pick, stillListed, type Rec } from "@/modules/alerting/evaluators/source";
+import { fieldsOf, custodyRecords, minsSince, pick, stillListed, type Rec } from "@/modules/alerting/evaluators/source";
 import { numParam, strListParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
 
 const ORDER: RiskLevel[] = ["low", "medium", "high", "requires_escalation"];
@@ -48,7 +48,7 @@ function toSignal(r: { externalId: string; occurredAt: Date | null; firstSeenAt:
 
 export async function recentSignals(since: Date): Promise<StoredSignal[]> {
   const rows = await prisma.sourceRecord.findMany({
-    where: { source: "gx", kind: "risk_signal", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, firstSeenAt: { gte: since } }] },
+    where: { source: "platform", kind: "risk_signal", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, firstSeenAt: { gte: since } }] },
     select: { externalId: true, occurredAt: true, firstSeenAt: true, fields: true },
     orderBy: { occurredAt: "asc" },
     take: 5000,
@@ -56,7 +56,7 @@ export async function recentSignals(since: Date): Promise<StoredSignal[]> {
   return rows.map(toSignal);
 }
 
-/** Tier for a signal: from its rule numbers via RiskRuleTier, otherwise the level GX reported. */
+/** Tier for a signal: from its rule numbers via RiskRuleTier, otherwise the level Platform reported. */
 export async function tierResolver(): Promise<(s: StoredSignal) => RiskLevel> {
   const tiers = new Map((await prisma.riskRuleTier.findMany()).map((t) => [t.rule, t.tier as RiskLevel]));
   return (s) => {
@@ -73,7 +73,7 @@ interface PendingWithSignal {
 
 /** Pending requests joined to their latest risk signal. */
 async function pendingRequests(now: Date): Promise<PendingWithSignal[]> {
-  const requests = await komainuRecords("request", { status: "PENDING", ...stillListed });
+  const requests = await custodyRecords("request", { status: "PENDING", ...stillListed });
   if (!requests.length) return [];
   const signals = await recentSignals(new Date(now.getTime() - 7 * 86_400_000));
   const tier = await tierResolver();
@@ -85,7 +85,7 @@ async function pendingRequests(now: Date): Promise<PendingWithSignal[]> {
   });
 }
 
-/** TODO(CONFIRM-KOMAINU-OPENAPI): confirm which request/transaction field marks staking actions. */
+/** TODO(CONFIRM-CUSTODY-OPENAPI): confirm which request/transaction field marks staking actions. */
 const isStaking = (r: Rec) => ["type", "transactionType", "transaction_type"].some((f) => /STAK/i.test(pick(r, f) ?? ""));
 
 function candidate(r: Rec, severity: AlertCandidate["severity"], title: string, detail: string): AlertCandidate {
@@ -103,9 +103,9 @@ function byLevel(level: RiskLevel, paramKey: string, severity: AlertCandidate["s
           p.request,
           severity,
           title,
-          `Request ${p.request.externalId} is PENDING with GX risk ${level.replace("_", " ")} for ${Math.round(minsSince(p.request.occurredAt, ctx.now))} minutes. ` +
+          `Request ${p.request.externalId} is PENDING with Platform risk ${level.replace("_", " ")} for ${Math.round(minsSince(p.request.occurredAt, ctx.now))} minutes. ` +
             `Rules: ${p.signal!.rules.join(", ") || "none"}. ${kyt.length ? `KYT trigger (rule ${kyt.join(", ")}): Compliance must clear it first. ` : ""}` +
-            `Reasons: ${p.signal!.reasons.join("; ") || "none"}. Act in GX.`,
+            `Reasons: ${p.signal!.reasons.join("; ") || "none"}. Act in Platform.`,
         );
       });
   };
@@ -133,7 +133,7 @@ export async function evaluateEmergencyStop(ctx: EvaluatorContext): Promise<Aler
       dedupeKey: scope,
       severity: "critical" as const,
       title: `Emergency Stop active (${scope})`,
-      detail: `GX reported an Emergency Stop (rule ${EMERGENCY_STOP_RULE}) for ${scope} at ${s.observedAt.toISOString()}.`,
+      detail: `Platform reported an Emergency Stop (rule ${EMERGENCY_STOP_RULE}) for ${scope} at ${s.observedAt.toISOString()}.`,
       workItemSeed: { kind: "screening_case", taskCode: "RSK" },
     }));
 }
@@ -142,7 +142,7 @@ export async function evaluateEmergencyStop(ctx: EvaluatorContext): Promise<Aler
 export async function evaluateRuleFallback(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const signals = (await recentSignals(new Date(ctx.now.getTime() - 24 * 3_600_000))).filter((s) => s.reasons.some((r) => r.includes(RULE_FALLBACK_REASON)));
   if (!signals.length) return [];
-  const requests = new Map((await komainuRecords("request", { externalId: { in: signals.map((s) => s.requestId).filter((x): x is string => !!x) } })).map((r) => [r.externalId, r]));
+  const requests = new Map((await custodyRecords("request", { externalId: { in: signals.map((s) => s.requestId).filter((x): x is string => !!x) } })).map((r) => [r.externalId, r]));
   const keys = new Map<string, StoredSignal>();
   for (const s of signals) {
     const client = (s.requestId && pick(requests.get(s.requestId) ?? { fields: {} }, "organization")) || "unknown-client";
@@ -152,7 +152,7 @@ export async function evaluateRuleFallback(ctx: EvaluatorContext): Promise<Alert
     dedupeKey: key,
     severity: "medium" as const,
     title: "Risk rule fallback: no rule configuration",
-    detail: `GX reported "${RULE_FALLBACK_REASON}" for ${key.split(":")[0]}. The client's risk configuration needs fixing.`,
+    detail: `Platform reported "${RULE_FALLBACK_REASON}" for ${key.split(":")[0]}. The client's risk configuration needs fixing.`,
     workItemSeed: { kind: "screening_case", taskCode: "RSK" },
   }));
 }
@@ -162,7 +162,7 @@ export async function evaluateKytAfterBroadcast(ctx: EvaluatorContext): Promise<
   const signals = (await recentSignals(new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 72) * 3_600_000)))
     .filter((s) => s.rules.includes(KYT_AFTER_BROADCAST_RULE) && s.transactionId);
   if (!signals.length) return [];
-  const txs = await komainuRecords("transaction", { externalId: { in: signals.map((s) => s.transactionId!) } });
+  const txs = await custodyRecords("transaction", { externalId: { in: signals.map((s) => s.transactionId!) } });
   const broadcast = new Set(txs.filter((t) => ["BROADCASTED", "CONFIRMED", "COMPLETED"].includes((t.status ?? "").toUpperCase())).map((t) => t.externalId));
   return [...new Set(signals.map((s) => s.transactionId!))]
     .filter((id) => broadcast.has(id))
@@ -170,7 +170,7 @@ export async function evaluateKytAfterBroadcast(ctx: EvaluatorContext): Promise<
       dedupeKey: id,
       severity: "critical" as const,
       title: "KYT hit after broadcast",
-      detail: `GX reported a KYT hit (rule ${KYT_AFTER_BROADCAST_RULE}) on transaction ${id}, which has already been broadcast. Compliance outcome required.`,
+      detail: `Platform reported a KYT hit (rule ${KYT_AFTER_BROADCAST_RULE}) on transaction ${id}, which has already been broadcast. Compliance outcome required.`,
       workItemSeed: { kind: "screening_case", taskCode: "RSK" },
     }));
 }

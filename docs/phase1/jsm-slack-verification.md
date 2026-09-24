@@ -34,7 +34,7 @@ or ticket link). Do not paste client data.
 4. **Thread replies.** Replies in the Slack thread update the same request.
    - Result:
    - Evidence:
-5. **First response.** The first Komainu reply is recorded as the first response.
+5. **First response.** The first the custody provider reply is recorded as the first response.
    - Result:
    - Evidence:
 6. **Edge cases.** Several questions in one message; the client edits a message; the client deletes a message.

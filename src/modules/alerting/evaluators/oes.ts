@@ -1,6 +1,6 @@
 /**
  * OES and collateral settlement rules (spec §11.2, ALR-OES-01..07).
- * Source: Komainu API settlements, collateral operations, portfolios and
+ * Source: custody API settlements, collateral operations, portfolios and
  * requests, as stored by the collateral and request pollers.
  */
 
@@ -10,7 +10,7 @@ import { logger } from "@/lib/logger";
 import { getIssue, isAtlassianConfigured } from "@/lib/integrations/atlassian/client";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
 import { londonInstant, londonParts } from "@/modules/alerting/calendar";
-import { komainuRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
+import { custodyRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
 import { numParam, strListParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
 
 export interface WindowInstance {
@@ -40,7 +40,7 @@ const settlementPortfolio = (r: Parameters<typeof pick>[0]) => pick(r, "portfoli
 /** ALR-OES-01: settlement failed or partial in today's window. */
 export async function evaluateSettlementFailed(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const since = new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 24) * 3_600_000);
-  const rows = await komainuRecords("settlement", { mappedStatus: { in: ["failed", "partial"] }, occurredAt: { gte: since } });
+  const rows = await custodyRecords("settlement", { mappedStatus: { in: ["failed", "partial"] }, occurredAt: { gte: since } });
   return rows.map((r) => ({
     dedupeKey: r.externalId,
     severity: "critical",
@@ -54,7 +54,7 @@ export async function evaluateSettlementFailed(ctx: EvaluatorContext): Promise<A
 /** ALR-OES-02: settlement still in progress N minutes after it started. */
 export async function evaluateSettlementStuck(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const mins = numParam(ctx.params, "stuckMins", 60);
-  const rows = await komainuRecords("settlement", { mappedStatus: "in_progress" });
+  const rows = await custodyRecords("settlement", { mappedStatus: "in_progress" });
   return rows
     .filter((r) => r.occurredAt && minsSince(r.occurredAt, ctx.now) > mins)
     .map((r) => ({
@@ -73,13 +73,13 @@ export async function evaluateCycleDidNotRun(ctx: EvaluatorContext): Promise<Ale
   const windows = (await latestWindows(ctx.now)).filter((w) => minsSince(w.start, ctx.now) >= grace && minsSince(w.start, ctx.now) < 24 * 60);
   if (!windows.length) return [];
 
-  const portfolios = (await komainuRecords("portfolio", stillListed)).filter((p) => {
+  const portfolios = (await custodyRecords("portfolio", stillListed)).filter((p) => {
     const status = (p.status ?? "").toLowerCase();
     const type = pick(p, "type", "portfolio_type");
     return (status === "" || status === "active") && (!types.length || (type !== null && types.includes(type)));
   });
   const earliest = new Date(Math.min(...windows.map((w) => w.start.getTime())) - 60 * 60_000);
-  const settlements = await komainuRecords("settlement", { occurredAt: { gte: earliest } });
+  const settlements = await custodyRecords("settlement", { occurredAt: { gte: earliest } });
 
   const out: AlertCandidate[] = [];
   for (const w of windows) {
@@ -103,16 +103,16 @@ export async function evaluateCycleDidNotRun(ctx: EvaluatorContext): Promise<Ale
 export async function evaluateAwaitingApproval(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const mins = numParam(ctx.params, "pendingMins", 15);
   const wallets = strListParam(ctx.params, "settlementWalletIds");
-  const requests = (await komainuRecords("request", { status: "PENDING", ...stillListed }))
+  const requests = (await custodyRecords("request", { status: "PENDING", ...stillListed }))
     .filter((r) => (pick(r, "type") ?? "").startsWith("COLLATERAL_OPERATION") && minsSince(r.occurredAt, ctx.now) > mins);
   const txs = wallets.length
-    ? (await komainuRecords("transaction", { status: "PENDING", ...stillListed })).filter((t) => wallets.includes(pick(t, "walletId") ?? "") && minsSince(t.occurredAt, ctx.now) > mins)
+    ? (await custodyRecords("transaction", { status: "PENDING", ...stillListed })).filter((t) => wallets.includes(pick(t, "walletId") ?? "") && minsSince(t.occurredAt, ctx.now) > mins)
     : [];
   return [...requests, ...txs].map((r) => ({
     dedupeKey: r.externalId,
     severity: "high",
     title: "Settlement awaiting approval",
-    detail: `${r.externalId} has been PENDING for ${Math.round(minsSince(r.occurredAt, ctx.now))} minutes (limit ${mins}); the automated approver may have failed. Approval happens in GX, not here.`,
+    detail: `${r.externalId} has been PENDING for ${Math.round(minsSince(r.occurredAt, ctx.now))} minutes (limit ${mins}); the automated approver may have failed. Approval happens in Platform, not here.`,
     workItemSeed: { kind: "oes_settlement", taskCode: "OES" },
   }));
 }
@@ -198,7 +198,7 @@ export async function onEndOfDayExposure(_alertId: string, candidate: AlertCandi
 /** ALR-OES-07: collateral operation failed. */
 export async function evaluateOperationFailed(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const since = new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 24) * 3_600_000);
-  const rows = await komainuRecords("collateral_operation", { mappedStatus: "failed", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, lastSeenAt: { gte: since } }] });
+  const rows = await custodyRecords("collateral_operation", { mappedStatus: "failed", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, lastSeenAt: { gte: since } }] });
   return rows.map((r) => ({
     dedupeKey: r.externalId,
     severity: "high",

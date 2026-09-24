@@ -11,9 +11,9 @@ vi.mock("@/lib/prisma", async () => {
   db.client = createFakePrisma();
   return { prisma: db.client };
 });
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => false) }));
 const sse = vi.hoisted(() => ({ events: [] as Array<Record<string, unknown>> }));
 vi.mock("@/lib/sse", () => ({ emitWorkItemUpdate: (d: Record<string, unknown>) => sse.events.push(d) }));
@@ -89,9 +89,9 @@ beforeEach(async () => {
   await add("slaPolicy", { id: "sla-q", code: "CLIENT-Q-P2", description: "", ownershipMins: 30, firstRespMins: 60, resolveMins: 480, calendar: "24x7", warnAtPct: 75, isActive: true });
 
   const base = { kind: "client_request", team: "Team 2", taskCode: "CLIENT-Q", sourceSystem: "slack", clientId: "cl-1", slaPolicyId: "sla-q", ticketSystem: "jira" };
-  await add("workItem", { ...base, id: "wi-breach", title: "Breached request", sourceId: "C0123456:1695460000.000100", clockStartedAt: ago(40), ticketKey: "TOPS-1", ticketUrl: "https://komainu.atlassian.net/browse/TOPS-1" });
-  await add("workItem", { ...base, id: "wi-warn", title: "Warning request", sourceId: "s2", clockStartedAt: ago(25), ticketKey: "TOPS-2" });
-  await add("workItem", { ...base, id: "wi-ok", title: "Fresh request", sourceId: "s3", clockStartedAt: ago(5), ticketKey: "OPS-3", ownerEmployeeId: "emp-ann", ownedAt: ago(4), state: "owned" });
+  await add("workItem", { ...base, id: "wi-breach", title: "Breached request", sourceId: "C0123456:1695460000.000100", clockStartedAt: ago(40), ticketKey: "OPS-1", ticketUrl: "https://example.atlassian.net/browse/OPS-1" });
+  await add("workItem", { ...base, id: "wi-warn", title: "Warning request", sourceId: "s2", clockStartedAt: ago(25), ticketKey: "OPS-2" });
+  await add("workItem", { ...base, id: "wi-ok", title: "Fresh request", sourceId: "s3", clockStartedAt: ago(5), ticketKey: "OTC-3", ownerEmployeeId: "emp-ann", ownedAt: ago(4), state: "owned" });
   await add("workItem", { kind: "internal_task", team: "Team 2", taskCode: "T", sourceSystem: "kommand", sourceId: "s4", id: "wi-untimed", title: "Untimed task", clockStartedAt: ago(500) });
   await add("workItem", { ...base, id: "wi-team1", team: "Team 1", title: "Other team", sourceId: "s5", clockStartedAt: ago(5) });
   await add("workItem", { ...base, id: "wi-closed", title: "Closed one", sourceId: "s6", clockStartedAt: ago(5), state: "closed" });
@@ -123,7 +123,7 @@ describe("work queue (spec §14.1)", () => {
     expect(warn.sla).toMatchObject({ state: "warn", clock: "ownership" });
     expect(ok.sla).toMatchObject({ state: "ok", clock: "first_response" });
     expect(untimed.sla.state).toBe("none");
-    expect(breach).toMatchObject({ client: { name: "Acme Capital" }, ticketKey: "TOPS-1", owner: null });
+    expect(breach).toMatchObject({ client: { name: "Acme Capital" }, ticketKey: "OPS-1", owner: null });
     expect(ok.owner).toEqual({ id: "emp-ann", name: "Ann Operator" });
   });
 
@@ -132,7 +132,7 @@ describe("work queue (spec §14.1)", () => {
     expect((await queue("?team=Team%201")).rows.map((r) => r.id)).toEqual(["wi-team1"]);
     expect((await queue("?kind=internal_task")).rows.map((r) => r.id)).toEqual(["wi-untimed"]);
     expect((await queue("?sla=breach")).rows.map((r) => r.id)).toEqual(["wi-breach"]);
-    expect((await queue("?project=OPS")).rows.map((r) => r.id)).toEqual(["wi-ok"]);
+    expect((await queue("?project=OTC")).rows.map((r) => r.id)).toEqual(["wi-ok"]);
     expect((await queue("?owner=me")).rows.map((r) => r.id)).toEqual(["wi-ok"]);
     expect((await queue("?owner=unassigned")).rows.map((r) => r.id)).not.toContain("wi-ok");
     expect((await queue("?status=closed&team=all")).rows.map((r) => r.id)).toEqual(["wi-closed"]);
@@ -159,7 +159,7 @@ describe("work item actions (spec §14.2)", () => {
   it("take ownership assigns in Jira first, then locally; audited and pushed over SSE", async () => {
     const res = await ownership(req("/x", "POST", { employeeId: "me" }), ctx("wi-warn"));
     expect(res.status).toBe(200);
-    expect(jira.calls.some((c) => c.method === "PUT" && c.path === "/rest/api/3/issue/TOPS-2/assignee")).toBe(true);
+    expect(jira.calls.some((c) => c.method === "PUT" && c.path === "/rest/api/3/issue/OPS-2/assignee")).toBe(true);
     expect(await item("wi-warn")).toMatchObject({ ownerEmployeeId: "emp-ann", state: "owned" });
     // Fail-closed audit: a requested entry before the change and a completed one after, linked by correlation id.
     const audit = await p().auditLog.findMany({ where: { action: "work_item_owner_changed", entityId: "wi-warn" } });
@@ -195,7 +195,7 @@ describe("work item actions (spec §14.2)", () => {
     expect((await stateRoute(req("/x", "POST", { state: "waiting_client" }), ctx("wi-ok"))).status).toBe(422);
     const res = await stateRoute(req("/x", "POST", { state: "waiting_client", reason: "Client to confirm the address" }), ctx("wi-ok"));
     expect(res.status).toBe(200);
-    expect(jira.calls.some((c) => c.method === "POST" && c.path === "/rest/api/3/issue/OPS-3/transitions")).toBe(true);
+    expect(jira.calls.some((c) => c.method === "POST" && c.path === "/rest/api/3/issue/OTC-3/transitions")).toBe(true);
     const row = await item("wi-ok");
     expect(row.state).toBe("waiting_client");
     expect(row.metadata.waitingReason).toBe("Client to confirm the address");
@@ -205,7 +205,7 @@ describe("work item actions (spec §14.2)", () => {
 
   it("an internal note is posted as an internal ticket comment", async () => {
     expect((await notes(req("/x", "POST", { text: "Chased the vendor by phone" }), ctx("wi-breach"))).status).toBe(200);
-    expect(jira.calls.find((c) => c.method === "POST" && c.path === "/rest/api/3/issue/TOPS-1/comment")).toBeTruthy();
+    expect(jira.calls.find((c) => c.method === "POST" && c.path === "/rest/api/3/issue/OPS-1/comment")).toBeTruthy();
     expect((await notes(req("/x", "POST", { text: "No ticket" }), ctx("wi-untimed"))).status).toBe(409);
   });
 
@@ -216,11 +216,11 @@ describe("work item actions (spec §14.2)", () => {
   });
 
   it("a related ticket must exist in Jira, is linked there first, then recorded", async () => {
-    jira.missing.add("TOPS-404");
-    expect((await links(req("/x", "POST", { key: "TOPS-404" }), ctx("wi-breach"))).status).toBe(422);
-    expect((await links(req("/x", "POST", { key: "tops-77" }), ctx("wi-breach"))).status).toBe(200);
+    jira.missing.add("OPS-404");
+    expect((await links(req("/x", "POST", { key: "OPS-404" }), ctx("wi-breach"))).status).toBe(422);
+    expect((await links(req("/x", "POST", { key: "ops-77" }), ctx("wi-breach"))).status).toBe(200);
     expect(jira.calls.some((c) => c.method === "POST" && c.path === "/rest/api/3/issueLink")).toBe(true);
-    expect(await p().ticketLink.findMany({ where: { workItemId: "wi-breach" } })).toEqual([expect.objectContaining({ key: "TOPS-77", role: "related" })]);
+    expect(await p().ticketLink.findMany({ where: { workItemId: "wi-breach" } })).toEqual([expect.objectContaining({ key: "OPS-77", role: "related" })]);
   });
 });
 
@@ -228,7 +228,7 @@ describe("work item detail (spec §14.2)", () => {
   it("shows one timeline: source messages with raise links, ticket comments, alerts, SLA events and changes", async () => {
     await add("slackChannel", { id: "sc-1", channelId: "C0123456", name: "acme-ops", clientId: "cl-1" });
     await add("commsThread", { id: "th-1", source: "slack", sourceThreadRef: "C0123456:1695460000.000100", subject: "Withdrawal", slackChannelId: "sc-1", slackRootTs: "1695460000.000100" });
-    await add("commsMessage", { threadId: "th-1", timestamp: ago(40), authorName: "Client Person", authorType: "external", bodySnippet: "Where is my withdrawal?", bodyLink: "https://komainu.slack.com/archives/C0123456/p1695460000000100", slackTs: "1695460000.000100" });
+    await add("commsMessage", { threadId: "th-1", timestamp: ago(40), authorName: "Client Person", authorType: "external", bodySnippet: "Where is my withdrawal?", bodyLink: "https://custody.slack.com/archives/C0123456/p1695460000000100", slackTs: "1695460000.000100" });
     await add("alert", { type: "ALR-SLA-02", ruleCode: "ALR-SLA-02", dedupeKey: "wi-breach", message: "SLA ownership breach", severity: "high", workItemId: "wi-breach", firstFiredAt: ago(9) });
     await add("slaEvent", { workItemId: "wi-breach", kind: "ownership_breach", at: ago(9) });
     await notes(req("/x", "POST", { text: "Chased the vendor by phone" }), ctx("wi-breach"));
@@ -236,7 +236,7 @@ describe("work item detail (spec §14.2)", () => {
     const res = await detailGet(req("/api/work-items/wi-breach"), ctx("wi-breach"));
     expect(res.status).toBe(200);
     const d = (await res.json()).data;
-    expect(d.item).toMatchObject({ title: "Breached request", client: { name: "Acme Capital" }, ticketKey: "TOPS-1" });
+    expect(d.item).toMatchObject({ title: "Breached request", client: { name: "Acme Capital" }, ticketKey: "OPS-1" });
     expect(d.sla.state).toBe("breach");
     const kinds = d.timeline.map((e: { kind: string }) => e.kind);
     expect(kinds).toEqual(expect.arrayContaining(["message", "ticket_comment", "alert", "sla", "change"]));
@@ -266,7 +266,7 @@ describe("alerts page API (spec §14.1)", () => {
     expect(res.status).toBe(200);
     const { alerts } = (await res.json()).data;
     expect(alerts.map((a: { ruleCode: string }) => a.ruleCode)).toEqual(["ALR-OES-01", "ALR-SLA-01"]);
-    expect(alerts[1]).toMatchObject({ fireCount: 3, workItem: { id: "wi-warn", ticketKey: "TOPS-2" } });
+    expect(alerts[1]).toMatchObject({ fireCount: 3, workItem: { id: "wi-warn", ticketKey: "OPS-2" } });
     expect((await alertsGet(req("/api/alerts?status=bogus"))).status).toBe(400);
   });
 });

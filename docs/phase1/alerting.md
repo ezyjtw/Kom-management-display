@@ -2,7 +2,7 @@
 
 All rules in `src/modules/alerting/catalogue.ts` are synced into `AlertRule`
 **disabled**. Enable them one by one in Admin → Alert Rules once thresholds are
-confirmed. Alerts are informational only: approvals stay in GX (H1).
+confirmed. Alerts are informational only: approvals stay in Platform (H1).
 
 ## Before enabling a rule
 
@@ -38,10 +38,10 @@ confirmed. Alerts are informational only: approvals stay in GX (H1).
 
 ## Open items
 
-- FAB rules have no evaluator yet: they need the FAB register and mailbox parser
-  (TASK-FAB, Phase 7; CONFIRM-FAB-TEMPLATES).
-- Risk rules read GX signals. The Slack parser ships only after at least 10
-  redacted real samples are in `src/__tests__/fixtures/gx-risk/`; until then
-  every GX post raises an "unparsed risk notification" (ALR-CFG-02).
+- partner bank rules have no evaluator yet: they need the partner bank register and mailbox parser
+  (TASK-partner bank, Phase 7; CONFIRM-BANK-TEMPLATES).
+- Risk rules read Platform signals. The Slack parser ships only after at least 10
+  redacted real samples are in `src/__tests__/fixtures/platform-risk/`; until then
+  every Platform post raises an "unparsed risk notification" (ALR-CFG-02).
 - Settlement, portfolio and audit-log field names follow the stored API payloads
-  and are marked TODO(CONFIRM-KOMAINU-OPENAPI).
+  and are marked TODO(CONFIRM-CUSTODY-OPENAPI).

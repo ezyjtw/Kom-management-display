@@ -6,16 +6,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const envVars = vi.hoisted(() => ({
-  ATLASSIAN_BASE_URL: "https://komainu.atlassian.net",
+  ATLASSIAN_BASE_URL: "https://example.atlassian.net",
   ATLASSIAN_EMAIL: "svc@example.com",
   ATLASSIAN_API_TOKEN: "t",
 } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/integrations/slack", () => ({ getSlackClient: () => null }));
 
-const flags = vi.hoisted(() => ({ iai: false }));
-vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => (k === "iai.drafts.enabled" ? flags.iai : false)) }));
+const flags = vi.hoisted(() => ({ incidentLog: false }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async (k: string) => (k === "incident_log.drafts.enabled" ? flags.incidentLog : false)) }));
 
 const p = vi.hoisted(() => {
   const model = () => ({
@@ -25,7 +25,7 @@ const p = vi.hoisted(() => {
   return {
     appSetting: model(), workItem: model(), timeLog: model(), alert: model(), alertRule: model(), jiraProjectConfig: model(),
     ticketLink: model(), dailyCheckItem: model(), dailyCheckRun: model(), sourceRecord: model(), commsThread: model(),
-    iaiDraft: model(), auditLog: model(), slackChannel: model(), employee: model(), userClientScope: model(),
+    incidentLogDraft: model(), auditLog: model(), slackChannel: model(), employee: model(), userClientScope: model(),
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
   };
 });
@@ -44,7 +44,7 @@ import { POST as exceptionsRoute } from "@/app/api/daily-checks/items/[id]/excep
 import { POST as approveSkipRoute } from "@/app/api/daily-checks/items/[id]/skip-signoff/route";
 import { ensureAlertTicket } from "@/modules/work-items/tickets";
 import { buildUnticketedReport, runUnticketedReport, reconcileTickets } from "@/modules/work-items/ticket-jobs";
-import { createIaiDraft } from "@/modules/iai/drafts";
+import { createIncidentLogDraft } from "@/modules/incident-log/drafts";
 import { getNextCronRun } from "@/lib/background-jobs";
 
 type Call = { method: string; path: string; body: unknown };
@@ -73,7 +73,7 @@ beforeEach(() => {
   }
   CircuitBreaker.resetAll();
   authState.user = { id: "u1", name: "Op", email: "op@k.com", role: "employee", employeeId: "emp-1", team: null };
-  flags.iai = false;
+  flags.incidentLog = false;
   p.appSetting.findUnique.mockResolvedValue(null);
   p.$transaction.mockImplementation(async (ops: unknown[]) => Promise.all(ops));
   stubJira(() => new Response(null, { status: 204 }));
@@ -82,7 +82,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 // ── §10.2 Close requires a write-up ──
 describe("close requires a write-up", () => {
-  const item = { id: "wi-1", kind: "alert", state: "owned", ticketKey: "TOPS-9", ticketSystem: "jira", clientId: null, resolvedAt: null, metadata: {} };
+  const item = { id: "wi-1", kind: "alert", state: "owned", ticketKey: "OPS-9", ticketSystem: "jira", clientId: null, resolvedAt: null, metadata: {} };
   const good = { resolutionNote: "Vendor fixed the node; confirmed balance.", rootCause: "vendor_issue", riskScore: "Low" };
 
   it.each([
@@ -128,7 +128,7 @@ describe("close requires a write-up", () => {
 
     const res = await closeRoute(req("/api/work-items/wi-1/close", "POST", { ...good, timeLogBucketMins: 30 }), ctx("wi-1"));
     expect(res.status).toBe(200);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /rest/api/3/issue/TOPS-9/transitions", "POST /rest/api/3/issue/TOPS-9/transitions"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /rest/api/3/issue/OPS-9/transitions", "POST /rest/api/3/issue/OPS-9/transitions"]);
     expect(p.workItem.update.mock.calls.at(-1)![0].data).toMatchObject({ rootCause: "vendor_issue", riskScore: "Low" });
     expect(p.timeLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ workItemId: "wi-1", bucketMins: 30, loggedById: "emp-1" }) });
   });
@@ -152,7 +152,7 @@ describe("acknowledge requires a ticket", () => {
 
   it("acknowledges when the ticket exists", async () => {
     p.alert.findUnique.mockImplementation(async ({ select }: { select?: unknown }) =>
-      select ? { workItem: { ticketKey: "TOPS-1" } } : { id: "a1", status: "active", ruleCode: "ALR-X", workItemId: "wi-1" });
+      select ? { workItem: { ticketKey: "OPS-1" } } : { id: "a1", status: "active", ruleCode: "ALR-X", workItemId: "wi-1" });
     p.alert.update.mockResolvedValue({ id: "a1", status: "acknowledged" });
     const res = await ackRoute(req("/api/alerts/a1/acknowledge", "POST"), ctx("a1"));
     expect(res.status).toBe(200);
@@ -171,7 +171,7 @@ describe("acknowledge requires a ticket", () => {
 // ── §10.2 No silent pass; skipping needs approval ──
 describe("daily checks", () => {
   const now = Date.now();
-  const pending = { id: "i1", runId: "r1", name: "Stuck transactions", category: "stuck_tx", status: "pending", definitionCode: "CHK-01", definition: { evidenceSpec: { freshnessMinutes: 60 }, ticketProject: "TOPS", team: "Team 1" }, exceptionWorkItemIds: [], skipRequestedBy: null, skippedReason: null, completedAt: null };
+  const pending = { id: "i1", runId: "r1", name: "Stuck transactions", category: "stuck_tx", status: "pending", definitionCode: "CHK-01", definition: { evidenceSpec: { freshnessMinutes: 60 }, ticketProject: "OPS", team: "Team 1" }, exceptionWorkItemIds: [], skipRequestedBy: null, skippedReason: null, completedAt: null };
 
   beforeEach(() => {
     p.dailyCheckItem.findUnique.mockResolvedValue(pending);
@@ -187,14 +187,14 @@ describe("daily checks", () => {
   });
 
   it("rejects a pass whose data is older than the freshness limit", async () => {
-    const evidence = { recordCount: 0, dataAsOf: new Date(now - 2 * 3_600_000).toISOString(), source: "Komainu API" };
+    const evidence = { recordCount: 0, dataAsOf: new Date(now - 2 * 3_600_000).toISOString(), source: "custody API" };
     const res = await dailyPatch(req("/api/daily-checks", "PATCH", { itemId: "i1", status: "pass", evidence }));
     expect(res.status).toBe(422);
     expect((await res.json()).error).toMatch(/stale.*60-minute limit/);
   });
 
   it("accepts a pass with fresh evidence (recordCount 0 allowed)", async () => {
-    const evidence = { recordCount: 0, dataAsOf: new Date(now - 10 * 60_000).toISOString(), source: "Komainu API" };
+    const evidence = { recordCount: 0, dataAsOf: new Date(now - 10 * 60_000).toISOString(), source: "custody API" };
     const res = await dailyPatch(req("/api/daily-checks", "PATCH", { itemId: "i1", status: "pass", evidence }));
     expect(res.status).toBe(200);
     expect(p.dailyCheckItem.update.mock.calls[0][0].data).toMatchObject({ status: "pass", recordCount: 0 });
@@ -207,7 +207,7 @@ describe("daily checks", () => {
   });
 
   it("turns each exception row into a ticketed work item", async () => {
-    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "TOPS", enabled: true, kind: "jira", issueTypeIds: { Task: "10001", _default: "10001" } });
+    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "OPS", enabled: true, kind: "jira", issueTypeIds: { Task: "10001", _default: "10001" } });
     let n = 0;
     p.workItem.upsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => ({ id: `wi-${++n}`, ticketKey: null, metadata: {}, ...create }));
     const ticketed = new Set<string>();
@@ -215,8 +215,8 @@ describe("daily checks", () => {
       if (data.ticketKey) ticketed.add(where.id);
       return { id: where.id };
     });
-    p.workItem.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id, ticketKey: ticketed.has(where.id) ? `TOPS-${where.id}` : null, metadata: {} }));
-    stubJira(() => json({ id: "1", key: "TOPS-50" }, 201));
+    p.workItem.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id, ticketKey: ticketed.has(where.id) ? `OPS-${where.id}` : null, metadata: {} }));
+    stubJira(() => json({ id: "1", key: "OPS-50" }, 201));
 
     const res = await exceptionsRoute(req("/api/daily-checks/items/i1/exceptions", "POST", { exceptions: [{ summary: "Withdrawal stuck 3h", reference: "tx-1" }, { summary: "Deposit not credited" }] }), ctx("i1"));
     expect(res.status).toBe(200);
@@ -266,36 +266,36 @@ describe("alert tickets", () => {
 
   it("creates the work item and ticket on first firing and links the alert", async () => {
     p.alert.findUnique.mockResolvedValue(alert);
-    p.alertRule.findUnique.mockResolvedValue({ route: { businessHours: [], outOfHours: [], ticketProject: "TOPS" } });
-    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "TOPS", enabled: true, kind: "jira", issueTypeIds: { _default: "10001" } });
+    p.alertRule.findUnique.mockResolvedValue({ route: { businessHours: [], outOfHours: [], ticketProject: "OPS" } });
+    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "OPS", enabled: true, kind: "jira", issueTypeIds: { _default: "10001" } });
     p.workItem.upsert.mockResolvedValue({ id: "wi-9", ticketKey: null, metadata: {} });
     p.workItem.findUnique.mockResolvedValue({ id: "wi-9", ticketKey: null, metadata: {} });
-    stubJira(() => json({ id: "1", key: "TOPS-77" }, 201));
+    stubJira(() => json({ id: "1", key: "OPS-77" }, 201));
 
     await ensureAlertTicket("a1", { repeat: false });
     expect(calls[0]).toMatchObject({ method: "POST", path: "/rest/api/3/issue" });
-    expect((calls[0].body as { fields: { project: { key: string } } }).fields.project.key).toBe("TOPS");
-    expect(p.workItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ ticketKey: "TOPS-77", ticketSystem: "jira" }) }));
+    expect((calls[0].body as { fields: { project: { key: string } } }).fields.project.key).toBe("OPS");
+    expect(p.workItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ ticketKey: "OPS-77", ticketSystem: "jira" }) }));
     expect(p.alert.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { workItemId: "wi-9" } });
   });
 
   it("comments on the same ticket when the alert fires again", async () => {
-    p.alert.findUnique.mockResolvedValue({ ...alert, workItem: { id: "wi-9", ticketKey: "TOPS-77" } });
-    p.workItem.findUnique.mockResolvedValue({ id: "wi-9", ticketKey: "TOPS-77", ticketSystem: "jira" });
+    p.alert.findUnique.mockResolvedValue({ ...alert, workItem: { id: "wi-9", ticketKey: "OPS-77" } });
+    p.workItem.findUnique.mockResolvedValue({ id: "wi-9", ticketKey: "OPS-77", ticketSystem: "jira" });
     stubJira(() => json({ id: "c1" }, 201));
     await ensureAlertTicket("a1", { repeat: true });
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /rest/api/3/issue/TOPS-77/comment"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /rest/api/3/issue/OPS-77/comment"]);
   });
 
   it("records the write-back error when the project is not enabled (reported next morning)", async () => {
     p.alert.findUnique.mockResolvedValue(alert);
-    p.alertRule.findUnique.mockResolvedValue({ route: { ticketProject: "TOPS" } });
-    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "TOPS", enabled: false, kind: "jira", issueTypeIds: {} });
+    p.alertRule.findUnique.mockResolvedValue({ route: { ticketProject: "OPS" } });
+    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "OPS", enabled: false, kind: "jira", issueTypeIds: {} });
     p.workItem.upsert.mockResolvedValue({ id: "wi-9", ticketKey: null, metadata: {} });
     p.workItem.findUnique.mockResolvedValue({ id: "wi-9", ticketKey: null, metadata: {} });
     await ensureAlertTicket("a1", { repeat: false });
     expect(calls).toHaveLength(0);
-    expect(p.workItem.update.mock.calls[0][0].data.metadata.writebackError.message).toMatch(/TOPS is not enabled/);
+    expect(p.workItem.update.mock.calls[0][0].data.metadata.writebackError.message).toMatch(/OPS is not enabled/);
   });
 });
 
@@ -314,7 +314,7 @@ describe("unticketed work report", () => {
     p.workItem.findMany.mockImplementation(async (args?: unknown) =>
       (args as { where: { kind?: string } }).where.kind === "client_request"
         ? [{ metadata: { threadId: "t-covered" } }]
-        : [{ id: "wi-5", title: "[ALR-OES-01] Settlement failed", metadata: { writebackError: { message: "Ticket project TOPS is not enabled." } } }]);
+        : [{ id: "wi-5", title: "[ALR-OES-01] Settlement failed", metadata: { writebackError: { message: "Ticket project OPS is not enabled." } } }]);
     p.sourceRecord.findMany.mockResolvedValue([]);
     p.alert.findMany.mockResolvedValue([{ id: "a1", ruleCode: "ALR-OES-01", message: "Settlement failed", workItemId: "wi-5" }]);
     p.dailyCheckItem.findMany.mockResolvedValue([{ id: "i9", name: "Stuck transactions", definitionCode: "CHK-01" }]);
@@ -326,7 +326,7 @@ describe("unticketed work report", () => {
     expect(r.clientMessagesWithoutRequest).toEqual([{ threadId: "t-missed", source: "slack", subject: "Please confirm settlement", at: "2026-09-22T11:00:00.000Z" }]);
     expect(r.alertsWithoutTicket).toEqual([{ alertId: "a1", ruleCode: "ALR-OES-01", message: "Settlement failed", workItemId: "wi-5" }]);
     expect(r.checksWithoutExceptions).toEqual([{ itemId: "i9", name: "Stuck transactions", definitionCode: "CHK-01" }]);
-    expect(r.writebackFailures).toEqual([{ workItemId: "wi-5", title: "[ALR-OES-01] Settlement failed", error: "Ticket project TOPS is not enabled." }]);
+    expect(r.writebackFailures).toEqual([{ workItemId: "wi-5", title: "[ALR-OES-01] Settlement failed", error: "Ticket project OPS is not enabled." }]);
     expect(r.total).toBe(4);
   });
 
@@ -353,11 +353,11 @@ describe("unticketed work report", () => {
 
 describe("reconciliation", () => {
   it("raises ALR-TKT-02 on divergence between work items and open tickets", async () => {
-    p.jiraProjectConfig.findMany.mockResolvedValue([{ key: "TOPS", syncInbound: true }]);
+    p.jiraProjectConfig.findMany.mockResolvedValue([{ key: "OPS", syncInbound: true }]);
     p.workItem.findMany
-      .mockResolvedValueOnce([{ ticketKey: "TOPS-1" }, { ticketKey: "TOPS-2" }]) // open locally
-      .mockResolvedValueOnce([]); // TOPS-3 not known locally
-    stubJira(() => json({ issues: [{ key: "TOPS-1", fields: {} }, { key: "TOPS-3", fields: {} }], isLast: true }));
+      .mockResolvedValueOnce([{ ticketKey: "OPS-1" }, { ticketKey: "OPS-2" }]) // open locally
+      .mockResolvedValueOnce([]); // OPS-3 not known locally
+    stubJira(() => json({ issues: [{ key: "OPS-1", fields: {} }, { key: "OPS-3", fields: {} }], isLast: true }));
     p.alertRule.findUnique.mockResolvedValue({ code: "ALR-TKT-02", enabled: true, severity: "medium", route: {} });
     p.alert.findFirst.mockResolvedValue(null);
     p.alert.create.mockResolvedValue({ id: "a2" });
@@ -365,26 +365,26 @@ describe("reconciliation", () => {
 
     const out = await reconcileTickets();
     expect(out).toEqual({ closedRemotely: 1, reopenedRemotely: 0, missingLocally: 1 });
-    expect(p.alert.create.mock.calls[0][0].data.message).toMatch(/TOPS-2, TOPS-3/);
+    expect(p.alert.create.mock.calls[0][0].data.message).toMatch(/OPS-2, OPS-3/);
   });
 });
 
-describe("IAI drafts (§10.4)", () => {
-  it("does nothing while iai.drafts.enabled is off", async () => {
-    expect(await createIaiDraft("wi-1", "ALR-RSK-06")).toBeNull();
-    expect(p.iaiDraft.create).not.toHaveBeenCalled();
+describe("INC drafts (§10.4)", () => {
+  it("does nothing while incident_log.drafts.enabled is off", async () => {
+    expect(await createIncidentLogDraft("wi-1", "ALR-RSK-06")).toBeNull();
+    expect(p.incidentLogDraft.create).not.toHaveBeenCalled();
   });
 
-  it("creates a pre-filled IAI issue due in 24 hours when on", async () => {
-    flags.iai = true;
-    p.iaiDraft.findFirst.mockResolvedValue(null);
-    p.workItem.findUnique.mockResolvedValue({ id: "wi-1", title: "KYT hit after broadcast", ticketKey: "TOPS-4", priority: "P1", clockStartedAt: new Date("2026-09-23T08:00:00Z"), exposureUsd: null });
-    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "IAI", enabled: true, issueTypeIds: { _default: "3" } });
-    p.iaiDraft.create.mockImplementation(async ({ data }: { data: unknown }) => data);
-    stubJira(() => json({ id: "1", key: "IAI-12" }, 201));
+  it("creates a pre-filled INC issue due in 24 hours when on", async () => {
+    flags.incidentLog = true;
+    p.incidentLogDraft.findFirst.mockResolvedValue(null);
+    p.workItem.findUnique.mockResolvedValue({ id: "wi-1", title: "KYT hit after broadcast", ticketKey: "OPS-4", priority: "P1", clockStartedAt: new Date("2026-09-23T08:00:00Z"), exposureUsd: null });
+    p.jiraProjectConfig.findUnique.mockResolvedValue({ key: "INC", enabled: true, issueTypeIds: { _default: "3" } });
+    p.incidentLogDraft.create.mockImplementation(async ({ data }: { data: unknown }) => data);
+    stubJira(() => json({ id: "1", key: "INC-12" }, 201));
     const now = new Date("2026-09-23T09:00:00Z");
-    const draft = await createIaiDraft("wi-1", "ALR-RSK-06", now);
-    expect(draft).toMatchObject({ workItemId: "wi-1", triggerCode: "ALR-RSK-06", jiraKey: "IAI-12", dueAt: new Date("2026-09-24T09:00:00Z") });
+    const draft = await createIncidentLogDraft("wi-1", "ALR-RSK-06", now);
+    expect(draft).toMatchObject({ workItemId: "wi-1", triggerCode: "ALR-RSK-06", jiraKey: "INC-12", dueAt: new Date("2026-09-24T09:00:00Z") });
     expect((calls[0].body as { fields: { summary: string } }).fields.summary).toBe("[DRAFT] KYT hit after broadcast");
   });
 });

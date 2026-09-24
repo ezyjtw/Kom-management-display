@@ -8,7 +8,7 @@
 import { CronExpressionParser } from "cron-parser";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { komainuRecords, pick, stillListed, type Rec } from "@/modules/alerting/evaluators/source";
+import { custodyRecords, pick, stillListed, type Rec } from "@/modules/alerting/evaluators/source";
 import { CONFLUENCE_PLACEHOLDER_PREFIX } from "@/modules/daily-checks/definitions";
 import { getSetting } from "@/modules/settings/settings";
 import { dec } from "@/lib/decimal";
@@ -39,10 +39,10 @@ export interface SettlementView {
   rows: SettlementRow[];
   exposureBands: string[];
   clientTemplateUrl: string | null;
-  cf39: string;
+  exposureBandNotice: string;
 }
 
-export const CF39_NOTICE = "Findings register CF-39: the client template uses the same \"minor technical issues\" wording for all exposure sizes. Choose the exposure band; do not rewrite the template.";
+export const EXPOSURE_BAND_NOTICE = "Choose the client exposure band for the notification; do not rewrite the approved client template.";
 
 const exchangeOf = (r: Rec) => pick(r, "exchange", "venue")?.toLowerCase() ?? null;
 const portfolioOf = (r: Rec) => pick(r, "portfolio_id", "portfolio");
@@ -67,9 +67,9 @@ async function windowsOn(date: string) {
 
 export async function buildSettlementView(date: string, now = new Date()): Promise<SettlementView> {
   const windows = await windowsOn(date);
-  const portfolios = await komainuRecords("portfolio", stillListed);
+  const portfolios = await custodyRecords("portfolio", stillListed);
   const dayStart = new Date(`${date}T00:00:00Z`);
-  const settlements = await komainuRecords("settlement", { occurredAt: { gte: new Date(dayStart.getTime() - 3_600_000), lt: new Date(dayStart.getTime() + 30 * 3_600_000) } });
+  const settlements = await custodyRecords("settlement", { occurredAt: { gte: new Date(dayStart.getTime() - 3_600_000), lt: new Date(dayStart.getTime() + 30 * 3_600_000) } });
   const alerts = await prisma.alert.findMany({
     where: { ruleCode: { startsWith: "ALR-OES-" }, OR: [{ status: { not: "resolved" } }, { firstFiredAt: { gte: dayStart } }] },
     include: { workItem: { select: { id: true, ticketKey: true, ticketUrl: true, exposureUsd: true, metadata: true } } },
@@ -127,6 +127,6 @@ export async function buildSettlementView(date: string, now = new Date()): Promi
     rows,
     exposureBands: await getSetting("oes.exposureBands"),
     clientTemplateUrl: chk10 && !chk10.confluenceUrl.startsWith(CONFLUENCE_PLACEHOLDER_PREFIX) ? chk10.confluenceUrl : null,
-    cf39: CF39_NOTICE,
+    exposureBandNotice: EXPOSURE_BAND_NOTICE,
   };
 }

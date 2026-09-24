@@ -63,11 +63,11 @@ const envSchema = z.object({
   SMTP_SECURE: z.string().optional(),
 
   // Custody / Fireblocks / Notabene
-  KOMAINU_API_BASE_URL: z.string().optional(),
-  KOMAINU_API_USER: z.string().optional(),
-  KOMAINU_API_SECRET: z.string().optional(),
-  // JSON [{label, user, secretRef}] — secretRef names a KOMAINU_API_SECRET_<SUFFIX> env var (CONFIRM-API-SCOPE)
-  KOMAINU_API_CREDENTIALS: z.string().optional(),
+  CUSTODY_API_BASE_URL: z.string().optional(),
+  CUSTODY_API_USER: z.string().optional(),
+  CUSTODY_API_SECRET: z.string().optional(),
+  // JSON [{label, user, secretRef}] — secretRef names a CUSTODY_API_SECRET_<SUFFIX> env var (CONFIRM-API-SCOPE)
+  CUSTODY_API_CREDENTIALS: z.string().optional(),
   FIREBLOCKS_API_KEY: z.string().optional(),
   FIREBLOCKS_API_SECRET: z.string().optional(),
   NOTABENE_API_BASE_URL: z.string().optional(),
@@ -81,6 +81,8 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional(),
+  /** Jurisdictions where the deploying firm holds a licence (src/lib/licensed-jurisdictions.ts). */
+  NEXT_PUBLIC_LICENSED_JURISDICTIONS: z.string().optional(),
   OLLAMA_MODEL: z.string().optional(),
 
   // Webhook secrets
@@ -183,8 +185,8 @@ export function getEnv(): Env {
 }
 
 /**
- * A secret by name, for keys not in the schema (per-user Komainu secrets named
- * by KOMAINU_API_CREDENTIALS[].secretRef). Reads through the secret loader.
+ * A secret by name, for keys not in the schema (per-user the custody provider secrets named
+ * by CUSTODY_API_CREDENTIALS[].secretRef). Reads through the secret loader.
  */
 export function secret(name: string): string | undefined {
   getEnv();

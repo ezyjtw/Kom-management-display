@@ -25,30 +25,30 @@ type Channel = { id: string; channelId: string; purpose: string; clientId: strin
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 /**
- * External = the author's Slack team differs from Komainu's workspace, or the
+ * External = the author's Slack team differs from the custody provider's workspace, or the
  * user is mapped to the client (ClientChannel kind "slack_user"). Missing team
  * information counts as external: over-capture is intentional (spec §9.2 rule 2).
  */
-export function classifySlackAuthor(msg: SlackMessage, komainuTeamId: string, mappedUsers: ReadonlySet<string>): AuthorKind {
+export function classifySlackAuthor(msg: SlackMessage, custodyTeamId: string, mappedUsers: ReadonlySet<string>): AuthorKind {
   if (str(msg.bot_id) || msg.subtype === "bot_message") return "bot";
   const user = str(msg.user);
   if (user && mappedUsers.has(user)) return "external";
   const team = str(msg.user_team) ?? str(msg.team) ?? str(msg.source_team);
   if (!team) return "external";
-  return team === komainuTeamId ? "staff" : "external";
+  return team === custodyTeamId ? "staff" : "external";
 }
 
 type Eligibility =
   | { ok: false; reason: string }
-  | { ok: true; komainuTeamId: string; client: { id: string; displayName: string; jsmOrganizationId: string | null }; mappedUsers: Set<string> };
+  | { ok: true; custodyTeamId: string; client: { id: string; displayName: string; jsmOrganizationId: string | null }; mappedUsers: Set<string> };
 
 async function eligibility(channel: Channel): Promise<Eligibility> {
-  const cfg = await getSettings(["intake.slack.route", "intake.slack.komainuTeamId"] as const);
+  const cfg = await getSettings(["intake.slack.route", "intake.slack.custodyTeamId"] as const);
   if (cfg["intake.slack.route"] !== "kommand") return { ok: false, reason: `route is ${cfg["intake.slack.route"]}` };
   if (channel.purpose !== "client" || !channel.clientId) return { ok: false, reason: "not a client channel" };
-  if (!cfg["intake.slack.komainuTeamId"]) {
-    logger.error("Slack intake route is kommand but intake.slack.komainuTeamId is not set");
-    return { ok: false, reason: "komainu team id not set" };
+  if (!cfg["intake.slack.custodyTeamId"]) {
+    logger.error("Slack intake route is kommand but intake.slack.custodyTeamId is not set");
+    return { ok: false, reason: "custody team id not set" };
   }
   const client = await prisma.client.findUnique({
     where: { id: channel.clientId },
@@ -57,7 +57,7 @@ async function eligibility(channel: Channel): Promise<Eligibility> {
   if (!client?.isActive) return { ok: false, reason: "client missing or inactive" };
   return {
     ok: true,
-    komainuTeamId: cfg["intake.slack.komainuTeamId"],
+    custodyTeamId: cfg["intake.slack.custodyTeamId"],
     client: { id: client.id, displayName: client.displayName, jsmOrganizationId: client.jsmOrganizationId },
     mappedUsers: new Set(client.channels.map((c) => c.ref)),
   };
@@ -92,7 +92,7 @@ export async function handleSlackIntake(channel: Channel, msg: SlackMessage): Pr
     messageKey: `${channel.channelId}:${ts}`,
     rootKey: `${channel.channelId}:${rootTs}`,
     isRoot: !threadTs || threadTs === ts,
-    author: { kind: classifySlackAuthor(msg, elig.komainuTeamId, elig.mappedUsers), ref: str(msg.user) },
+    author: { kind: classifySlackAuthor(msg, elig.custodyTeamId, elig.mappedUsers), ref: str(msg.user) },
     text: sanitiseSlackMessage(str(msg.text) ?? ""),
     at: new Date(parseFloat(ts) * 1000),
     permalink: await permalink(channel.channelId, ts),

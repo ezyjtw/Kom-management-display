@@ -1,10 +1,10 @@
 import { env } from "@/lib/env";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { getLastRateLimitRemaining, isKomainuConfigured } from "@/lib/integrations/komainu-api/client";
+import { getLastRateLimitRemaining, isCustodyConfigured } from "@/lib/integrations/custody-api/client";
 import { getAtlassianRateLimitRemaining, isAtlassianConfigured } from "@/lib/integrations/atlassian/client";
 import { getMailboxes, getTeamsChannels, isGraphConfigured } from "@/lib/integrations/graph/client";
 import { isNotabeneConfigured } from "@/lib/integrations/notabene";
-import { KOMAINU_HEARTBEATS } from "@/modules/integrations/komainu/pollers";
+import { CUSTODY_HEARTBEATS } from "@/modules/integrations/custody/pollers";
 import { JIRA_HEARTBEAT } from "@/modules/integrations/atlassian/sync";
 import { SLACK_HEARTBEAT } from "@/modules/integrations/slack/events";
 import { MAIL_EXPECTED_MINS, TEAMS_EXPECTED_MINS } from "@/modules/integrations/graph/sync";
@@ -17,14 +17,14 @@ function adapter(def: Omit<IntegrationAdapter, "getHealth">, rateLimit?: () => n
   return { ...def, getHealth: () => computeHealth(def, { rateLimitRemaining: rateLimit?.() }) };
 }
 
-export const komainuAdapter = adapter(
+export const custodyAdapter = adapter(
   {
-    source: "komainu_api",
-    label: "Komainu API (read-only)",
-    breakerName: "komainu_api",
-    isConfigured: isKomainuConfigured,
+    source: "custody_api",
+    label: "custody API (read-only)",
+    breakerName: "custody_api",
+    isConfigured: isCustodyConfigured,
     isEnabled: always,
-    heartbeats: () => Object.values(KOMAINU_HEARTBEATS),
+    heartbeats: () => Object.values(CUSTODY_HEARTBEATS),
   },
   getLastRateLimitRemaining,
 );

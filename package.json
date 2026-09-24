@@ -31,6 +31,7 @@
     "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json",
     "drift:check": "tsx scripts/check-migration-drift.ts",
     "confirm:register": "tsx scripts/confirm-register.ts",
+    "ip:check": "tsx scripts/check-neutral-ip.ts",
     "secrets:check": "git ls-files -z | grep -zvE '^(package-lock\\.json|prisma/drift-baseline\\.sql|\\.secrets\\.baseline)$' | xargs -0 detect-secrets-hook --baseline .secrets.baseline",
     "go-live:check": "tsx scripts/go-live-check.ts"
   },

@@ -81,7 +81,7 @@ function Handover({ t, board, onDone }: { t: TeamBoard; board: Board; onDone: ()
         <div className="space-y-2">
           {h.missing && (
             <p className="text-sm text-red-500 flex items-center gap-1"><AlertTriangle size={14} /> Handover missing: it was due before 09:00.
-              {h.reminder ? ` Reminder reached ${h.reminder.reached} of ${h.reminder.recipients} (lead and Head of Transaction Operations)${h.reminder.notifiedAt ? "" : "; retrying"}.` : " Reminder pending."}
+              {h.reminder ? ` Reminder reached ${h.reminder.reached} of ${h.reminder.recipients} (lead and head of operations)${h.reminder.notifiedAt ? "" : "; retrying"}.` : " Reminder pending."}
             </p>
           )}
           {canManage ? (
@@ -141,7 +141,7 @@ export default function MorningPage() {
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       <div className="grid gap-4 lg:grid-cols-2">
         {board?.teams.map((t) => {
-          const empty = !t.lead && !t.checksNotCompleted.length && !t.openExceptions.length && !t.blockers.length && !t.slaBreaches24h.length && !t.activeAlerts.length && !t.fab.open && !t.oes.open;
+          const empty = !t.lead && !t.checksNotCompleted.length && !t.openExceptions.length && !t.blockers.length && !t.slaBreaches24h.length && !t.activeAlerts.length && !t.bank.open && !t.oes.open;
           if (t.team === "All" && empty) return null;
           return (
             <section key={t.team} aria-label={t.team} className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -163,7 +163,7 @@ export default function MorningPage() {
                 {t.activeAlerts.map((a) => <li key={a.id}><Link href={`/work/${a.workItemId}`} className="hover:underline"><span className={a.severity === "critical" ? "text-red-500" : "text-amber-500"}>{a.ruleCode}</span> {a.message}</Link> <span className="text-xs text-muted-foreground">{a.ticketKey}</span></li>)}
               </Section>
               <div className="flex gap-6 text-sm">
-                <span>FAB open: <strong>{t.fab.open}</strong></span>
+                <span>BANK open: <strong>{t.bank.open}</strong></span>
                 <span>OES open: <strong>{t.oes.open}</strong></span>
               </div>
             </section>

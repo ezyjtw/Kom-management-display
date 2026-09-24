@@ -137,7 +137,7 @@ export async function recordExceptions(itemId: string, rows: ExceptionRow[], ope
       clientId: row.clientId ?? null,
       metadata: {
         dailyCheckItemId: item.id, periodKey: item.periodKey, reference: row.reference ?? null, detail: row.detail ?? null,
-        ...(isBreak ? { breakType, gxStatusVsChain: "unverified" } : {}),
+        ...(isBreak ? { breakType, platformStatusVsChain: "unverified" } : {}),
       },
       slaPolicyCode: isBreak ? "MTD-BREAK" : undefined,
       ticket: {
@@ -145,7 +145,7 @@ export async function recordExceptions(itemId: string, rows: ExceptionRow[], ope
         summary: `[${taskCode}] ${isBreak ? `${breakType}: ` : ""}${row.summary}`,
         description: [
           `Daily check exception: ${item.name}`,
-          isBreak ? `Break type: ${breakType}\nResolve by T+1 business day. GX status vs chain unverified (findings register CF-18).` : "",
+          isBreak ? `Break type: ${breakType}\nResolve by T+1 business day. Platform status vs chain unverified.` : "",
           row.reference ? `Reference: ${row.reference}` : "",
           row.detail ?? "",
         ].filter(Boolean).join("\n\n"),
@@ -177,7 +177,7 @@ export const EXCEPTION_KIND: Record<string, WorkItemKind> = {
   "CHK-02-DEV": "mtd_break",
   "CHK-06": "scam_dust_case",
   "CHK-09": "travel_rule_case",
-  "CHK-09K": "kps_case",
+  "CHK-09K": "realisation_case",
   "CHK-04": "screening_case",
   "CHK-16": "staking_exception",
   "CHK-21": "staking_exception",
@@ -186,7 +186,7 @@ export const EXCEPTION_KIND: Record<string, WorkItemKind> = {
 
 export const DAILY_REPORT_SOURCE = "daily_check_report";
 
-/** CHK-02: the daily TOPS MTD ticket for the period (closed automatically once every break is resolved or explained). */
+/** CHK-02: the daily OPS MTD ticket for the period (closed automatically once every break is resolved or explained). */
 async function ensureDailyMtdTicket(item: DailyCheckItem & { definition: { team: string } | null }, now: Date) {
   const code = item.definitionCode ?? "CHK-02";
   await ensureTicketedWorkItem({
@@ -198,7 +198,7 @@ async function ensureDailyMtdTicket(item: DailyCheckItem & { definition: { team:
     sourceId: `${code}:${item.periodKey}`,
     clockStartedAt: now,
     metadata: { dailyCheckItemId: item.id },
-    ticket: { projectKey: "TOPS", summary: `Daily MTD variances ${item.periodKey}`, description: `MTD breaks for ${item.periodKey} are tracked as OTC tickets. This ticket closes when every break is resolved or explained.`, labels: ["mtd-daily"] },
+    ticket: { projectKey: "OPS", summary: `Daily MTD variances ${item.periodKey}`, description: `MTD breaks for ${item.periodKey} are tracked as OTC tickets. This ticket closes when every break is resolved or explained.`, labels: ["mtd-daily"] },
   });
 }
 

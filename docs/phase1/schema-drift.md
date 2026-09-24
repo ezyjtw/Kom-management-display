@@ -1,9 +1,11 @@
 # Schema drift
 
-**Status:** resolved in Phase 12f (migration `0043_reconcile_schema_drift`). `prisma/drift-baseline.sql` is empty.
+**Status:** resolved in Phase 12f; in Phase 12l the migration history was consolidated into one migration, `0001_baseline`. `prisma/drift-baseline.sql` is empty.
+
+**The baseline (Phase 12l).** The earlier 44 migrations were replaced by `prisma/migrations/0001_baseline/migration.sql`: the DDL generated from `schema.prisma`, the database-enforced controls Prisma cannot express (the AuditLog and BackgroundJobRun append-only triggers and functions, the one-open-alert and one-active-scoring-config partial indexes) and the neutral reference data. It runs in a single transaction. It was verified against the old chain on PostgreSQL 16: `pg_dump` of both, compared object by object, differs only in column order, unique constraints expressed as unique indexes, and the intended renames. An existing database built from the old history cannot take the baseline; it must be recreated (the demo database holds only synthetic data). The sections below record how the original drift was resolved.
 **Enforced by:** `scripts/check-migration-drift.ts`, which runs in the CI `schema-check` job and blocks the build.
 
-`schema.prisma` and the migrations had disagreed since before Phase 12: 62 statements in `prisma migrate diff`. Where the database was right, the schema now follows the database; where the database lacked something, migration 0043 adds it. Any new difference fails CI, and the fix is a migration. Do not regenerate the baseline to make a failure go away.
+`schema.prisma` and the migrations had disagreed since before Phase 12: 62 statements in `prisma migrate diff`. Where the database was right, the schema now follows the database; where the database lacked something, the baseline migration adds it. Any new difference fails CI, and the fix is a migration. Do not regenerate the baseline to make a failure go away.
 
 ## How each item was resolved
 

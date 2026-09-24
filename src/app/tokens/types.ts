@@ -136,20 +136,18 @@ export const JURISDICTION_LABELS: Record<string, string> = {
   US: "US (SEC/CFTC)",
   EU: "EU (MiCA)",
   UK: "UK (FCA)",
-  Jersey: "Jersey (JFSC)",
   Switzerland: "Switzerland (FINMA)",
   Singapore: "Singapore (MAS)",
   Japan: "Japan (JFSA)",
-  UAE: "UAE (VARA/ADGM)",
-  Hong_Kong: "Hong Kong (SFC)",
+  UAE: "UAE (ADGM/FSRA)",
   Cayman_Islands: "Cayman Islands (CIMA)",
   Bermuda: "Bermuda (BMA)",
   Australia: "Australia (ASIC)",
   Canada: "Canada (CSA/FINTRAC)",
 };
 
-/** Jurisdictions where the company holds a custodian license */
-export const LICENSED_JURISDICTIONS: Set<string> = new Set(["UK", "EU", "Jersey", "UAE"]);
+/** Jurisdictions where the deploying firm holds a licence (deployment config). */
+export { LICENSED_JURISDICTIONS } from "@/lib/licensed-jurisdictions";
 
 export const BLOCKCHAIN_ANALYTICS_LABELS: Record<string, string> = {
   pre_growth: "Pre-Growth",
@@ -228,19 +226,6 @@ export const DEFAULT_JURISDICTION_GUIDANCE: Record<string, { regulator: string; 
       "Security tokens require FCA authorization under RAO",
     ],
   },
-  Jersey: {
-    regulator: "JFSC",
-    defaultClassification: "Virtual Currency (under POCL/AMLCFT Handbook)",
-    keyRequirements: [
-      "JFSC registration as a virtual currency exchange business",
-      "Compliance with AML/CFT Handbook (revised 2024)",
-      "Sound Business Practice Policy adherence",
-      "Ongoing supervisory reporting to JFSC",
-      "Fit & proper assessment for controllers and key persons",
-      "Travel Rule compliance under FATF guidance",
-      "Risk-based approach to client due diligence",
-    ],
-  },
   Switzerland: {
     regulator: "FINMA",
     defaultClassification: "Payment, utility, or asset token (FINMA guidelines)",
@@ -278,27 +263,14 @@ export const DEFAULT_JURISDICTION_GUIDANCE: Record<string, { regulator: string; 
     ],
   },
   UAE: {
-    regulator: "VARA (Dubai) / FSRA (ADGM) / SCA",
+    regulator: "FSRA (ADGM) / SCA",
     defaultClassification: "Virtual Asset",
     keyRequirements: [
-      "VARA licensing for Dubai operations",
       "FSRA authorization for ADGM entities",
       "AML/CFT compliance under Federal AML law",
       "Travel Rule compliance",
       "Mandatory custody arrangements",
       "Technology governance framework",
-    ],
-  },
-  Hong_Kong: {
-    regulator: "SFC / HKMA",
-    defaultClassification: "Virtual Asset",
-    keyRequirements: [
-      "SFC VASP licensing (from June 2023)",
-      "Dual licensing for VA exchanges",
-      "Professional investor restrictions (being relaxed)",
-      "AML/CTF requirements under AMLO",
-      "Travel Rule compliance",
-      "Insurance/compensation requirements for custody",
     ],
   },
   Cayman_Islands: {

@@ -12,9 +12,9 @@ vi.mock("@/lib/prisma", async () => {
   db.client = createFakePrisma();
   return { prisma: db.client };
 });
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t", NEXTAUTH_URL: "https://k.example" } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t", NEXTAUTH_URL: "https://k.example" } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => false) }));
 vi.mock("@/lib/sse", () => ({ emitWorkItemUpdate: () => undefined }));
 const out = vi.hoisted(() => ({ slack: [] as Array<{ channel: string; thread_ts?: string; text: string }>, emails: [] as string[] }));
@@ -76,15 +76,15 @@ beforeEach(async () => {
   await add("teamConfig", { team: "Team 2", leadEmployeeId: "emp-lee", deputyEmployeeId: "emp-bob", memberEmployeeIds: ["emp-ann"] });
 
   const w = { team: "Team 2", taskCode: "T", sourceSystem: "kommand", ticketSystem: "jira" };
-  await add("workItem", { ...w, id: "wi-exc", kind: "daily_check_exception", title: "CHK-01 stuck tx", sourceId: "1", ticketKey: "TOPS-1", clockStartedAt: ago(1500), ownerEmployeeId: "emp-lee", state: "owned" });
-  await add("workItem", { ...w, id: "wi-wait", kind: "client_request", title: "Address check", sourceId: "2", ticketKey: "TOPS-2", clockStartedAt: ago(300), state: "waiting_client", ownerEmployeeId: "emp-lee", metadata: { waitingReason: "Client to confirm address", waitingSince: ago(120).toISOString() } });
+  await add("workItem", { ...w, id: "wi-exc", kind: "daily_check_exception", title: "CHK-01 stuck tx", sourceId: "1", ticketKey: "OPS-1", clockStartedAt: ago(1500), ownerEmployeeId: "emp-lee", state: "owned" });
+  await add("workItem", { ...w, id: "wi-wait", kind: "client_request", title: "Address check", sourceId: "2", ticketKey: "OPS-2", clockStartedAt: ago(300), state: "waiting_client", ownerEmployeeId: "emp-lee", metadata: { waitingReason: "Client to confirm address", waitingSince: ago(120).toISOString() } });
   await add("workItem", { ...w, id: "wi-verbal", kind: "internal_task", title: "Verbal-only item", sourceId: "3", clockStartedAt: ago(60) });
-  await add("workItem", { ...w, id: "wi-oes", kind: "oes_settlement", title: "OES window 08:00", sourceId: "4", ticketKey: "TOPS-4", clockStartedAt: ago(30) });
+  await add("workItem", { ...w, id: "wi-oes", kind: "oes_settlement", title: "OES window 08:00", sourceId: "4", ticketKey: "OPS-4", clockStartedAt: ago(30) });
   await add("slaEvent", { workItemId: "wi-wait", kind: "first_response_breach", at: ago(200) });
   await add("slaEvent", { workItemId: "wi-wait", kind: "resolution_breach", at: ago(2000) });
   await add("alert", { type: "ALR-OES-01", ruleCode: "ALR-OES-01", dedupeKey: "d", message: "OES window late", severity: "critical", workItemId: "wi-oes" });
   await add("alert", { type: "ALR-X", ruleCode: "ALR-X", dedupeKey: "e", message: "No ticket alert", severity: "high" });
-  await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck Transactions", team: "Team 2", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "TOPS", confluenceUrl: "x" });
+  await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck Transactions", team: "Team 2", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "OPS", confluenceUrl: "x" });
   await add("dailyCheckItem", { runId: "r", name: "Stuck Transactions", category: "CHK-01", definitionCode: "CHK-01", periodKey: "2026-09-22", status: "pending" });
   await add("dailyCheckItem", { runId: "r", name: "Stuck Transactions", category: "CHK-01", definitionCode: "CHK-01", periodKey: "2026-09-21", status: "pending" });
 });
@@ -107,10 +107,10 @@ describe("morning board (spec §14.3)", () => {
     const t2 = b.teams.find((t: { team: string }) => t.team === "Team 2");
     expect(JSON.stringify(t2)).not.toContain("Verbal-only item");
     expect(t2.checksNotCompleted).toEqual([{ code: "CHK-01", name: "Stuck Transactions", periodKey: "2026-09-22", status: "pending" }]);
-    expect(t2.openExceptions).toEqual([expect.objectContaining({ id: "wi-exc", ticketKey: "TOPS-1", ageMins: 1500 })]);
+    expect(t2.openExceptions).toEqual([expect.objectContaining({ id: "wi-exc", ticketKey: "OPS-1", ageMins: 1500 })]);
     expect(t2.blockers).toEqual([expect.objectContaining({ id: "wi-wait", state: "waiting_client", reason: "Client to confirm address", sinceMins: 120 })]);
     expect(t2.slaBreaches24h).toEqual([expect.objectContaining({ id: "wi-wait", breach: "first response" })]);
-    expect(t2.activeAlerts).toEqual([expect.objectContaining({ ruleCode: "ALR-OES-01", ticketKey: "TOPS-4" })]);
+    expect(t2.activeAlerts).toEqual([expect.objectContaining({ ruleCode: "ALR-OES-01", ticketKey: "OPS-4" })]);
     expect(t2.oes.open).toBe(1);
     expect(t2.lead).toEqual({ id: "emp-lee", name: "Lee Lead" });
   });
@@ -128,9 +128,9 @@ describe("lead handover (spec §14.3)", () => {
     expect((await board()).teams.find((t: { team: string }) => t.team === "Team 2").handover).toMatchObject({ absent: true, source: "manual", missing: false });
 
     expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-lee", note: "All tickets are in hand; see comments." }))).status).toBe(422);
-    const res = await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "TOPS-1 waits on the vendor; TOPS-2 waits on the client." }));
+    const res = await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "OPS-1 waits on the vendor; OPS-2 waits on the client." }));
     expect(res.status).toBe(200);
-    expect(comments().map((c) => c.path).sort()).toEqual(["/rest/api/3/issue/TOPS-1/comment", "/rest/api/3/issue/TOPS-2/comment"]);
+    expect(comments().map((c) => c.path).sort()).toEqual(["/rest/api/3/issue/OPS-1/comment", "/rest/api/3/issue/OPS-2/comment"]);
     expect(JSON.stringify(comments()[0].body)).toContain("Covering: Ann Operator");
     const h = (await board()).teams.find((t: { team: string }) => t.team === "Team 2").handover;
     expect(h).toMatchObject({ absent: true, covering: { name: "Ann Operator" }, postedTo: 2, late: false });
@@ -143,7 +143,7 @@ describe("lead handover (spec §14.3)", () => {
     expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Everything is on the tickets already." }))).status).toBe(403);
   });
 
-  it("a PTO absence with no note by 09:00 notifies the lead and the Head of Transaction Operations, once", async () => {
+  it("a PTO absence with no note by 09:00 notifies the lead and the head of operations, once", async () => {
     await add("ptoRecord", { employeeId: "emp-lee", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-25T00:00:00Z"), type: "annual_leave", status: "approved" });
     vi.setSystemTime(new Date("2026-09-23T08:00:00Z")); // 09:00 London
     expect(await runMorningHandover()).toEqual({ posted: 0, incomplete: 0, missing: 1 });
@@ -157,7 +157,7 @@ describe("lead handover (spec §14.3)", () => {
 
   it("a handover written in advance posts at 09:00 on the day; weekends are skipped", async () => {
     await add("ptoRecord", { employeeId: "emp-lee", startDate: new Date("2026-09-24T00:00:00Z"), endDate: new Date("2026-09-24T00:00:00Z"), type: "annual_leave", status: "approved" });
-    expect((await handoverPost(req("/x", "POST", { date: "2026-09-24", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Bob covers; TOPS-1 needs a vendor chase." }))).status).toBe(200);
+    expect((await handoverPost(req("/x", "POST", { date: "2026-09-24", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Bob covers; OPS-1 needs a vendor chase." }))).status).toBe(200);
     expect(comments()).toHaveLength(0);
     vi.setSystemTime(new Date("2026-09-24T08:00:00Z"));
     expect(await runMorningHandover()).toEqual({ posted: 1, incomplete: 0, missing: 0 });
@@ -171,11 +171,11 @@ describe("no false green (review remediation)", () => {
   const team2 = async () => (await board()).teams.find((t: { team: string }) => t.team === "Team 2");
 
   it("a failed ticket comment leaves the handover partially posted, and a retry posts only the failed ticket", async () => {
-    jira.failPaths.add("/rest/api/3/issue/TOPS-2/comment");
+    jira.failPaths.add("/rest/api/3/issue/OPS-2/comment");
     await absencePost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", absent: true }));
-    expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "TOPS-1 waits on the vendor; TOPS-2 waits on the client." }))).status).toBe(200);
+    expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "OPS-1 waits on the vendor; OPS-2 waits on the client." }))).status).toBe(200);
     let h = (await team2()).handover;
-    expect(h).toMatchObject({ postStatus: "partially_posted", postedAt: null, postedTo: 1, failedTickets: ["TOPS-2"] });
+    expect(h).toMatchObject({ postStatus: "partially_posted", postedAt: null, postedTo: 1, failedTickets: ["OPS-2"] });
 
     // Saving again is refused: retry the failed ticket instead.
     expect((await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-ann", note: "A different note for the same day." }))).status).toBe(409);
@@ -183,15 +183,15 @@ describe("no false green (review remediation)", () => {
     jira.failPaths.clear();
     const before = comments().length;
     expect((await retryPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2" }))).status).toBe(200);
-    expect(comments().slice(before).map((c) => c.path)).toEqual(["/rest/api/3/issue/TOPS-2/comment"]);
+    expect(comments().slice(before).map((c) => c.path)).toEqual(["/rest/api/3/issue/OPS-2/comment"]);
     h = (await team2()).handover;
     expect(h).toMatchObject({ postStatus: "posted", postedTo: 2, failedTickets: [] });
     expect(h.postedAt).not.toBeNull();
   });
 
   it("when every comment fails the handover is 'failed', and the 09:00 job retries it", async () => {
-    jira.failPaths.add("/rest/api/3/issue/TOPS-1/comment");
-    jira.failPaths.add("/rest/api/3/issue/TOPS-2/comment");
+    jira.failPaths.add("/rest/api/3/issue/OPS-1/comment");
+    jira.failPaths.add("/rest/api/3/issue/OPS-2/comment");
     await absencePost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", absent: true }));
     await handoverPost(req("/x", "POST", { date: "2026-09-23", team: "Team 2", coveringEmployeeId: "emp-bob", note: "Everything is waiting on third parties today." }));
     expect((await team2()).handover).toMatchObject({ postStatus: "failed", postedTo: 0 });
@@ -205,7 +205,7 @@ describe("no false green (review remediation)", () => {
   it("cover must be the deputy or a team member who is active and not on leave", async () => {
     await add("employee", { id: "emp-zed", name: "Zed Elsewhere", email: "zed@k.com", role: "Analyst", team: "DataOperations", active: true });
     await add("ptoRecord", { employeeId: "emp-ann", startDate: new Date("2026-09-23T00:00:00Z"), endDate: new Date("2026-09-23T00:00:00Z") });
-    const body = (coveringEmployeeId: string) => ({ date: "2026-09-23", team: "Team 2", coveringEmployeeId, note: "Cover the queue and chase TOPS-1 with the vendor." });
+    const body = (coveringEmployeeId: string) => ({ date: "2026-09-23", team: "Team 2", coveringEmployeeId, note: "Cover the queue and chase OPS-1 with the vendor." });
     expect((await handoverPost(req("/x", "POST", body("emp-zed")))).status).toBe(422);
     expect((await handoverPost(req("/x", "POST", body("emp-ann")))).status).toBe(422); // on leave
     expect((await team2()).coverPool).toEqual([{ id: "emp-bob", name: "Bob Operator" }]);
@@ -249,15 +249,15 @@ describe("first response quick action (spec §14.4)", () => {
   beforeEach(async () => {
     await add("client", { id: "cl-1", displayName: "Acme Capital", isActive: true });
     await add("client", { id: "cl-2", displayName: "Globex Partners", isActive: true });
-    await add("workItem", { id: "cr-slack", kind: "client_request", title: "Withdrawal", team: "Team 2", taskCode: "CLIENT-Q", sourceSystem: "slack", sourceId: "C0123456:1695460000.000100", clientId: "cl-1", ticketKey: "TOPS-9", clockStartedAt: ago(10) });
-    await add("workItem", { id: "cr-mail", kind: "client_request", title: "Email", team: "Team 2", taskCode: "CLIENT-Q", sourceSystem: "email", sourceId: "conv-1", clientId: "cl-1", ticketKey: "TOPS-10", clockStartedAt: ago(10) });
+    await add("workItem", { id: "cr-slack", kind: "client_request", title: "Withdrawal", team: "Team 2", taskCode: "CLIENT-Q", sourceSystem: "slack", sourceId: "C0123456:1695460000.000100", clientId: "cl-1", ticketKey: "OPS-9", clockStartedAt: ago(10) });
+    await add("workItem", { id: "cr-mail", kind: "client_request", title: "Email", team: "Team 2", taskCode: "CLIENT-Q", sourceSystem: "email", sourceId: "conv-1", clientId: "cl-1", ticketKey: "OPS-10", clockStartedAt: ago(10) });
     await add("sourceRecord", { source: "graph_mail", kind: "mail_message", externalId: "m1", occurredAt: ago(10), fields: { mailbox: "custody", from: "ops@acme.example", message: { id: "graph-msg-1", conversationId: "conv-1" } } });
   });
 
   it("replies in the client's Slack thread, written by the operator, and stops the first-response clock", async () => {
-    const res = await firstResponse(req("/x", "POST", { body: "Thanks, we are looking into it. Reference TOPS-9." }), { params: Promise.resolve({ id: "cr-slack" }) });
+    const res = await firstResponse(req("/x", "POST", { body: "Thanks, we are looking into it. Reference OPS-9." }), { params: Promise.resolve({ id: "cr-slack" }) });
     expect(res.status).toBe(200);
-    expect(out.slack).toEqual([{ channel: "C0123456", thread_ts: "1695460000.000100", text: "Thanks, we are looking into it. Reference TOPS-9." }]);
+    expect(out.slack).toEqual([{ channel: "C0123456", thread_ts: "1695460000.000100", text: "Thanks, we are looking into it. Reference OPS-9." }]);
     expect((await p().workItem.findUnique({ where: { id: "cr-slack" } }))!.firstResponseAt).toBeInstanceOf(Date);
     expect(await p().outboundMessageDraft.findMany({ where: { purpose: "first_response", status: "sent" } })).toHaveLength(1);
   });
@@ -281,12 +281,12 @@ describe("navigation (spec §14.1) and desktop notifications (spec §14.4)", () 
   const sidebar = readFileSync("src/components/shared/Sidebar.tsx", "utf8");
 
   it("lists the spec's destinations and none of the removed ones", () => {
-    for (const href of ["/work", "/boards", "/daily-checks", "/alerts", "/clients/overview", "/settlements", "/travel-rule", "/staking", "/kps", "/fab", "/tokens", "/incidents", "/rca", "/metrics", "/morning", "/admin"]) {
+    for (const href of ["/work", "/boards", "/daily-checks", "/alerts", "/clients/overview", "/settlements", "/travel-rule", "/staking", "/realisations", "/bank", "/tokens", "/incidents", "/rca", "/metrics", "/morning", "/admin"]) {
       expect(sidebar).toContain(`href: "${href}"`);
     }
     for (const href of ["/approvals", "/usdc-ramp", "/briefing", "/compliance-bot", "/activity"]) expect(sidebar).not.toContain(`href: "${href}"`);
-    expect(sidebar).toMatch(/href: "\/kps".*capability: "kps"/);
-    expect(sidebar).toMatch(/href: "\/fab".*flag: "module\.fab"/);
+    expect(sidebar).toMatch(/href: "\/realisations".*capability: "realisations"/);
+    expect(sidebar).toMatch(/href: "\/bank".*flag: "module\.bank"/);
   });
 
   it("notifies only for new P1 client requests and critical alerts", () => {

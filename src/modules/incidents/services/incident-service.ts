@@ -8,7 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { ensureTicketedWorkItem } from "@/modules/work-items/tickets";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
-import { createIaiDraft } from "@/modules/iai/drafts";
+import { createIncidentLogDraft } from "@/modules/incident-log/drafts";
 import { getSetting } from "@/modules/settings/settings";
 import { logger } from "@/lib/logger";
 import type { RcaStatus, RcaFollowUpItem } from "@/types";
@@ -755,14 +755,14 @@ function buildIncidentWhere(filters: IncidentFilters): Record<string, unknown> {
   return where;
 }
 
-/** GX platform issues go to GXS, other providers' issues to VSR (spec §12 CHK-11). */
-export function incidentTicketProject(provider: string): "GXS" | "VSR" {
-  return /^gx\b/i.test(provider.trim()) ? "GXS" : "VSR";
+/** Platform issues go to PDEF, other providers' issues to VND (spec §12 CHK-11). */
+export function incidentTicketProject(provider: string): "PDEF" | "VND" {
+  return /^platform\b/i.test(provider.trim()) ? "PDEF" : "VND";
 }
 
 /**
- * Give an incident its GXS/VSR ticket and, when it meets the configured IAI
- * criteria (incidents.iaiSeverities, TODO(CONFIRM-IAI-INCIDENT-CRITERIA)), an IAI draft.
+ * Give an incident its PDEF/VND ticket and, when it meets the configured INC
+ * criteria (incidents.incidentLogSeverities, TODO(CONFIRM-INCIDENT-LOG-INCIDENT-CRITERIA)), an INC draft.
  */
 export async function ticketIncident(incidentId: string): Promise<void> {
   const inc = await prisma.incident.findUnique({ where: { id: incidentId } });
@@ -784,8 +784,8 @@ export async function ticketIncident(incidentId: string): Promise<void> {
     },
   });
   if (inc.workItemId !== item.id) await prisma.incident.update({ where: { id: inc.id }, data: { workItemId: item.id } });
-  const severities = await getSetting("incidents.iaiSeverities");
-  if (severities.includes(inc.severity)) await createIaiDraft(item.id, "INCIDENT");
+  const severities = await getSetting("incidents.incidentLogSeverities");
+  if (severities.includes(inc.severity)) await createIncidentLogDraft(item.id, "INCIDENT");
 }
 
 async function writeAuditLog(

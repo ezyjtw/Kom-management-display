@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/transaction-confirmations
- * Record a GX-flagged item, or perform one of the allowed human actions:
+ * Record a Platform-flagged item, or perform one of the allowed human actions:
  * take_ownership, add_note, link_ticket. Nothing here approves a transaction (H1).
  */
 export async function POST(request: NextRequest) {

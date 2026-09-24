@@ -111,7 +111,7 @@ export async function logTime(id: string, bucketMins: number, loggedById: string
   return log;
 }
 
-export const linkSchema = z.object({ key: z.string().trim().toUpperCase().regex(/^[A-Z][A-Z0-9_]{1,9}-\d{1,7}$/, "Enter a ticket key like TOPS-123") });
+export const linkSchema = z.object({ key: z.string().trim().toUpperCase().regex(/^[A-Z][A-Z0-9_]{1,9}-\d{1,7}$/, "Enter a ticket key like OPS-123") });
 
 /** Link a related Jira ticket: checked to exist, linked in Jira first when the item has its own ticket, then recorded. */
 export async function linkTicket(id: string, key: string) {

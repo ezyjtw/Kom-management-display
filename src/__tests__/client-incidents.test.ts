@@ -12,16 +12,16 @@ vi.mock("@/lib/prisma", async () => {
   db.client = createFakePrisma();
   return { prisma: db.client };
 });
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t", NEXTAUTH_URL: "https://k.example", GRAPH_MAILBOXES: JSON.stringify([{ label: "custody", address: "custody@komainu.example", purpose: "custody" }]) } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t", NEXTAUTH_URL: "https://k.example", GRAPH_MAILBOXES: JSON.stringify([{ label: "custody", address: "custody@example.com", purpose: "custody" }]) } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => false) }));
 const slack = vi.hoisted(() => ({ posts: [] as Array<{ channel: string; thread_ts?: string; text: string }> }));
 vi.mock("@/lib/integrations/slack", () => ({
   getSlackClient: () => ({
     chat: {
       postMessage: async (m: { channel: string; thread_ts?: string; text: string }) => { slack.posts.push(m); return { ok: true }; },
-      getPermalink: async ({ channel, message_ts }: { channel: string; message_ts: string }) => ({ permalink: `https://komainu.slack.com/archives/${channel}/p${message_ts.replace(".", "")}` }),
+      getPermalink: async ({ channel, message_ts }: { channel: string; message_ts: string }) => ({ permalink: `https://custody.slack.com/archives/${channel}/p${message_ts.replace(".", "")}` }),
     },
     users: { lookupByEmail: async () => ({}) },
   }),
@@ -56,8 +56,8 @@ function stubAtlassian() {
     const c: Call = { method: init?.method ?? "GET", path: url.pathname, body: init?.body ? JSON.parse(String(init.body)) : null };
     jsm.calls.push(c);
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
-    if (c.method === "POST" && c.path === "/rest/api/3/issue") return json({ id: "1", key: `TOPS-${++jsm.n}` }, 201);
-    if (c.method === "POST" && c.path === "/rest/servicedeskapi/request") return json({ issueKey: `CS-${++jsm.n}`, issueId: "9", _links: { web: `https://komainu.atlassian.net/servicedesk/customer/portal/1/CS-${jsm.n}` } }, 201);
+    if (c.method === "POST" && c.path === "/rest/api/3/issue") return json({ id: "1", key: `OPS-${++jsm.n}` }, 201);
+    if (c.method === "POST" && c.path === "/rest/servicedeskapi/request") return json({ issueKey: `CS-${++jsm.n}`, issueId: "9", _links: { web: `https://example.atlassian.net/servicedesk/customer/portal/1/CS-${jsm.n}` } }, 201);
     if (c.method === "GET" && /\/organization\/\d+\/user$/.test(c.path)) return json({ values: jsm.orgUsers });
     if (c.method === "GET" && c.path.endsWith("/transition")) return json({ values: [{ id: "11", name: "Investigating" }, { id: "12", name: "Update provided" }, { id: "13", name: "Resolved" }] });
     if (c.method === "GET" && c.path.startsWith("/rest/servicedeskapi/request/") && c.path.endsWith("/comment")) return json({ values: jsm.comments });
@@ -92,15 +92,15 @@ beforeEach(async () => {
   jsm.orgUsers = [{ accountId: "cust-acme-1" }];
   auth.user = { id: "u1", name: "Op", email: "op@k.com", role: "employee", employeeId: "emp-1", team: null };
   stubAtlassian();
-  for (const [key, value] of Object.entries({ "intake.jsm.serviceDeskId": "4", "clientIncidents.jsmRequestTypeId": "77", "intake.jsm.organizationFieldId": "customfield_10002", "intake.internalEmailDomains": ["komainu.com"] })) {
+  for (const [key, value] of Object.entries({ "intake.jsm.serviceDeskId": "4", "clientIncidents.jsmRequestTypeId": "77", "intake.jsm.organizationFieldId": "customfield_10002", "intake.internalEmailDomains": ["firm.example"] })) {
     await add("appSetting", { key, value });
   }
-  await add("jiraProjectConfig", { key: "TOPS", name: "TOPS", kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
+  await add("jiraProjectConfig", { key: "OPS", name: "OPS", kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
   for (const [code, label, sensitive] of [["settlement_failure", "Settlement failure", false], ["kyt_alert", "KYT alert", true]] as const) {
     await add("incidentCategory", { code, label, complianceSensitive: sensitive, isActive: true, sortOrder: 0 });
   }
-  await add("client", { id: "cl-acme", displayName: "Acme Capital", isActive: true, jsmOrganizationId: "501", komainuOrgId: "org-acme", komainuAccountNos: ["ACC-1001"] });
-  await add("client", { id: "cl-beta", displayName: "Beta Fund", isActive: true, jsmOrganizationId: "502", komainuOrgId: "org-beta", komainuAccountNos: ["ACC-2002"] });
+  await add("client", { id: "cl-acme", displayName: "Acme Capital", isActive: true, jsmOrganizationId: "501", custodyOrgId: "org-acme", custodyAccountNos: ["ACC-1001"] });
+  await add("client", { id: "cl-beta", displayName: "Beta Fund", isActive: true, jsmOrganizationId: "502", custodyOrgId: "org-beta", custodyAccountNos: ["ACC-2002"] });
   await add("client", { id: "cl-nojsm", displayName: "Gamma Ltd", isActive: true, jsmOrganizationId: null });
   await add("slackChannel", { id: "sc-acme", channelId: "C0ACME001", channelName: "acme", channelType: "client", purpose: "client", clientId: "cl-acme", isActive: true });
   await add("slackChannel", { id: "sc-x", channelId: "C0UNMAP01", channelName: "x", channelType: "client", purpose: "client", clientId: null, isActive: true });
@@ -124,8 +124,8 @@ describe("raising from a message (§9.7)", () => {
     const out = await raiseOk();
     const items = await p().workItem.findMany({ where: { kind: { in: ["client_incident", "client_risk"] } } });
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: "client_incident", clientId: "cl-acme", priority: "P2", ticketKey: "TOPS-1", clientTicketKey: "CS-2", clientTicketUrl: "https://komainu.atlassian.net/servicedesk/customer/portal/1/CS-2" });
-    expect(items[0].sourceMessageRef).toBe("https://komainu.slack.com/archives/C0ACME001/p1758700000000100");
+    expect(items[0]).toMatchObject({ kind: "client_incident", clientId: "cl-acme", priority: "P2", ticketKey: "OPS-1", clientTicketKey: "CS-2", clientTicketUrl: "https://example.atlassian.net/servicedesk/customer/portal/1/CS-2" });
+    expect(items[0].sourceMessageRef).toBe("https://custody.slack.com/archives/C0ACME001/p1758700000000100");
     expect(jsm.calls.filter((c) => c.path === "/rest/api/3/issue")).toHaveLength(1);
     const [request] = jsmRequests();
     expect(request.body).toMatchObject({ serviceDeskId: "4", requestTypeId: "77", requestParticipants: ["cust-acme-1"], requestFieldValues: { customfield_10002: [501] } });
@@ -225,9 +225,9 @@ describe("no-auto-public-comments", () => {
     expect(out.draftId).toBeTruthy();
     expect(slack.posts).toHaveLength(0);
     const draft = await p().outboundMessageDraft.findUnique({ where: { id: out.draftId! } });
-    expect(draft).toMatchObject({ status: "draft", channel: "slack", body: `We've logged this as CS-2. You can follow progress here: https://komainu.atlassian.net/servicedesk/customer/portal/1/CS-2` });
+    expect(draft).toMatchObject({ status: "draft", channel: "slack", body: `We've logged this as CS-2. You can follow progress here: https://example.atlassian.net/servicedesk/customer/portal/1/CS-2` });
 
-    const res = await sendDraft(req(`/api/client-incidents/drafts/${out.draftId}/send`, "POST", { body: "We've logged this as CS-2. Follow it here: https://komainu.atlassian.net/servicedesk/customer/portal/1/CS-2" }), ctx({ draftId: out.draftId! }));
+    const res = await sendDraft(req(`/api/client-incidents/drafts/${out.draftId}/send`, "POST", { body: "We've logged this as CS-2. Follow it here: https://example.atlassian.net/servicedesk/customer/portal/1/CS-2" }), ctx({ draftId: out.draftId! }));
     expect(res.status).toBe(200);
     expect(slack.posts).toEqual([{ channel: "C0ACME001", thread_ts: "1758700000.000100", text: expect.stringContaining("CS-2") }]);
   });
@@ -259,7 +259,7 @@ describe("client updates and statuses", () => {
     expect(approve.status).toBe(200);
     expect(publicComments()).toEqual([expect.objectContaining({ path: "/rest/servicedeskapi/request/CS-2/comment", body: { body: "We have contacted the exchange and expect an answer within the hour.", public: true } })]);
     // Mirrored as an internal comment on the internal ticket, and the client status moved.
-    expect(jsm.calls.some((c) => c.path === "/rest/api/3/issue/TOPS-1/comment")).toBe(true);
+    expect(jsm.calls.some((c) => c.path === "/rest/api/3/issue/OPS-1/comment")).toBe(true);
     expect(jsm.calls.some((c) => c.method === "POST" && c.path === "/rest/servicedeskapi/request/CS-2/transition" && c.body?.id === "11")).toBe(true);
   });
 
@@ -303,7 +303,7 @@ describe("client portal comments", () => {
     jsm.comments = [
       { id: "cm-2", body: "our own", public: true, author: { emailAddress: "svc@example.com" } },
       { id: "cm-50", body: "Any news? We need this today.", public: true, author: { emailAddress: "ops@acme.example" }, created: { iso8601: "2026-09-24T09:00:00Z" } },
-      { id: "cm-51", body: "internal agent note", public: true, author: { emailAddress: "agent@komainu.com" } },
+      { id: "cm-51", body: "internal agent note", public: true, author: { emailAddress: "agent@firm.example" } },
     ];
     const item = await p().workItem.findUnique({ where: { id: out.id } });
     await p().workItem.update({ where: { id: out.id }, data: { metadata: { ...(item!.metadata as Record<string, unknown>), postedCommentIds: ["cm-2"] } } });

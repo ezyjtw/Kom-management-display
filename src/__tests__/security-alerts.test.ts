@@ -66,10 +66,10 @@ describe("security alerts", () => {
   });
 
   it("ALR-SEC-05 fires on repeated 401/403 from one connector host", async () => {
-    for (let i = 0; i < 3; i++) await recordIntegrationAuthFailure({ host: "komainu.atlassian.net", status: 401 });
+    for (let i = 0; i < 3; i++) await recordIntegrationAuthFailure({ host: "example.atlassian.net", status: 401 });
     await recordIntegrationAuthFailure({ host: "slack.com", status: 403 });
     const out = await evaluateCredentialFailures(ctx({ threshold: 3, windowMins: 30 }));
-    expect(out.map((c) => c.dedupeKey)).toEqual(["komainu.atlassian.net"]);
+    expect(out.map((c) => c.dedupeKey)).toEqual(["example.atlassian.net"]);
   });
 
   it("ALR-SEC-04 is raised for a non-SSO sign-in", async () => {

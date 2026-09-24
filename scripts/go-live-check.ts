@@ -43,11 +43,13 @@ export function configChecks(env: Env, readSecrets = loadSecrets): Check[] {
   add("Data", "Seeding is off (ALLOW_SEED)", env.ALLOW_SEED !== "true");
 
   // Every live integration connected (spec §8). Endpoints come from configuration.
-  const komainuCreds = Boolean(env.KOMAINU_API_CREDENTIALS?.trim()) || (Boolean(env.KOMAINU_API_USER) && has("KOMAINU_API_SECRET"));
-  add("Integrations", "Komainu API (read-only): base URL and credentials", Boolean(env.KOMAINU_API_BASE_URL) && komainuCreds);
-  add("Integrations", "Komainu API base URL is not the demo host", Boolean(env.KOMAINU_API_BASE_URL) && !/api-demo\.komainu\.io/.test(env.KOMAINU_API_BASE_URL ?? ""), env.KOMAINU_API_BASE_URL ? undefined : "not set");
+  const custodyCreds = Boolean(env.CUSTODY_API_CREDENTIALS?.trim()) || (Boolean(env.CUSTODY_API_USER) && has("CUSTODY_API_SECRET"));
+  add("Integrations", "Custody API (read-only): base URL and credentials", Boolean(env.CUSTODY_API_BASE_URL) && custodyCreds);
+  let custodyHost = "";
+  try { custodyHost = new URL(env.CUSTODY_API_BASE_URL ?? "").hostname; } catch { /* not set or invalid */ }
+  add("Integrations", "Custody API base URL is not a demo, sandbox, staging or test host", Boolean(custodyHost) && !/(^|[.-])(demo|sandbox|staging|test)([.-]|$)/i.test(custodyHost), custodyHost || "not set");
   add("Integrations", "Jira / JSM: service account and token", Boolean(env.ATLASSIAN_EMAIL) && has("ATLASSIAN_API_TOKEN"));
-  add("Integrations", "Confluence: account and token (GX release notes)", Boolean(env.CONFLUENCE_EMAIL) && has("CONFLUENCE_API_TOKEN"));
+  add("Integrations", "Confluence: account and token (Platform release notes)", Boolean(env.CONFLUENCE_EMAIL) && has("CONFLUENCE_API_TOKEN"));
   add("Integrations", "Slack: bot token, signing secret and channels", has("SLACK_BOT_TOKEN") && has("SLACK_SIGNING_SECRET") && Boolean(env.SLACK_CHANNELS?.trim()));
   add("Integrations", "Microsoft Graph: app and mailboxes", Boolean(env.GRAPH_TENANT_ID && env.GRAPH_CLIENT_ID) && has("GRAPH_CLIENT_SECRET") && Boolean(env.GRAPH_MAILBOXES?.trim()));
   add("Integrations", "Jira webhook secret", has("JIRA_WEBHOOK_SECRET"));

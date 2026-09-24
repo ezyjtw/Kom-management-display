@@ -32,7 +32,7 @@ export const SECRET_KEYS = [
   "SLACK_SIGNING_SECRET",
   "JIRA_WEBHOOK_SECRET",
   "SMTP_PASSWORD",
-  "KOMAINU_API_SECRET",
+  "CUSTODY_API_SECRET",
   "FIREBLOCKS_API_KEY",
   "FIREBLOCKS_API_SECRET",
   "NOTABENE_API_TOKEN",
@@ -45,8 +45,8 @@ export const SECRET_KEYS = [
   "SEED_LEAD_PASSWORD",
 ] as const;
 
-/** Per-user Komainu secrets named by KOMAINU_API_CREDENTIALS[].secretRef. */
-const SECRET_KEY_PATTERN = /^KOMAINU_API_SECRET_[A-Z0-9_]+$/;
+/** Per-user the custody provider secrets named by CUSTODY_API_CREDENTIALS[].secretRef. */
+const SECRET_KEY_PATTERN = /^CUSTODY_API_SECRET_[A-Z0-9_]+$/;
 
 export function isSecretKey(key: string): boolean {
   return (SECRET_KEYS as readonly string[]).includes(key) || SECRET_KEY_PATTERN.test(key);

@@ -1,7 +1,7 @@
 /**
  * H12 guards for client-visible content (spec §9.7), applied server-side
  * before any JSM call or outbound message:
- * - it names no other client (display names, Komainu organisation ids,
+ * - it names no other client (display names, the custody provider organisation ids,
  *   account numbers);
  * - it contains none of the internal description (internal notes never reach
  *   the client).
@@ -23,11 +23,11 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export async function otherClientReferences(text: string, clientId: string): Promise<string[]> {
   const others = await prisma.client.findMany({
     where: { id: { not: clientId } },
-    select: { displayName: true, komainuOrgId: true, komainuAccountNos: true },
+    select: { displayName: true, custodyOrgId: true, custodyAccountNos: true },
   });
   const found: string[] = [];
   for (const c of others) {
-    const terms = [c.displayName, c.komainuOrgId, ...(Array.isArray(c.komainuAccountNos) ? (c.komainuAccountNos as string[]) : [])]
+    const terms = [c.displayName, c.custodyOrgId, ...(Array.isArray(c.custodyAccountNos) ? (c.custodyAccountNos as string[]) : [])]
       .filter((t): t is string => typeof t === "string" && t.trim().length >= 3);
     for (const term of terms) {
       if (new RegExp(`(^|[^A-Za-z0-9])${escapeRe(term.trim())}([^A-Za-z0-9]|$)`, "i").test(text)) found.push(term.trim());

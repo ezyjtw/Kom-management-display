@@ -19,7 +19,7 @@ import { POST } from "@/app/api/settlements/notes/route";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-memory store
 const p = () => db.client as any;
-const body = { windowKey: "2026-09-24:okx:14:00Z", portfolioId: "pf-1", text: "Checked with the exchange" };
+const body = { windowKey: "2026-09-24:exch-a:14:00Z", portfolioId: "pf-1", text: "Checked with the exchange" };
 const req = () => new NextRequest("http://localhost/api/settlements/notes", { method: "POST", body: JSON.stringify(body) });
 
 beforeEach(() => db.client.__reset());

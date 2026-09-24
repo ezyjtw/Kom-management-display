@@ -43,7 +43,7 @@ beforeAll(async () => {
     await add("employee", { id: p.employeeId, name: p.name, email: p.email, role: "Analyst", team: "TransactionOperations", active: true });
     await add("user", { id: p.userId, email: p.email, name: p.name, role: "employee", employeeId: p.employeeId });
   }
-  await add("client", { id: "cl-1", displayName: "Acme Capital", isActive: true, komainuOrgId: "org-1", komainuAccountNos: ["acc-1"] });
+  await add("client", { id: "cl-1", displayName: "Acme Capital", isActive: true, custodyOrgId: "org-1", custodyAccountNos: ["acc-1"] });
   await add("slaPolicy", { id: "sla-1", code: "CLIENT-Q-P2", description: "", ownershipMins: 30, firstRespMins: 60, resolveMins: 480, calendar: "24x7", warnAtPct: 50, isActive: true });
   for (const [i, p] of PEOPLE.entries()) {
     const id = `wi-${i}`;
@@ -59,8 +59,8 @@ beforeAll(async () => {
     await add("dailyCheckItem", { runId: "r", name: "Stuck Transactions", category: "CHK-01", definitionCode: "CHK-01", periodKey: new Date(now.getTime() - i * 86_400_000).toISOString().slice(0, 10), status: "pass", operatorId: p.employeeId, completedAt: ago(60), skipRequestedBy: p.userId });
   }
   await add("workItem", { id: "wi-open", kind: "mtd_break", title: "Break", team: "Team 2", taskCode: "CHK-02", sourceSystem: "daily_check", sourceId: "x", ownerEmployeeId: "emp-alice-7f3", clockStartedAt: ago(3000) });
-  await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck Transactions", team: "Team 1", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "TOPS", confluenceUrl: "x", isActive: true });
-  await add("sourceRecord", { source: "komainu_api", kind: "transaction", externalId: "tx-1", status: "FAILED", occurredAt: ago(200), fields: { organization: "org-1", account: "acc-1" } });
+  await add("dailyCheckDefinition", { code: "CHK-01", name: "Stuck Transactions", team: "Team 1", frequency: "daily", dueByLocal: "09:05", evidenceSpec: {}, ticketProject: "OPS", confluenceUrl: "x", isActive: true });
+  await add("sourceRecord", { source: "custody_api", kind: "transaction", externalId: "tx-1", status: "FAILED", occurredAt: ago(200), fields: { organization: "org-1", account: "acc-1" } });
   await add("sourceRecord", { source: "kommand", kind: "unticketed_report", externalId: now.toISOString().slice(0, 10), occurredAt: ago(30), fields: { total: 2, alertsWithoutTicket: [{ workItemId: "wi-0" }] } });
   await add("sourceHeartbeat", { source: "atlassian.issues", expectedEveryMins: 2, lastSuccessAt: ago(1), lastCount: 0 });
   await add("incident", { id: "inc-1", title: "Signing degraded", provider: "Fireblocks", severity: "high", status: "active", reportedById: "emp-alice-7f3", resolvedById: "emp-bob-2k8", startedAt: ago(100), rcaStatus: "none" });

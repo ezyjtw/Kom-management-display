@@ -6,14 +6,14 @@ import { Database, Trash2 } from "lucide-react";
 type Row = Record<string, unknown>;
 const input = "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground";
 
-/** Spec §12 reference data: team leads, asset status (CF-26) and the approved validator set (CF-10, CF-24). */
+/** Spec §12 reference data: team leads, asset status and the approved validator set. */
 export default function ReferenceDataTab() {
   const [teams, setTeams] = useState<Row[]>([]);
   const [assets, setAssets] = useState<Row[]>([]);
   const [validators, setValidators] = useState<Row[]>([]);
   const [breakTypes, setBreakTypes] = useState<Row[]>([]);
   const [categories, setCategories] = useState<Row[]>([]);
-  const [gxRules, setGxRules] = useState<Row[]>([]);
+  const [platformRules, setPlatformRules] = useState<Row[]>([]);
   const [uatTemplates, setUatTemplates] = useState<Row[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -24,7 +24,7 @@ export default function ReferenceDataTab() {
     setValidators(await get("approved-validators"));
     setBreakTypes(await get("otc-break-types"));
     setCategories(await get("incident-categories"));
-    setGxRules(await get("gx-impact-rules"));
+    setPlatformRules(await get("platform-impact-rules"));
     setUatTemplates(await get("uat-templates"));
   }
   useEffect(() => { void load(); }, []);
@@ -71,7 +71,7 @@ export default function ReferenceDataTab() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Asset status (CF-26)</h3>
+        <h3 className="text-sm font-semibold">Asset status</h3>
         <p className="text-xs text-muted-foreground">Known degraded or sunset assets are listed but not ticketed by CHK-01, with the reason shown.</p>
         {assets.map((a) => (
           <div key={String(a.asset)} className="flex gap-2 items-center text-xs">
@@ -123,7 +123,7 @@ export default function ReferenceDataTab() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Approved validators (CF-10, CF-24)</h3>
+        <h3 className="text-sm font-semibold">Approved validators</h3>
         {validators.length === 0 && <p className="text-xs text-amber-400">Approved validator set not defined: control 5.1 cannot be evidenced.</p>}
         {validators.map((v) => (
           <div key={String(v.id)} className="flex gap-2 items-center text-xs">
@@ -140,10 +140,10 @@ export default function ReferenceDataTab() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">GX impact rules (§16.3)</h3>
-        <p className="text-xs text-muted-foreground">Which GX sprint changes affect which tasks, alerts and controls. Seeded from the spec and inactive until reviewed (CONFIRM-GX-IMPACT-RULES). Every save increases the version and is audit-logged.</p>
-        {gxRules.map((r) => (
-          <form key={String(r.id)} className="flex gap-1 flex-wrap items-center text-xs border-t border-border/50 pt-1" onSubmit={keepForm((f) => call("gx-impact-rules", "PUT", ruleBody(f, String(r.id))))}>
+        <h3 className="text-sm font-semibold">Platform impact rules (§16.3)</h3>
+        <p className="text-xs text-muted-foreground">Which Platform sprint changes affect which tasks, alerts and controls. Seeded from the spec and inactive until reviewed (CONFIRM-PLATFORM-IMPACT-RULES). Every save increases the version and is audit-logged.</p>
+        {platformRules.map((r) => (
+          <form key={String(r.id)} className="flex gap-1 flex-wrap items-center text-xs border-t border-border/50 pt-1" onSubmit={keepForm((f) => call("platform-impact-rules", "PUT", ruleBody(f, String(r.id))))}>
             <input name="name" defaultValue={String(r.name)} aria-label="Rule name" className={`${input} w-44`} />
             <select name="matchOn" defaultValue={String(r.matchOn)} aria-label="Match on" className={input}><option>section</option><option>workstream</option><option>keyword</option><option>jira_project</option></select>
             <input name="pattern" defaultValue={String(r.pattern)} aria-label="Pattern (regular expression)" className={`${input} w-40 font-mono`} />
@@ -158,7 +158,7 @@ export default function ReferenceDataTab() {
             <button type="submit" className="px-2 py-1 border border-border rounded-md">Save</button>
           </form>
         ))}
-        <form className="flex gap-1 flex-wrap text-xs" onSubmit={form((f) => call("gx-impact-rules", "PUT", ruleBody(f)))}>
+        <form className="flex gap-1 flex-wrap text-xs" onSubmit={form((f) => call("platform-impact-rules", "PUT", ruleBody(f)))}>
           <input name="name" required placeholder="New rule name" aria-label="New rule name" className={`${input} w-44`} />
           <select name="matchOn" aria-label="New rule match on" className={input}><option>section</option><option>workstream</option><option>keyword</option><option>jira_project</option></select>
           <input name="pattern" required placeholder="Pattern" aria-label="New rule pattern" className={`${input} w-40 font-mono`} />

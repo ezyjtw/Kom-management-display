@@ -1,18 +1,19 @@
 # CLAUDE.md — KOMmand Centre Standing Rules
 
-## Standing rules (from docs/phase1/PHASE1_BUILD_SPEC.md §0)
+## Standing rules (from docs/PRODUCT_SPEC.md §0)
 
-- Read docs/phase1/PHASE1_BUILD_SPEC.md before any change.
-- NEVER add code that approves, rejects, confirms, cancels, initiates or signs a transaction or request on any custody platform. The Komainu API client is GET-only (plus POST /v1/auth/token). A test enforces this.
+- Read docs/PRODUCT_SPEC.md before any change. The deploying firm's own requirements are private and are not kept in this repository.
+- No firm-specific content: names of the deploying firm, its people, clients, partners, regulators, places, projects and internal control references stay out of the repository (`npm run ip:check`).
+- NEVER add code that approves, rejects, confirms, cancels, initiates or signs a transaction or request on any custody platform. The custody API client is GET-only (plus POST /v1/auth/token). A test enforces this.
 - AI features, staff performance scoring and live activity tracking stay disabled. Do not re-enable.
 - No secrets in code, fixtures, logs or commits. Use env vars validated in src/lib/env.ts.
 - Redact wallet addresses, tx hashes, client names and account numbers in logs.
-- Use api-demo.komainu.io or mocks only. Never point code or tests at production endpoints.
+- Use custody-demo.example.com or mocks only. Never point code or tests at production endpoints.
 - Slack channels and shared mailboxes are polled every 5 minutes, 24/7. Never pause polling out of hours.
 - Client-visible JSM content (portal requests, public comments) is written by a human. Never auto-post, and never AI-generate it.
 - Run `npm run ci:check` before proposing a commit. One phase per PR. Stop at each STOP point.
 - Where the spec says CONFIRM, build behind config or a flag and leave a `TODO(CONFIRM-<id>)`; never invent external formats.
-- Every system-initiated audit entry uses `userId: "system"` (an inactive Employee row created by migration 0020).
+- Every system-initiated audit entry uses `userId: "system"` (an inactive Employee row created by the baseline migration).
 
 ## Hard Constraints (H1–H12)
 
@@ -21,7 +22,7 @@ These constraints apply to **every** phase and must never be violated:
 | ID  | Rule |
 |-----|------|
 | H1  | No transaction approval — the tool never executes, signs, or approves any transaction |
-| H2  | Komainu/Custody API is read-only — only GET endpoints are used |
+| H2  | Custody API is read-only — only GET endpoints are used |
 | H3  | AI is off by default — `AI_PROVIDER` defaults to `none`; feature flag `ai.enabled` must be `false` |
 | H4  | No staff surveillance — no screen monitoring, keystroke logging, or location tracking |
 | H5  | No local risk scoring — risk levels come from the custody source system, never computed locally |

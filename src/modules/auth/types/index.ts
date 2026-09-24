@@ -237,7 +237,7 @@ export const SENSITIVE_FIELDS: Record<Resource, string[]> = {
   metrics: [],
   client_comms: [],
   service_provider: ["contactEmail"],
-  client: ["komainuAccountNos"],
+  client: ["custodyAccountNos"],
   sla_policy: [],
   alert_rule: [],
   work_item: [],

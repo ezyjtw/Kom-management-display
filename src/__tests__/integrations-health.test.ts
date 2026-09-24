@@ -25,7 +25,7 @@ describe("integration health", () => {
   it("reports every adapter unconfigured with no credentials", async () => {
     const health = await getAllHealth();
     expect(health.map((h) => [h.source, h.status])).toEqual([
-      ["komainu_api", "unconfigured"],
+      ["custody_api", "unconfigured"],
       ["atlassian", "unconfigured"],
       ["slack", "unconfigured"],
       ["graph_mail", "unconfigured"],
@@ -45,7 +45,7 @@ describe("integration health", () => {
   it("derives healthy / degraded / down from heartbeats", async () => {
     const now = new Date("2026-09-23T12:00:00Z");
     const adapter = {
-      source: "komainu_api" as const,
+      source: "custody_api" as const,
       label: "x",
       isConfigured: () => true,
       isEnabled: async () => true,

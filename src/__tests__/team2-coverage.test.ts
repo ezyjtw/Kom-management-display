@@ -1,5 +1,5 @@
 /**
- * Spec §12 Team 2: MTD breaks (type, T+1 SLA, daily TOPS ticket auto-close),
+ * Spec §12 Team 2: MTD breaks (type, T+1 SLA, daily OPS ticket auto-close),
  * scam/dust closure rules and the Tech false-positive ticket, OTC assignment
  * notifications, and the TOKENS two-way sync with AI research disabled.
  */
@@ -12,9 +12,9 @@ vi.mock("@/lib/prisma", async () => {
   db.client = createFakePrisma();
   return { prisma: db.client };
 });
-const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://komainu.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
+const envVars = vi.hoisted(() => ({ ATLASSIAN_BASE_URL: "https://example.atlassian.net", ATLASSIAN_EMAIL: "svc@example.com", ATLASSIAN_API_TOKEN: "t" } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => false) }));
 const slack = vi.hoisted(() => ({ posts: [] as Array<{ channel: string; text: string }> }));
 vi.mock("@/lib/integrations/slack", () => ({
@@ -60,7 +60,7 @@ beforeEach(async () => {
     if (call.method === "GET" && call.path.endsWith("/transitions")) return new Response(JSON.stringify({ transitions: [{ id: "9", name: "Done", to: { statusCategory: { key: "done" } } }] }), { status: 200 });
     return new Response(JSON.stringify({ id: "c" }), { status: 201 });
   }));
-  for (const key of ["OTC", "TOPS", "TOKENS", "GXS"]) await add("jiraProjectConfig", { key, name: key, kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
+  for (const key of ["OTC", "OPS", "TOKENS", "PDEF"]) await add("jiraProjectConfig", { key, name: key, kind: "jira", enabled: true, issueTypeIds: { _default: "1" } });
   await add("slaPolicy", { id: "sla-mtd", code: "MTD-BREAK", description: "", resolveRule: "next_business_day_eod", calendar: "business_uk", warnAtPct: 50, isActive: true });
   await syncDailyCheckDefinitions();
 });
@@ -71,15 +71,15 @@ async function mtdItem() {
 }
 
 describe("CHK-02 MTD breaks", () => {
-  it("records each break as an mtd_break in OTC with the T+1 SLA and opens the daily TOPS MTD ticket", async () => {
+  it("records each break as an mtd_break in OTC with the T+1 SLA and opens the daily OPS MTD ticket", async () => {
     await mtdItem();
     const r = await recordExceptions("i-mtd", [{ summary: "BTC variance on client wallet", reference: "w-1" }], "emp-1");
     const brk = await p().workItem.findUnique({ where: { id: r.workItemIds[0] } });
     expect(brk).toMatchObject({ kind: "mtd_break", ticketKey: "OTC-1", slaPolicyId: "sla-mtd", team: "Team 2" });
-    expect(brk!.metadata).toMatchObject({ breakType: "unclassified", gxStatusVsChain: "unverified" });
+    expect(brk!.metadata).toMatchObject({ breakType: "unclassified", platformStatusVsChain: "unverified" });
     const created = jira.calls.filter((c) => c.path === "/rest/api/3/issue");
-    expect(JSON.stringify(created[0].body)).toContain("GX status vs chain unverified");
-    expect(created.map((c) => (c.body as { fields: { project: { key: string } } }).fields.project.key)).toEqual(["OTC", "TOPS"]);
+    expect(JSON.stringify(created[0].body)).toContain("Platform status vs chain unverified");
+    expect(created.map((c) => (c.body as { fields: { project: { key: string } } }).fields.project.key)).toEqual(["OTC", "OPS"]);
   });
 
   it("requires a listed break type once the list exists", async () => {
@@ -90,20 +90,20 @@ describe("CHK-02 MTD breaks", () => {
     expect((await p().workItem.findUnique({ where: { id: ok.workItemIds[0] } }))!.metadata).toMatchObject({ breakType: "missing_tx" });
   });
 
-  it("closes the daily TOPS MTD ticket (comment + transition) once every break is resolved or explained", async () => {
+  it("closes the daily OPS MTD ticket (comment + transition) once every break is resolved or explained", async () => {
     await mtdItem();
     await add("appSetting", { key: "mtd.autoCloseRiskScore", value: "Low" });
     const r = await recordExceptions("i-mtd", [{ summary: "BTC variance one" }, { summary: "ETH variance two" }], "emp-1");
     const daily = await p().workItem.findFirst({ where: { sourceSystem: "daily_check_report" } });
-    expect(daily!.ticketKey).toBe("TOPS-3");
+    expect(daily!.ticketKey).toBe("OPS-3");
 
     await p().workItem.update({ where: { id: r.workItemIds[0] }, data: { state: "closed" } });
     expect(await autoCloseDailyMtdTickets()).toEqual({ closed: 0, readyForLead: 0 });
 
     await p().workItem.update({ where: { id: r.workItemIds[1] }, data: { state: "resolved" } });
     expect(await autoCloseDailyMtdTickets()).toEqual({ closed: 1, readyForLead: 0 });
-    expect(jira.calls.some((c) => c.path === "/rest/api/3/issue/TOPS-3/comment")).toBe(true);
-    expect(jira.calls.at(-1)).toMatchObject({ method: "POST", path: "/rest/api/3/issue/TOPS-3/transitions" });
+    expect(jira.calls.some((c) => c.path === "/rest/api/3/issue/OPS-3/comment")).toBe(true);
+    expect(jira.calls.at(-1)).toMatchObject({ method: "POST", path: "/rest/api/3/issue/OPS-3/transitions" });
     expect((await p().workItem.findUnique({ where: { id: daily!.id } }))).toMatchObject({ state: "closed", rootCause: "no_action_required" });
   });
 
@@ -119,27 +119,27 @@ describe("CHK-02 MTD breaks", () => {
 
 describe("CHK-06 scam and dust", () => {
   beforeEach(async () => {
-    await add("workItem", { id: "wi-sd", kind: "scam_dust_case", title: "Dust from 0xabc", taskCode: "CHK-06", sourceSystem: "daily_check", sourceId: "x", ticketKey: "TOPS-7", clockStartedAt: new Date() });
+    await add("workItem", { id: "wi-sd", kind: "scam_dust_case", title: "Dust from 0xabc", taskCode: "CHK-06", sourceSystem: "daily_check", sourceId: "x", ticketKey: "OPS-7", clockStartedAt: new Date() });
   });
 
-  it("requires the client advisory, and the client decision when the client overrides (CF-35)", async () => {
+  it("requires the client advisory, and the client decision when the client overrides", async () => {
     let item = await p().workItem.findUnique({ where: { id: "wi-sd" } });
     expect(await closureIssues(item as never, { writeUp })).toContain("Record the client advisory before closing.");
     await scamDust(req("/x", "POST", { clientAdvisory: "Client advised not to interact.", clientOverride: true }), ctx("wi-sd"));
     item = await p().workItem.findUnique({ where: { id: "wi-sd" } });
-    expect(await closureIssues(item as never, { writeUp })).toEqual(["The client overrode Komainu's scam assessment: attach the client decision before closing (CF-35)."]);
-    await scamDust(req("/x", "POST", { clientDecisionUrl: "https://komainu.atlassian.net/wiki/decision-1" }), ctx("wi-sd"));
+    expect(await closureIssues(item as never, { writeUp })).toEqual(["The client overrode the custody provider's scam assessment: attach the client decision before closing."]);
+    await scamDust(req("/x", "POST", { clientDecisionUrl: "https://example.atlassian.net/wiki/decision-1" }), ctx("wi-sd"));
     item = await p().workItem.findUnique({ where: { id: "wi-sd" } });
     expect(await closureIssues(item as never, { writeUp })).toEqual([]);
   });
 
-  it("flags a possible false positive with a ticket to Tech (CF-34), once", async () => {
-    await add("appSetting", { key: "scamDust.techProject", value: "GXS" });
+  it("flags a possible false positive with a ticket to Tech, once", async () => {
+    await add("appSetting", { key: "scamDust.techProject", value: "PDEF" });
     await scamDust(req("/x", "POST", { possibleFalsePositive: true }), ctx("wi-sd"));
     await scamDust(req("/x", "POST", { possibleFalsePositive: true }), ctx("wi-sd"));
     const fp = await p().workItem.findMany({ where: { sourceSystem: "scam_dust_fp" } });
     expect(fp).toHaveLength(1);
-    expect(fp[0].ticketKey).toBe("GXS-1");
+    expect(fp[0].ticketKey).toBe("PDEF-1");
   });
 
   it("refuses these fields on other kinds", async () => {

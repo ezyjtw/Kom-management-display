@@ -23,13 +23,13 @@ This register covers spec §17.3. Each credential has a named owner and a rotati
 | `ENCRYPTION_SECRET` | Key for field encryption at rest (AES-256-GCM, `src/lib/encryption.ts`) | TODO | Annually, with re-encryption | Needs a re-encryption job: decrypt with the old key, encrypt with the new. Plan before rotating. | Decrypts the encrypted fields if the database is also obtained. High. |
 | `AZURE_AD_CLIENT_SECRET` | Entra app registration secret for SSO | TODO | Per the Entra policy (at most 12 months); prefer a certificate or federated credential | Add the new secret in Entra, update Key Vault, restart, then delete the old one | Impersonates the app to Entra in the OAuth flow; cannot sign users in without their credentials. Medium. |
 | `ATLASSIAN_API_TOKEN` (with `ATLASSIAN_EMAIL`) | Jira and JSM service account, **project-scoped, no admin** (§8.3 projects only) | TODO | Annually | Create a new token for the service account, update Key Vault, restart, revoke the old token in id.atlassian.com | Read and write on the scoped Jira/JSM projects, **including client-visible JSM content**. High. ALR-SEC-05 fires on repeated 401/403. |
-| `CONFLUENCE_API_TOKEN` (with `CONFLUENCE_EMAIL`) | Confluence read access for GX release notes | TODO | Annually | As for Atlassian | Read access to the permitted spaces. Medium. |
+| `CONFLUENCE_API_TOKEN` (with `CONFLUENCE_EMAIL`) | Confluence read access for Platform release notes | TODO | Annually | As for Atlassian | Read access to the permitted spaces. Medium. |
 | `SLACK_BOT_TOKEN` | Slack app bot token (`xoxb-`), with scopes in `slack-scopes.md` | TODO | Annually, and on leak | Reinstall or rotate in the Slack app admin, update Key Vault, restart | Reads the channels the bot is in; posts as the bot. High (channel history). |
 | `SLACK_SIGNING_SECRET` | Verifies inbound Slack requests (events, interactivity) | TODO | Annually | Regenerate in the Slack app, update Key Vault, restart | Forged inbound Slack events; parsed as data only. Medium. |
 | `JIRA_WEBHOOK_SECRET` | Verifies inbound Jira webhooks | TODO | Annually | Update the Jira webhook and Key Vault together | Forged ticket events; the effects are recorded and reconciled against Jira. Medium. |
 | `GRAPH_CLIENT_SECRET` (with `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`) | Microsoft Graph app for the shared mailboxes and Teams. **Restricted to the named mailboxes by an Exchange application access policy.** | TODO | Per the Entra policy; prefer a certificate | As for the Entra secret | Reads and sends as the permitted mailboxes. High. |
 | `SMTP_PASSWORD` | Outbound SMTP for notifications | TODO | Annually | Update the mail relay and Key Vault | Sends mail as the relay account. Medium. |
-| `KOMAINU_API_SECRET`, `KOMAINU_API_SECRET_<SUFFIX>` | Komainu API user secret(s), **read-only** on the Komainu side (H2). One per workspace user (`KOMAINU_API_CREDENTIALS[].secretRef`, CONFIRM-API-SCOPE) | TODO | Annually, and on leak | Rotate in Komainu, update Key Vault, restart the worker | Reads custody data for the workspace. **Cannot move funds.** Every use is audited (`integration_credential_used`, with label and workload). High (confidentiality). |
+| `CUSTODY_API_SECRET`, `CUSTODY_API_SECRET_<SUFFIX>` | custody API user secret(s), **read-only** on the custody-provider side (H2). One per workspace user (`CUSTODY_API_CREDENTIALS[].secretRef`, CONFIRM-API-SCOPE) | TODO | Annually, and on leak | Rotate in the custody provider, update Key Vault, restart the worker | Reads custody data for the workspace. **Cannot move funds.** Every use is audited (`integration_credential_used`, with label and workload). High (confidentiality). |
 | `FIREBLOCKS_API_KEY`, `FIREBLOCKS_API_SECRET` | Not used in Phase 1 | n/a | n/a | Do not issue | n/a |
 | `NOTABENE_API_TOKEN` | Notabene. Disabled (H11); do not issue | n/a | n/a | Do not issue | n/a |
 | `GROQ_API_KEY`, `ANTHROPIC_API_KEY` | AI providers. AI is off (H3); do not issue | n/a | n/a | Do not issue | n/a |
@@ -39,7 +39,7 @@ This register covers spec §17.3. Each credential has a named owner and a rotati
 
 This follows the platform's Secret Leak Actions:
 
-1. **Revoke** the credential at the provider **first** (Atlassian, Slack, Entra, Komainu or the mail relay). Do not wait for the redeploy.
+1. **Revoke** the credential at the provider **first** (Atlassian, Slack, Entra, the custody provider or the mail relay). Do not wait for the redeploy.
 2. **Replace** it: issue a new credential, write it to Key Vault, and restart the affected workloads.
 3. **Remove** every copy: rewrite git history if it was committed, and purge logs and tickets.
 4. **Remediate and review:**

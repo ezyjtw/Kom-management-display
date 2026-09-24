@@ -74,7 +74,7 @@ async function ingestToThread(msg: GraphMessage, queue = "Transaction Operations
   return threadId;
 }
 
-/** Vendor notification: link to the VSR ticket whose title carries the vendor key. */
+/** Vendor notification: link to the VND ticket whose title carries the vendor key. */
 async function ingestVendorEmail(msg: GraphMessage, parsers: readonly VendorParser[]) {
   const parsed = parseVendorEmail(
     { fromAddress: msg.from?.emailAddress?.address ?? "", subject: msg.subject ?? "", preview: msg.bodyPreview ?? "" },
@@ -82,15 +82,15 @@ async function ingestVendorEmail(msg: GraphMessage, parsers: readonly VendorPars
   );
   if (!parsed) return "unparsed" as const;
 
-  const vsr = await prisma.workItem.findFirst({
-    where: { ticketKey: { startsWith: "VSR-" }, title: { contains: parsed.vendorKey } },
+  const vnd = await prisma.workItem.findFirst({
+    where: { ticketKey: { startsWith: "VND-" }, title: { contains: parsed.vendorKey } },
     select: { id: true, ticketKey: true },
   });
   const at = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
   const item = await prisma.workItem.upsert({
     where: { sourceSystem_sourceId: { sourceSystem: "email", sourceId: `vendor:${parsed.vendor}:${parsed.vendorKey}` } },
     update: {
-      metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vsrKey: vsr?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
+      metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vndKey: vnd?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
     },
     create: {
       kind: "vendor_ticket",
@@ -100,24 +100,24 @@ async function ingestVendorEmail(msg: GraphMessage, parsers: readonly VendorPars
       sourceSystem: "email",
       sourceId: `vendor:${parsed.vendor}:${parsed.vendorKey}`,
       clockStartedAt: at,
-      metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vsrKey: vsr?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
+      metadata: { vendor: parsed.vendor, vendorKey: parsed.vendorKey, vendorStatus: parsed.status, vndKey: vnd?.ticketKey ?? null, lastVendorUpdateAt: at.toISOString() } as Prisma.InputJsonValue,
     },
   });
-  if (vsr) return "linked" as const;
+  if (vnd) return "linked" as const;
 
-  // Spec §10.1: a vendor update with no matching VSR opens one.
+  // Spec §10.1: a vendor update with no matching VND opens one.
   if (!item.ticketKey) {
     await createTicketForWorkItem(item.id, {
-      projectKey: "VSR",
+      projectKey: "VND",
       summary: `${parsed.vendor} ${parsed.vendorKey}: ${msg.subject ?? ""}`,
-      description: `Vendor portal update received by email with no matching VSR.
+      description: `Vendor portal update received by email with no matching VND.
 Vendor: ${parsed.vendor}
 Vendor ticket: ${parsed.vendorKey}
 Status: ${parsed.status}`,
       labels: ["vendor-update", `vendor-${parsed.vendor.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`],
     });
   }
-  return "vsr_created" as const;
+  return "vendor_request_created" as const;
 }
 
 type StoredMail = Pick<GraphMessage, "id" | "internetMessageId" | "conversationId" | "subject" | "receivedDateTime" | "bodyPreview"> & { fromAddress: string | null; threadId?: string | null };
@@ -185,7 +185,7 @@ export async function syncMailbox(mailbox: GraphMailbox, opts: { parsers?: reado
       let threadId: string | null = null;
       if (mailbox.purpose === "custody") threadId = await ingestToThread(msg);
       else if (mailbox.purpose === "vendor_notifications") outcome = await ingestVendorEmail(msg, opts.parsers ?? VENDOR_PARSERS);
-      // fab_ics: stored for the FAB rules (TODO(CONFIRM-FAB-TEMPLATES)).
+      // bank_instructions: stored for the BANK rules (TODO(CONFIRM-BANK-TEMPLATES)).
       const stored: StoredMail = {
         id: msg.id,
         internetMessageId: msg.internetMessageId,

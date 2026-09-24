@@ -26,15 +26,15 @@ Polling runs in the always-on worker (`src/worker`); job cadences are in
 | `degraded` | Some heartbeats are stale |
 | `down` | No heartbeat is fresh |
 
-## Komainu API (read-only, H2)
+## custody API (read-only, H2)
 
 | | |
 |---|---|
-| Code | `src/lib/integrations/komainu-api/`, pollers in `src/modules/integrations/komainu/` |
+| Code | `src/lib/integrations/custody-api/`, pollers in `src/modules/integrations/custody/` |
 | Auth | `POST /v1/auth/token` per API user; token cached until 60 s before expiry |
-| Credentials | `KOMAINU_API_USER`/`KOMAINU_API_SECRET`, or several users via `KOMAINU_API_CREDENTIALS` (JSON `[{label, user, secretRef}]`; `secretRef` names a `KOMAINU_API_SECRET_*` env var) |
+| Credentials | `CUSTODY_API_USER`/`CUSTODY_API_SECRET`, or several users via `CUSTODY_API_CREDENTIALS` (JSON `[{label, user, secretRef}]`; `secretRef` names a `CUSTODY_API_SECRET_*` env var) |
 | Allowlist | `endpoints.ts`; any other path, or any non-GET method, throws before a request is made |
-| Storage | Latest state per record in `SourceRecord` (source `komainu_api`); only needed fields |
+| Storage | Latest state per record in `SourceRecord` (source `custody_api`); only needed fields |
 
 Polling: requests every minute, transactions every 2 minutes, collateral
 (settlements, operations, portfolios) every 10 minutes, audit logs every 5
@@ -46,9 +46,9 @@ Settlement, operation and portfolio statuses are mapped through
 `SettlementStatusMap` (CONFIRM-SETTLEMENT-STATUS). Unmapped values are stored as
 `unknown` and raise `ALR-CFG-02` once that rule is enabled.
 
-Pending: the v1.6.0 OpenAPI file (`docs/phase1/komainu-openapi-1.6.0.json`) is
+Pending: the v1.6.0 OpenAPI file (`docs/phase1/custody-openapi-1.6.0.json`) is
 not yet in the repo. Until it is, endpoints without a known schema keep only
-non-sensitive scalar fields (`TODO(CONFIRM-KOMAINU-OPENAPI)`).
+non-sensitive scalar fields (`TODO(CONFIRM-CUSTODY-OPENAPI)`).
 
 ## Jira and JSM
 
@@ -79,9 +79,9 @@ locally.
 |---|---|
 | Push | `POST /api/webhooks/slack` (Events API), verified with `SLACK_SIGNING_SECRET`; events are queued for the worker |
 | Fallback | Channel history polled every 5 minutes |
-| Registry | `SlackChannel` with `purpose` (`client`, `gx_notifications`, `vendor`, `internal_ops`, `alerts_out`) and `clientId` |
+| Registry | `SlackChannel` with `purpose` (`client`, `platform_notifications`, `vendor`, `internal_ops`, `alerts_out`) and `clientId` |
 
-`gx_notifications` channels keep bot messages and store them raw
+`platform_notifications` channels keep bot messages and store them raw
 (`SourceRecord` kind `risk_signal_raw`) for the Risk Signal parser
 (CONFIRM-RISK-SOURCE). `channel_join` and similar subtypes are always skipped.
 Outbound alerts go to the `alerts_out` channel with two link buttons only:
@@ -98,9 +98,9 @@ Outbound alerts go to the `alerts_out` channel with two link buttons only:
 | Teams | `GRAPH_TEAMS_CHANNELS` JSON; internal context only |
 
 Mail by purpose: `custody` messages become CommsThreads (as the retired IMAP
-adapter did); `fab_ics` messages are stored for the FAB rules
-(CONFIRM-FAB-TEMPLATES); `vendor_notifications` messages are parsed by vendor
-parsers into `vendor_ticket` WorkItems linked to the matching VSR ticket. No
+adapter did); `bank_instructions` messages are stored for the partner bank rules
+(CONFIRM-BANK-TEMPLATES); `vendor_notifications` messages are parsed by vendor
+parsers into `vendor_ticket` WorkItems linked to the matching VND ticket. No
 vendor parser is registered until redacted samples exist
 (CONFIRM-VENDOR-FORMATS).
 

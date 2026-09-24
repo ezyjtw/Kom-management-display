@@ -73,18 +73,17 @@ describe("ALR-AUD-01 audit outcome missing", () => {
   });
 });
 
-describe("append-only audit trail (migration 0037)", () => {
-  const sql = readFileSync("prisma/migrations/0037_control_integrity/migration.sql", "utf8");
+describe("append-only audit trail (baseline migration)", () => {
+  const sql = readFileSync("prisma/migrations/0001_baseline/migration.sql", "utf8");
 
   it("rejects UPDATE, DELETE and TRUNCATE on AuditLog with triggers", () => {
-    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_update_delete" BEFORE UPDATE OR DELETE ON "AuditLog"/);
-    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_truncate" BEFORE TRUNCATE ON "AuditLog"/);
+    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_update_delete" BEFORE DELETE OR UPDATE ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION kom_audit_append_only\(\)/);
+    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_no_truncate" BEFORE TRUNCATE ON "AuditLog" FOR EACH STATEMENT EXECUTE FUNCTION kom_audit_append_only\(\)/);
     expect(sql).toMatch(/RAISE EXCEPTION 'AuditLog is append-only/);
   });
 
-  it("backfills before the append-only triggers are created", () => {
-    expect(sql.indexOf('UPDATE "AuditLog"')).toBeGreaterThan(-1);
-    expect(sql.lastIndexOf('UPDATE "AuditLog" SET')).toBeLessThan(sql.indexOf('CREATE TRIGGER "AuditLog_no_update_delete"'));
+  it("normalises the actor on insert", () => {
+    expect(sql).toMatch(/CREATE TRIGGER "AuditLog_normalise_actor" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION kom_audit_normalise_actor\(\)/);
   });
 
   it("no application code updates or deletes audit rows", () => {

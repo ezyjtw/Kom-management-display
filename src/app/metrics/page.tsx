@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CheckCircle2, AlertTriangle, CircleSlash, Download } from "lucide-react";
 
-type Section = "responsiveness" | "clients" | "operations" | "hygiene" | "client_incidents" | "polling" | "gx_uat";
+type Section = "responsiveness" | "clients" | "operations" | "hygiene" | "client_incidents" | "polling" | "platform_uat";
 const TABS: Array<{ key: Section; label: string }> = [
   { key: "responsiveness", label: "Responsiveness" },
   { key: "clients", label: "Clients" },
@@ -17,7 +17,7 @@ const TABS: Array<{ key: Section; label: string }> = [
   { key: "hygiene", label: "Hygiene" },
   { key: "client_incidents", label: "Client incident comms" },
   { key: "polling", label: "Polling health" },
-  { key: "gx_uat", label: "GX sprint UAT" },
+  { key: "platform_uat", label: "Platform sprint UAT" },
 ];
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- section payloads are rendered generically; shapes are defined in src/modules/metrics/service.ts */
@@ -122,7 +122,7 @@ function Clients({ d }: { d: Json }) {
     <div className="grid gap-4 lg:grid-cols-2">
       {[
         { title: `Ranked by ${d.labels.effort}`, rows: d.byEffort, value: (r: Json) => `${r.loggedEffortHours} h`, t: (r: Json) => trend(r.loggedEffortTrendPct) },
-        { title: `Ranked by activity (${d.labels.volume})`, rows: d.byVolume, value: (r: Json) => `${r.volume.total} (requests ${r.volume.requestsCreated}, tx ${r.volume.komainuTransactions}, GX requests ${r.volume.komainuRequests}, Slack ${r.volume.slackThreads})`, t: (r: Json) => trend(r.volumeTrendPct) },
+        { title: `Ranked by activity (${d.labels.volume})`, rows: d.byVolume, value: (r: Json) => `${r.volume.total} (requests ${r.volume.requestsCreated}, tx ${r.volume.custodyTransactions}, Platform requests ${r.volume.custodyRequests}, Slack ${r.volume.slackThreads})`, t: (r: Json) => trend(r.volumeTrendPct) },
       ].map((panel) => (
         <div key={panel.title} className="bg-card border border-border rounded-xl p-4 overflow-x-auto">
           <h3 className="text-sm font-medium mb-2">{panel.title}</h3>
@@ -213,14 +213,14 @@ function Polling({ d }: { d: Json }) {
   );
 }
 
-function GxUat({ d }: { d: Json }) {
+function PlatformUat({ d }: { d: Json }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4 overflow-x-auto">
       <table className="w-full text-xs"><thead><tr className="text-left text-muted-foreground"><th>Sprint</th><th>PROD planned</th><th>Change items</th><th>UAT tickets</th><th>Done before PROD</th><th>Fails</th><th>Defects raised</th><th>Added after sign-off</th></tr></thead>
         <tbody>{d.sprints.map((s: Json) => (
           <tr key={s.sprint} className="border-t border-border/50"><td className="py-1">{s.sprint}</td><td>{s.prodPlannedAt ? s.prodPlannedAt.slice(0, 10) : "—"}</td><td>{s.changeItems}</td><td>{s.uatTickets}</td><td>{pctOf(s.completedBeforeProdPct)}</td><td>{s.fails}</td><td>{s.defectsRaised}</td><td>{s.addedAfterSignOff}</td></tr>
         ))}</tbody></table>
-      {d.sprints.length === 0 && <p className="text-xs text-muted-foreground">No GX sprints in this period.</p>}
+      {d.sprints.length === 0 && <p className="text-xs text-muted-foreground">No Platform sprints in this period.</p>}
     </div>
   );
 }
@@ -270,7 +270,7 @@ export default function MetricsPage() {
           {tab === "hygiene" && <Hygiene d={data} />}
           {tab === "client_incidents" && <ClientIncidentComms d={data} />}
           {tab === "polling" && <Polling d={data} />}
-          {tab === "gx_uat" && <GxUat d={data} />}
+          {tab === "platform_uat" && <PlatformUat d={data} />}
         </>
       )}
     </div>

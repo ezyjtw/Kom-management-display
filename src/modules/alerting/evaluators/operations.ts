@@ -1,6 +1,6 @@
 /**
- * Configuration, KPS, transactions and hygiene rules (spec §11.2):
- * ALR-CFG-01, ALR-KPS-01, ALR-TX-01/02, ALR-TR-01, ALR-CHK-01, ALR-VND-01,
+ * Configuration, RLS, transactions and hygiene rules (spec §11.2):
+ * ALR-CFG-01, ALR-RLS-01, ALR-TX-01/02, ALR-TR-01, ALR-CHK-01, ALR-VND-01,
  * ALR-HB-SOURCE.
  */
 
@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { businessMinutesWith, loadCalendar, londonInstant, londonParts } from "@/modules/alerting/calendar";
 import { periodsFor } from "@/modules/daily-checks/schedule";
-import { fieldsOf, komainuRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
+import { fieldsOf, custodyRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
 import { numParam, strListParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
 import { boundedTest, safeRegex, unsafeRegexReason } from "@/lib/safe-regex";
 
@@ -22,7 +22,7 @@ export async function evaluateConfigChange(ctx: EvaluatorContext): Promise<Alert
   });
   if (!patterns.length) return [];
   const since = new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 24) * 3_600_000);
-  const logs = await komainuRecords("audit_log", { status: "ADMINISTRATION", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, lastSeenAt: { gte: since } }] });
+  const logs = await custodyRecords("audit_log", { status: "ADMINISTRATION", OR: [{ occurredAt: { gte: since } }, { occurredAt: null, lastSeenAt: { gte: since } }] });
   return logs
     .filter((l) => {
       const f = fieldsOf(l);
@@ -33,28 +33,28 @@ export async function evaluateConfigChange(ctx: EvaluatorContext): Promise<Alert
       dedupeKey: l.externalId,
       severity: "high" as const,
       title: "Configuration change to review",
-      detail: `Audit event ${pick(l, "event", "action", "type", "event_type") ?? l.externalId} at ${(l.occurredAt ?? l.lastSeenAt).toISOString()} matches a reviewed change pattern (tap rule, whitelist or risk parameter). Review under Control 3.3.`,
+      detail: `Audit event ${pick(l, "event", "action", "type", "event_type") ?? l.externalId} at ${(l.occurredAt ?? l.lastSeenAt).toISOString()} matches a reviewed change pattern (tap rule, whitelist or risk parameter). Review it under the change-control procedure.`,
       workItemSeed: { kind: "internal_task" as const, taskCode: "CFG" },
     }));
 }
 
-/** ALR-KPS-01: KPS realisation at or above the RiskCo threshold with no RiskCo approval link. */
-export async function evaluateKpsThreshold(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
+/** ALR-RLS-01: RLS realisation at or above the Risk Committee threshold with no Risk Committee approval link. */
+export async function evaluateRealisationThreshold(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const threshold = numParam(ctx.params, "thresholdUsd", 1_000_000);
   const items = await prisma.workItem.findMany({
-    where: { kind: "kps_case", state: { notIn: ["resolved", "closed"] }, exposureUsd: { gte: threshold } },
+    where: { kind: "realisation_case", state: { notIn: ["resolved", "closed"] }, exposureUsd: { gte: threshold } },
     include: { ticketLinks: { select: { role: true } } },
   });
   return items
     .filter((w) => {
       const meta = (w.metadata ?? {}) as Record<string, unknown>;
-      return !w.ticketLinks.some((l) => l.role === "riskco_approval") && !meta.riskcoApprovalUrl;
+      return !w.ticketLinks.some((l) => l.role === "risk_committee_approval") && !meta.riskCommitteeApprovalUrl;
     })
     .map((w) => ({
       dedupeKey: w.id,
       severity: "critical" as const,
-      title: "KPS realisation above RiskCo threshold",
-      detail: `${w.ticketKey ?? w.title}: USD ${w.exposureUsd} is at or above the RiskCo threshold (USD ${threshold}) and has no RiskCo approval link. Do not execute before approval.`,
+      title: "RLS realisation above Risk Committee threshold",
+      detail: `${w.ticketKey ?? w.title}: USD ${w.exposureUsd} is at or above the Risk Committee threshold (USD ${threshold}) and has no Risk Committee approval link. Do not execute before approval.`,
       workItemId: w.id,
       exposureUsd: w.exposureUsd ?? undefined,
     }));
@@ -63,7 +63,7 @@ export async function evaluateKpsThreshold(ctx: EvaluatorContext): Promise<Alert
 /** ALR-TX-01: transaction FAILED. */
 export async function evaluateTxFailed(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const since = new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 24) * 3_600_000);
-  const rows = await komainuRecords("transaction", { status: "FAILED", occurredAt: { gte: since } });
+  const rows = await custodyRecords("transaction", { status: "FAILED", occurredAt: { gte: since } });
   return rows.map((t) => ({
     dedupeKey: t.externalId,
     severity: "high" as const,
@@ -77,7 +77,7 @@ export async function evaluateTxFailed(ctx: EvaluatorContext): Promise<AlertCand
 export async function evaluateTxStuck(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const thresholds = new Map((await prisma.assetThreshold.findMany()).map((t) => [t.asset.toUpperCase(), t.stuckMins]));
   const fallback = thresholds.get("*") ?? numParam(ctx.params, "defaultStuckMins", 120);
-  const rows = await komainuRecords("transaction", { status: { in: ["PENDING", "BROADCASTED"] }, ...stillListed });
+  const rows = await custodyRecords("transaction", { status: { in: ["PENDING", "BROADCASTED"] }, ...stillListed });
   return rows.flatMap((t) => {
     const asset = (pick(t, "asset") ?? "").toUpperCase();
     const limit = thresholds.get(asset) ?? fallback;
@@ -190,7 +190,7 @@ export async function evaluateHeartbeats(ctx: EvaluatorContext): Promise<AlertCa
   });
 }
 
-/** ALR-CLI-04 (was ALR-CLI-01 before spec v2): client-attested inbound threshold not reviewed within N months (spec §12 CHK-05, CF-31; 12 months CONFIRM). */
+/** ALR-CLI-04 (was ALR-CLI-01 before spec v2): client-attested inbound threshold not reviewed within N months (spec §12 CHK-05; 12 months CONFIRM). */
 export async function evaluateThresholdReview(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const months = numParam(ctx.params, "reviewMonths", 12);
   const cutoff = new Date(ctx.now);

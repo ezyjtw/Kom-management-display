@@ -1,7 +1,7 @@
 /**
- * Risk Signal source (spec §11.4, TODO(CONFIRM-RISK-SOURCE)). The Komainu API
- * has no risk score; risk levels come from GX only. Nothing here infers risk
- * (H5): a signal is stored exactly as GX reported it.
+ * Risk Signal source (spec §11.4, TODO(CONFIRM-RISK-SOURCE)). The custody API
+ * has no risk score; risk levels come from Platform only. Nothing here infers risk
+ * (H5): a signal is stored exactly as Platform reported it.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -27,20 +27,20 @@ export interface RiskSignalSource {
   poll(since: Date): Promise<RiskSignal[]>;
 }
 
-/** A raw GX post and its parse result (null = not understood). */
-export type GxParser = (text: string, observedAt: Date) => RiskSignal | null;
+/** A raw Platform post and its parse result (null = not understood). */
+export type PlatformParser = (text: string, observedAt: Date) => RiskSignal | null;
 
 /**
  * No parser ships until at least 10 redacted real samples are committed in
- * src/__tests__/fixtures/gx-risk/ (spec §11.4). Until then every message is
+ * src/__tests__/fixtures/platform-risk/ (spec §11.4). Until then every message is
  * "unparsed", which raises an alert rather than being silently dropped.
  */
-export const noParserYet: GxParser = () => null;
+export const noParserYet: PlatformParser = () => null;
 
-/** Parses GX bot posts stored from the gx_notifications channel (SourceRecord slack/risk_signal_raw). */
-export class SlackGxNotificationSource implements RiskSignalSource {
-  name = "slack_gx_notifications";
-  constructor(private readonly parse: GxParser = noParserYet) {}
+/** Parses Platform bot posts stored from the platform_notifications channel (SourceRecord slack/risk_signal_raw). */
+export class SlackPlatformNotificationSource implements RiskSignalSource {
+  name = "slack_platform_notifications";
+  constructor(private readonly parse: PlatformParser = noParserYet) {}
 
   async poll(since: Date): Promise<RiskSignal[]> {
     const raws = await prisma.sourceRecord.findMany({
@@ -64,7 +64,7 @@ export class SlackGxNotificationSource implements RiskSignalSource {
       await raiseAlert({
         ruleCode: "ALR-CFG-02",
         dedupeKey: `risk_notification:${day}`,
-        message: `Unparsed GX risk notification(s): ${unparsed.length} message(s) in the gx_notifications channel could not be read. Check them in GX directly.`,
+        message: `Unparsed Platform risk notification(s): ${unparsed.length} message(s) in the platform_notifications channel could not be read. Check them in Platform directly.`,
         severity: "medium",
       });
     }
@@ -73,8 +73,8 @@ export class SlackGxNotificationSource implements RiskSignalSource {
 }
 
 /** Pending Engineering: may be a database view or an internal endpoint. */
-export class GxInternalFeedSource implements RiskSignalSource {
-  name = "gx_internal_feed";
+export class PlatformInternalFeedSource implements RiskSignalSource {
+  name = "platform_internal_feed";
   async poll(): Promise<RiskSignal[]> {
     // TODO(CONFIRM-RISK-SOURCE): implement once Engineering provides the feed.
     return [];
@@ -85,9 +85,9 @@ export function signalKey(s: RiskSignal): string {
   return `${s.requestId ?? "-"}:${s.transactionId ?? "-"}:${s.observedAt.toISOString()}`;
 }
 
-/** Store signals as SourceRecord gx/risk_signal for the RSK rules. */
+/** Store signals as SourceRecord platform/risk_signal for the RSK rules. */
 export async function storeSignals(source: string, signals: RiskSignal[]): Promise<void> {
-  await upsertSourceRecords("gx", "risk_signal", signals.map((s) => ({
+  await upsertSourceRecords("platform", "risk_signal", signals.map((s) => ({
     externalId: signalKey(s),
     status: s.level,
     occurredAt: s.observedAt,
@@ -103,7 +103,7 @@ export async function storeSignals(source: string, signals: RiskSignal[]): Promi
 }
 
 /** Job `poll_risk_signals`. */
-export async function pollRiskSignals(sources: RiskSignalSource[] = [new SlackGxNotificationSource(), new GxInternalFeedSource()], now = new Date()) {
+export async function pollRiskSignals(sources: RiskSignalSource[] = [new SlackPlatformNotificationSource(), new PlatformInternalFeedSource()], now = new Date()) {
   const since = new Date(now.getTime() - 24 * 3_600_000);
   let total = 0;
   for (const src of sources) {

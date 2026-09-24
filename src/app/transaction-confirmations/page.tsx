@@ -107,7 +107,7 @@ export default function TransactionConfirmationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
-          <Shield size={24} /> Transactions Awaiting Action in GX
+          <Shield size={24} /> Transactions Awaiting Action in Platform
         </h1>
         <button onClick={fetchData} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md">
           <RefreshCw size={14} /> Refresh
@@ -187,7 +187,7 @@ export default function TransactionConfirmationsPage() {
                   )}
                 </div>
 
-                {/* Actions — no approval here; the transaction is actioned in GX */}
+                {/* Actions — no approval here; the transaction is actioned in Platform */}
                 {c.status !== "closed_in_source" && (
                   <div className="flex flex-col gap-1.5">
                     {(c.status === "pending" || c.status === "escalated") && (

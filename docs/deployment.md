@@ -48,12 +48,12 @@ Sessions last 12 hours.
 
 ### Egress allowlist
 ```
-ATLASSIAN_BASE_URL=https://komainu.atlassian.net   # default
+ATLASSIAN_BASE_URL=https://example.atlassian.net   # default
 EGRESS_EXTRA_HOSTS=                                 # comma-separated extra hostnames
 ```
 
 All outbound HTTP goes through `src/lib/http/client.ts`, which blocks any host
-not on the allowlist: the Komainu API host, the Atlassian site,
+not on the allowlist: the custody API host, the Atlassian site,
 `api.atlassian.com`, `slack.com`, `graph.microsoft.com`,
 `login.microsoftonline.com`, plus `EGRESS_EXTRA_HOSTS`. Switching on an optional
 module that calls another host also needs that host added, for example the
@@ -79,10 +79,10 @@ SMTP_PORT=587
 SMTP_USER=ops@your-org.com
 SMTP_PASSWORD=<app-password>
 
-KOMAINU_API_BASE_URL=https://api-demo.komainu.io
-KOMAINU_API_USER=<api-user>
-KOMAINU_API_SECRET=<api-secret>
-# or several users: KOMAINU_API_CREDENTIALS=[{"label":"uk","user":"...","secretRef":"KOMAINU_API_SECRET_UK"}]
+CUSTODY_API_BASE_URL=https://custody-demo.example.com
+CUSTODY_API_USER=<api-user>
+CUSTODY_API_SECRET=<api-secret>
+# or several users: CUSTODY_API_CREDENTIALS=[{"label":"uk","user":"...","secretRef":"CUSTODY_API_SECRET_UK"}]
 
 # Notabene is disabled (H11)
 NOTABENE_API_BASE_URL=
@@ -115,15 +115,15 @@ GIT_COMMIT_SHA=<build-sha>
 | `SLACK_*` | No | Slack bot token; signing secret verifies Events API deliveries |
 | `GRAPH_*` | No | Microsoft Graph mail and Teams (read-only); replaces IMAP |
 | `SMTP_*` | No | Outbound email notifications |
-| `KOMAINU_API_CREDENTIALS` | No | Several read-only Komainu API users (JSON; secrets referenced by env var name) |
+| `CUSTODY_API_CREDENTIALS` | No | Several read-only custody API users (JSON; secrets referenced by env var name) |
 | `AZURE_AD_TENANT_ID` / `AZURE_AD_CLIENT_ID` / `AZURE_AD_CLIENT_SECRET` | Prod: yes | Entra ID single sign-on |
 | `ROLE_GROUP_MAP` | Prod: yes | JSON map of Entra group object ID to role |
 | `ALLOW_LOCAL_LOGIN` | No | `true` enables username/password login outside production only |
-| `ATLASSIAN_BASE_URL` | No | Atlassian site; its host is on the egress allowlist (default `komainu.atlassian.net`) |
+| `ATLASSIAN_BASE_URL` | No | Atlassian site; its host is on the egress allowlist (default `example.atlassian.net`) |
 | `EGRESS_EXTRA_HOSTS` | No | Extra comma-separated hosts for the egress allowlist |
 | `ALLOW_SEED` | No | `true` seeds on startup outside production; never seeds production |
 | `GIT_COMMIT_SHA` | No | Build version shown in deep health checks |
-| `KOMAINU_API_*` | No | Komainu API (read-only) |
+| `CUSTODY_API_*` | No | custody API (read-only) |
 | `NOTABENE_*` | No | Notabene travel rule integration (disabled, H11) |
 | `FIREBLOCKS_*` | No | Fireblocks wallet/transaction integration |
 | `AI_PROVIDER` / `*_API_KEY` | No | AI features; off unless set and flag `ai.enabled` is on (H3) |

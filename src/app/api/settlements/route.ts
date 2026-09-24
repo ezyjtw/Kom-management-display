@@ -1,6 +1,6 @@
 /**
  * GET /api/settlements?date=YYYY-MM-DD — read-only OES settlement matching
- * view from the Komainu API snapshots (spec §12 CHK-10). The maker/checker
+ * view from the custody API snapshots (spec §12 CHK-10). The maker/checker
  * "approval" actions were removed: settlement approvals happen in the
  * platforms (H1). Notes: POST /api/settlements/notes.
  */

@@ -1,5 +1,5 @@
 /**
- * CHK-02 (spec §12): close the daily TOPS MTD ticket once every break for the
+ * CHK-02 (spec §12): close the daily OPS MTD ticket once every break for the
  * day is resolved or explained (closed with a write-up), as a comment plus a
  * transition. The close uses the standard write-up rules; the risk score comes
  * from setting mtd.autoCloseRiskScore (TODO(CONFIRM-RISK-SCORE-SCALE)). While

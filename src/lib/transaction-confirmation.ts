@@ -1,10 +1,10 @@
 /**
- * Read-only tracker of GX risk-flagged transactions awaiting human action in GX.
+ * Read-only tracker of Platform risk-flagged transactions awaiting human action in Platform.
  *
  * KOMmand Centre never approves, signs or confirms transactions (H1). Risk levels
- * come from GX only (H5); without one the level is "unknown". Humans may only
+ * come from Platform only (H5); without one the level is "unknown". Humans may only
  * take ownership, add a note or link a ticket. Closure is automatic once the
- * Komainu API shows the item is no longer PENDING.
+ * custody API shows the item is no longer PENDING.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -12,8 +12,8 @@ import { sendSlackNotification } from "@/lib/integrations/slack";
 import {
   fetchRequest,
   fetchTransaction,
-  isKomainuConfigured,
-} from "@/lib/integrations/komainu-api/client";
+  isCustodyConfigured,
+} from "@/lib/integrations/custody-api/client";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 import type { TransactionRiskLevel } from "@prisma/client";
@@ -79,7 +79,7 @@ export async function createTransactionConfirmation(
   if (riskLevel !== "low") {
     const urgency = riskLevel === "unknown" ? "RISK UNKNOWN" : `${riskLevel.toUpperCase()} RISK`;
     const message = [
-      `*${urgency}: transaction awaiting action in GX*`,
+      `*${urgency}: transaction awaiting action in Platform*`,
       "",
       `*Transaction:* \`${tx.transactionId}\``,
       `*Asset:* ${tx.asset}`,
@@ -87,7 +87,7 @@ export async function createTransactionConfirmation(
       `*Direction:* ${tx.direction}`,
       tx.account ? `*Account:* ${tx.account}` : "",
       "",
-      "Action it in GX. Take ownership in KOMmand Centre so the team knows who is handling it.",
+      "Action it in Platform. Take ownership in KOMmand Centre so the team knows who is handling it.",
     ].filter(Boolean).join("\n");
 
     try {
@@ -144,7 +144,7 @@ export async function createTransactionConfirmation(
   return { id: confirmation.id, riskLevel, notifications };
 }
 
-/** "I am handling this in GX." */
+/** "I am handling this in Platform." */
 export async function takeOwnership(confirmationId: string, userId: string): Promise<void> {
   await prisma.transactionConfirmation.update({
     where: { id: confirmationId },
@@ -203,10 +203,10 @@ export async function linkTicket(confirmationId: string, userId: string, ticketR
 
 /**
  * Close open confirmations whose request/transaction is no longer PENDING in
- * the Komainu API. Returns the number closed.
+ * the custody API. Returns the number closed.
  */
 export async function syncConfirmationsWithSource(): Promise<number> {
-  if (!isKomainuConfigured()) return 0;
+  if (!isCustodyConfigured()) return 0;
 
   const open = await prisma.transactionConfirmation.findMany({
     where: { status: { in: [...OPEN_STATUSES] } },
@@ -237,7 +237,7 @@ export async function syncConfirmationsWithSource(): Promise<number> {
       });
       closed++;
     } catch (error) {
-      logger.warn("Could not check confirmation against Komainu API", {
+      logger.warn("Could not check confirmation against custody API", {
         confirmationId: conf.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -261,7 +261,7 @@ async function escalateConfirmation(confirmationId: string, reason: string): Pro
   const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
   await sendSlackNotification(
     complianceChannel,
-    `*Transaction awaiting action in GX has been escalated*\n\nTransaction \`${confirmation.transactionId}\`\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${formatAmount(confirmation.amount, 18)}`,
+    `*Transaction awaiting action in Platform has been escalated*\n\nTransaction \`${confirmation.transactionId}\`\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${formatAmount(confirmation.amount, 18)}`,
   ).catch(() => {});
 
   await prisma.auditLog.create({

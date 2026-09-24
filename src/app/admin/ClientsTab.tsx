@@ -9,18 +9,18 @@ interface Channel { kind: ChannelKind; ref: string }
 interface Client {
   id: string;
   displayName: string;
-  komainuOrgId: string | null;
-  komainuAccountNos: string[];
+  custodyOrgId: string | null;
+  custodyAccountNos: string[];
   jsmOrganizationId: string | null;
   jurisdiction: string;
   isActive: boolean;
   channels: Channel[];
 }
 
-type Draft = Omit<Client, "id" | "komainuAccountNos"> & { id?: string; accountNosText: string };
+type Draft = Omit<Client, "id" | "custodyAccountNos"> & { id?: string; accountNosText: string };
 
 const KIND_LABEL: Record<ChannelKind, string> = { slack: "Slack channel ID", email_domain: "Email domain", teams: "Teams channel ID", slack_user: "Client Slack user ID" };
-const EMPTY: Draft = { displayName: "", komainuOrgId: "", jsmOrganizationId: "", jurisdiction: "", isActive: true, channels: [], accountNosText: "" };
+const EMPTY: Draft = { displayName: "", custodyOrgId: "", jsmOrganizationId: "", jurisdiction: "", isActive: true, channels: [], accountNosText: "" };
 
 const input = "w-full h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
 
@@ -38,7 +38,7 @@ export default function ClientsTab() {
 
   function edit(c: Client) {
     setError(null);
-    setDraft({ ...c, komainuOrgId: c.komainuOrgId ?? "", jsmOrganizationId: c.jsmOrganizationId ?? "", accountNosText: c.komainuAccountNos.join(", ") });
+    setDraft({ ...c, custodyOrgId: c.custodyOrgId ?? "", jsmOrganizationId: c.jsmOrganizationId ?? "", accountNosText: c.custodyAccountNos.join(", ") });
   }
 
   async function save() {
@@ -48,7 +48,7 @@ export default function ClientsTab() {
     const { id, accountNosText, ...rest } = draft;
     const body = {
       ...rest,
-      komainuAccountNos: accountNosText.split(",").map((s) => s.trim()).filter(Boolean),
+      custodyAccountNos: accountNosText.split(",").map((s) => s.trim()).filter(Boolean),
       channels: draft.channels.filter((c) => c.ref.trim()).map((c) => ({ kind: c.kind, ref: c.ref.trim() })),
     };
     const res = await fetch(id ? `/api/admin/clients/${id}` : "/api/admin/clients", {
@@ -94,13 +94,13 @@ export default function ClientsTab() {
                 <option value="">Not set</option><option>UK</option><option>JE</option><option>AE</option><option>EU</option>
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">Komainu organisation ID
-              <input className={input} value={draft.komainuOrgId ?? ""} onChange={(e) => setDraft({ ...draft, komainuOrgId: e.target.value })} />
+            <label className="text-xs text-muted-foreground">the custody provider organisation ID
+              <input className={input} value={draft.custodyOrgId ?? ""} onChange={(e) => setDraft({ ...draft, custodyOrgId: e.target.value })} />
             </label>
             <label className="text-xs text-muted-foreground">JSM organisation ID
               <input className={input} value={draft.jsmOrganizationId ?? ""} onChange={(e) => setDraft({ ...draft, jsmOrganizationId: e.target.value })} />
             </label>
-            <label className="text-xs text-muted-foreground md:col-span-2">Komainu account numbers (comma-separated)
+            <label className="text-xs text-muted-foreground md:col-span-2">the custody provider account numbers (comma-separated)
               <input className={input} value={draft.accountNosText} onChange={(e) => setDraft({ ...draft, accountNosText: e.target.value })} />
             </label>
           </div>

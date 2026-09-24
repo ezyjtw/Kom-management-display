@@ -14,7 +14,7 @@ import { auditActor } from "@/modules/core-data/audit-actor";
 const updateChannelSchema = z.object({
   channelType: z.enum(["client", "service_provider", "internal"]).optional(),
   linkedEntityId: z.string().max(200).nullable().optional(),
-  purpose: z.enum(["client", "gx_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
+  purpose: z.enum(["client", "platform_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
   clientId: z.string().max(100).nullable().optional(),
   isActive: z.boolean().optional(),
 });

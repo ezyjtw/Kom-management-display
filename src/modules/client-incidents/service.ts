@@ -22,7 +22,7 @@ import { getMailboxes } from "@/lib/integrations/graph/client";
 import { getSettings, getSetting } from "@/modules/settings/settings";
 import { ensureTicketedWorkItem } from "@/modules/work-items/tickets";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
-import { createIaiDraft } from "@/modules/iai/drafts";
+import { createIncidentLogDraft } from "@/modules/incident-log/drafts";
 import { raiseAlert } from "@/modules/alerting/raise";
 import { assertClientVisible } from "@/modules/client-incidents/guards";
 import { canSeeClient, clientScopeFor } from "@/modules/auth/client-scope";
@@ -231,8 +231,8 @@ export async function raiseClientEntry(input: RaiseInput, actor: Actor): Promise
     await prisma.ticketLink.create({ data: { workItemId: item.id, system: origin.ticketSystem ?? "jira", key: origin.ticketKey, url: origin.ticketUrl, role: "related" } }).catch(() => undefined);
   }
 
-  const iaiCategories = await getSetting("clientIncidents.iaiCategories");
-  if (iaiCategories.includes(input.category)) await createIaiDraft(item.id, `CLIENT-${input.type.toUpperCase()}`).catch(() => null);
+  const incidentLogCategories = await getSetting("clientIncidents.incidentLogCategories");
+  if (incidentLogCategories.includes(input.category)) await createIncidentLogDraft(item.id, `CLIENT-${input.type.toUpperCase()}`).catch(() => null);
 
   const critical = input.severity === "P0" || input.severity === "P1";
   await raiseAlert({

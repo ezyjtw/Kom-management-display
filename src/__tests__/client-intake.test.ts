@@ -7,12 +7,12 @@ import { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 
 const envVars = vi.hoisted(() => ({
-  ATLASSIAN_BASE_URL: "https://komainu.atlassian.net",
+  ATLASSIAN_BASE_URL: "https://example.atlassian.net",
   ATLASSIAN_EMAIL: "svc@example.com",
   ATLASSIAN_API_TOKEN: "t",
 } as Record<string, string | undefined>));
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
-vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["komainu.atlassian.net"]) }));
+vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["example.atlassian.net"]) }));
 vi.mock("@/lib/integrations/slack", () => ({
   getSlackClient: () => ({ chat: { getPermalink: async ({ message_ts }: { message_ts: string }) => ({ permalink: `https://slack.example/p${message_ts}` }) } }),
 }));
@@ -110,14 +110,14 @@ function stubJsm(opts: { failCreate?: boolean } = {}) {
 const creates = () => calls.filter((c) => c.path === "/rest/servicedeskapi/request" && c.method === "POST");
 const comments = () => calls.filter((c) => c.path.endsWith("/comment"));
 
-const KOMAINU_TEAM = "TKOMAINU01";
+const CUSTODY_TEAM = "TCUSTODY01";
 const CLIENT_TEAM = "TCLIENT001";
 const channel = { id: "sc1", channelId: "C0CLIENT001", channelName: "client-acme", purpose: "client", clientId: "cl-1" };
 const msg = (ts: string, over: Record<string, unknown> = {}) => ({ ts, user: "UCLIENT01", team: CLIENT_TEAM, text: "Hello, our withdrawal is stuck", ...over });
 
 function configureKommand() {
   db.settings.set("intake.slack.route", "kommand");
-  db.settings.set("intake.slack.komainuTeamId", KOMAINU_TEAM);
+  db.settings.set("intake.slack.custodyTeamId", CUSTODY_TEAM);
   db.settings.set("intake.jsm.serviceDeskId", "7");
   db.settings.set("intake.jsm.requestTypeId", "42");
   db.settings.set("intake.jsm.organizationFieldId", "customfield_10002");
@@ -158,8 +158,8 @@ describe("spec §9.6 acceptance", () => {
 
   it("a staff message creates nothing and sets firstResponseAt on the open request", async () => {
     await handleSlackIntake(channel, msg("1758621600.000100"));
-    expect(await handleSlackIntake(channel, msg("1758621700.000200", { team: KOMAINU_TEAM, user: "USTAFF01", text: "Looking into it", thread_ts: "1758621600.000100" }))).toBe("first_response");
-    expect(await handleSlackIntake(channel, msg("1758621800.000300", { team: KOMAINU_TEAM, user: "USTAFF01", text: "New staff post" }))).toBe("ignored");
+    expect(await handleSlackIntake(channel, msg("1758621700.000200", { team: CUSTODY_TEAM, user: "USTAFF01", text: "Looking into it", thread_ts: "1758621600.000100" }))).toBe("first_response");
+    expect(await handleSlackIntake(channel, msg("1758621800.000300", { team: CUSTODY_TEAM, user: "USTAFF01", text: "New staff post" }))).toBe("ignored");
 
     expect(creates()).toHaveLength(1);
     expect((db.workItems[0].firstResponseAt as Date).toISOString()).toBe(new Date(1758621700000.2).toISOString());
@@ -192,9 +192,9 @@ describe("spec §9.6 acceptance", () => {
     expect(creates()).toHaveLength(0);
   });
 
-  it("a bot message in gx_notifications is passed to the Risk Signal parser", async () => {
+  it("a bot message in platform_notifications is passed to the Risk Signal parser", async () => {
     const { prisma } = await import("@/lib/prisma");
-    const out = await ingestChannelMessage({ ...channel, purpose: "gx_notifications" }, { ts: "1758621600.1", subtype: "bot_message", bot_id: "B9", text: "Risk: High" });
+    const out = await ingestChannelMessage({ ...channel, purpose: "platform_notifications" }, { ts: "1758621600.1", subtype: "bot_message", bot_id: "B9", text: "Risk: High" });
     expect(out).toBe("risk_signal");
     expect(vi.mocked(prisma.sourceRecord.upsert).mock.calls[0][0].create).toMatchObject({ source: "slack", kind: "risk_signal_raw" });
     expect(creates()).toHaveLength(0);
@@ -233,13 +233,13 @@ describe("intake rules", () => {
     expect(await handleSlackIntake({ ...channel, purpose: "internal_ops" }, msg("1.2"))).toBe("skipped");
   });
 
-  it("classifies authors: bots, mapped client users, other workspaces, Komainu staff", () => {
+  it("classifies authors: bots, mapped client users, other workspaces, the custody provider staff", () => {
     const mapped = new Set(["UMAPPED1"]);
-    expect(classifySlackAuthor({ bot_id: "B1" }, KOMAINU_TEAM, mapped)).toBe("bot");
-    expect(classifySlackAuthor({ user: "UMAPPED1", team: KOMAINU_TEAM }, KOMAINU_TEAM, mapped)).toBe("external");
-    expect(classifySlackAuthor({ user: "U2", team: CLIENT_TEAM }, KOMAINU_TEAM, mapped)).toBe("external");
-    expect(classifySlackAuthor({ user: "U3", team: KOMAINU_TEAM }, KOMAINU_TEAM, mapped)).toBe("staff");
-    expect(classifySlackAuthor({ user: "U4" }, KOMAINU_TEAM, mapped)).toBe("external"); // over-capture
+    expect(classifySlackAuthor({ bot_id: "B1" }, CUSTODY_TEAM, mapped)).toBe("bot");
+    expect(classifySlackAuthor({ user: "UMAPPED1", team: CUSTODY_TEAM }, CUSTODY_TEAM, mapped)).toBe("external");
+    expect(classifySlackAuthor({ user: "U2", team: CLIENT_TEAM }, CUSTODY_TEAM, mapped)).toBe("external");
+    expect(classifySlackAuthor({ user: "U3", team: CUSTODY_TEAM }, CUSTODY_TEAM, mapped)).toBe("staff");
+    expect(classifySlackAuthor({ user: "U4" }, CUSTODY_TEAM, mapped)).toBe("external"); // over-capture
   });
 
   it("releases the message when JSM is down, so a retry can create the request", async () => {
@@ -269,7 +269,7 @@ describe("intake rules", () => {
 
   it("email from an unknown external domain opens a request tagged client-unknown", async () => {
     db.settings.set("intake.email.enabled", true);
-    db.settings.set("intake.internalEmailDomains", ["komainu.example"]);
+    db.settings.set("intake.internalEmailDomains", ["firm.example"]);
     const out = await handleEmailIntake("custody", {
       id: "m1", internetMessageId: "<m1@x>", conversationId: "conv-1", subject: "Question", bodyPreview: "Where is my deposit?",
       receivedDateTime: "2026-09-23T09:00:00Z", from: { emailAddress: { address: "someone@unknown.example" } },
@@ -279,7 +279,7 @@ describe("intake rules", () => {
 
     const staff = await handleEmailIntake("custody", {
       id: "m2", internetMessageId: "<m2@x>", conversationId: "conv-1", subject: "RE: Question", bodyPreview: "Checking now",
-      receivedDateTime: "2026-09-23T09:10:00Z", from: { emailAddress: { address: "ops@komainu.example" } },
+      receivedDateTime: "2026-09-23T09:10:00Z", from: { emailAddress: { address: "ops@firm.example" } },
     }, null);
     expect(staff).toBe("first_response");
     expect(creates()).toHaveLength(1);

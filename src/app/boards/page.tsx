@@ -130,10 +130,10 @@ export default function BoardsPage() {
                 )}
               </header>
 
-              {card.code === "CHK-09K" && !card.banners.includes("Restricted: requires kps:view.") && <a href="/kps" className="text-xs text-primary">Open the KPS view</a>}
+              {card.code === "CHK-09K" && !card.banners.includes("Restricted: requires realisation:view.") && <a href="/realisations" className="text-xs text-primary">Open the RLS view</a>}
               {card.code === "CHK-10" && <a href="/settlements" className="text-xs text-primary">Open settlement monitoring</a>}
               {card.code === "TASK-OTC" && <a href="/otc" className="text-xs text-primary">Open the OTC queue</a>}
-              {card.code === "TASK-FAB" && !card.disabledByFlag && <a href="/fab" className="text-xs text-primary">Open the FAB register</a>}
+              {card.code === "TASK-BANK" && !card.disabledByFlag && <a href="/bank" className="text-xs text-primary">Open the BANK register</a>}
               {card.uatDue?.length > 0 && (
                 <p className="text-xs text-amber-500">UAT due this sprint: {card.uatDue.map((u) => (
                   <a key={u.workItemId} href={`/work/${u.workItemId}`} className="mr-2 underline">{u.ticketKey ?? u.title}{u.sprint ? ` (${u.sprint})` : ""}</a>

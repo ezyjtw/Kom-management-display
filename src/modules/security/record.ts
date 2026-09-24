@@ -18,7 +18,7 @@ export async function writeSecurityAudit(action: string, entityType: string, ent
         action,
         entityType,
         entityId: entityId.slice(0, 200),
-        // A User id is normalised to its Employee (or "system") by the AuditLog trigger (migration 0037).
+        // A User id is normalised to its Employee (or "system") by the AuditLog trigger (baseline migration).
         userId: actorUserId ?? "system",
         actorUserId,
         actorType: actorUserId ? "user" : "system",
@@ -51,7 +51,7 @@ export async function recordRoleChange(input: { targetUserId: string; from: stri
   });
 }
 
-/** An integration credential was used to obtain a token (Komainu API user secret, spec §17.7). */
+/** An integration credential was used to obtain a token (custody API user secret, spec §17.7). */
 export async function recordCredentialUse(input: { connector: string; credentialLabel: string; workload?: string }): Promise<void> {
   await writeSecurityAudit(SECURITY_ACTIONS.credentialUsed, "integration_credential", `${input.connector}:${input.credentialLabel}`, null, {
     summary: `${input.connector} credential used`,

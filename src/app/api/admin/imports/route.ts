@@ -23,7 +23,7 @@ const uploadSchema = z.object({
 
 /**
  * POST /api/admin/imports — the filename and data date are checked first and a
- * mismatch is refused with the reason (CF-22); the upload is then refused until
+ * mismatch is refused with the reason; the upload is then refused until
  * the template exists (spec §8.6, §0 rule 4).
  */
 export async function POST(request: NextRequest) {

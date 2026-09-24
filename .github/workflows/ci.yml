@@ -145,6 +145,11 @@ jobs:
           git ls-files -z | grep -zvE '^(package-lock\.json|prisma/drift-baseline\.sql|\.secrets\.baseline)$' \
             | xargs -0 detect-secrets-hook --baseline .secrets.baseline
 
+      # BLOCKING. The repository stays employer-neutral: no tracked file names or contains a
+      # term from the hashed denylist, and no unreadable documents (PDF, Office) are tracked.
+      - name: Neutral IP check
+        run: npx tsx scripts/check-neutral-ip.ts
+
       # BLOCKING. Route guards (every route public-by-name or guarded, wrappers authenticate,
       # anonymous calls get 401), request schemas, fail-closed audit policy, CSRF on mutations,
       # security headers (nonce CSP, HSTS, frame and referrer policy), no secrets in env in
@@ -203,7 +208,7 @@ jobs:
         run: npx prisma migrate deploy
 
       # BLOCKING. Any drift between schema.prisma and the migrations fails the build. The
-      # historical drift was reconciled in migration 0043, so prisma/drift-baseline.sql is empty
+      # history was consolidated into one baseline migration, so prisma/drift-baseline.sql is empty
       # (docs/phase1/schema-drift.md); the fix for a failure is a migration, not the baseline.
       - name: Migration drift (blocking, against the reviewed baseline)
         run: |

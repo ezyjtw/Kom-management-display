@@ -20,7 +20,7 @@ const registerChannelSchema = z.object({
   channelName: z.string().min(1).max(200),
   channelType: z.enum(["client", "service_provider", "internal"]),
   linkedEntityId: z.string().max(200).optional(),
-  purpose: z.enum(["client", "gx_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
+  purpose: z.enum(["client", "platform_notifications", "vendor", "internal_ops", "alerts_out"]).optional(),
   clientId: z.string().max(100).optional(),
 });
 

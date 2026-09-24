@@ -15,7 +15,7 @@ description for review, not infrastructure code.
 ## Secrets held in Key Vault (mounted as files)
 
 `NEXTAUTH_SECRET`, `CRON_SECRET`, `ENCRYPTION_SECRET`, `AZURE_AD_CLIENT_SECRET`,
-`GRAPH_CLIENT_SECRET`, `KOMAINU_API_SECRET` / `KOMAINU_API_SECRET_<SUFFIX>`,
+`GRAPH_CLIENT_SECRET`, `CUSTODY_API_SECRET` / `CUSTODY_API_SECRET_<SUFFIX>`,
 `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `JIRA_WEBHOOK_SECRET`,
 `ATLASSIAN_API_TOKEN`, `CONFLUENCE_API_TOKEN`, `SMTP_PASSWORD`. The file name is the
 key. The full list, with owners, rotation and blast radius, is in
@@ -28,7 +28,7 @@ identity maps to `kom_app` (no UPDATE/DELETE on audit evidence); the migration
 identity maps to `kom_owner`.
 
 Non-secret configuration (`AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`,
-`ROLE_GROUP_MAP`, `KOMAINU_API_BASE_URL`, `ATLASSIAN_BASE_URL`, …) can be plain
+`ROLE_GROUP_MAP`, `CUSTODY_API_BASE_URL`, `ATLASSIAN_BASE_URL`, …) can be plain
 app settings. See `docs/deployment.md` for the full list.
 
 ## Identity
@@ -52,8 +52,8 @@ app settings. See `docs/deployment.md` for the full list.
 - Web exposed only through the corporate ingress (e.g. Application Gateway / Front Door with WAF).
 - **Egress allowlist** at the network layer (e.g. Azure Firewall), matching the
   application-level allowlist in `src/lib/http/allowed-hosts.ts`:
-  - the Komainu API host (`KOMAINU_API_BASE_URL`);
-  - `komainu.atlassian.net` and `api.atlassian.com`;
+  - the custody API host (`CUSTODY_API_BASE_URL`);
+  - `example.atlassian.net` and `api.atlassian.com`;
   - `slack.com` (and the Slack API endpoints under it);
   - `graph.microsoft.com`, `login.microsoftonline.com`;
   - SMTP/IMAP relay hosts, if email integration is used.

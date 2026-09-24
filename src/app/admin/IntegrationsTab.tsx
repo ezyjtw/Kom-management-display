@@ -367,7 +367,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
                 >
                   <option value="">Automatic (from type)</option>
                   <option value="client">Client questions</option>
-                  <option value="gx_notifications">GX notifications (risk signals; bot posts kept)</option>
+                  <option value="platform_notifications">Platform notifications (risk signals; bot posts kept)</option>
                   <option value="vendor">Vendor</option>
                   <option value="internal_ops">Internal ops</option>
                   <option value="alerts_out">Alerts out (KOMmand Centre posts here)</option>
@@ -409,7 +409,7 @@ export default function IntegrationsTab({ slackStatus, emailStatus }: Integratio
           <div>
             <h3 className="text-lg font-semibold">Email Integration</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Microsoft Graph mailboxes (custody, FAB ICS, vendor notifications). Read-only; access is limited to the named mailboxes.
+              Microsoft Graph mailboxes (custody, bank, vendor notifications). Read-only; access is limited to the named mailboxes.
             </p>
           </div>
           <span className={`text-xs px-2 py-1 rounded-full ${

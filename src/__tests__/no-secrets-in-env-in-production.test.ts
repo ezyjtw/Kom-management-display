@@ -24,12 +24,12 @@ const BASE = { NODE_ENV: "production", DATABASE_URL: "postgresql://app@db/kom", 
 describe("no-secrets-in-env-in-production", () => {
   it("reads each secret from a file named after the config key, trimming the trailing newline", () => {
     fs.writeFileSync(path.join(dir, "NEXTAUTH_SECRET"), "a-long-enough-signing-secret\n");
-    fs.writeFileSync(path.join(dir, "KOMAINU_API_SECRET_OPS"), "per-user-secret");
+    fs.writeFileSync(path.join(dir, "CUSTODY_API_SECRET_OPS"), "per-user-secret");
     fs.writeFileSync(path.join(dir, "README"), "not a secret key");
     fs.mkdirSync(path.join(dir, "..data"));
     expect(readSecretsDir(dir)).toEqual({
       NEXTAUTH_SECRET: "a-long-enough-signing-secret",
-      KOMAINU_API_SECRET_OPS: "per-user-secret",
+      CUSTODY_API_SECRET_OPS: "per-user-secret",
     });
   });
 
@@ -80,15 +80,15 @@ describe("no-secrets-in-env-in-production", () => {
 
   it("env() serves secrets from files and does not copy them into process.env", async () => {
     fs.writeFileSync(path.join(dir, "NEXTAUTH_SECRET"), "a-long-enough-signing-secret");
-    fs.writeFileSync(path.join(dir, "KOMAINU_API_SECRET_OPS"), "per-user-secret");
+    fs.writeFileSync(path.join(dir, "CUSTODY_API_SECRET_OPS"), "per-user-secret");
     for (const [k, v] of Object.entries(BASE)) vi.stubEnv(k, v);
     vi.stubEnv("SECRETS_DIR", dir);
     vi.stubEnv("NEXTAUTH_SECRET", "");
     mod.__resetEnvForTests();
     expect(mod.env("NEXTAUTH_SECRET")).toBe("a-long-enough-signing-secret");
-    expect(mod.secret("KOMAINU_API_SECRET_OPS")).toBe("per-user-secret");
-    expect(process.env.KOMAINU_API_SECRET_OPS).toBeUndefined();
-    expect(mod.secretSourceInfo()?.keys).toEqual(["KOMAINU_API_SECRET_OPS", "NEXTAUTH_SECRET"]);
+    expect(mod.secret("CUSTODY_API_SECRET_OPS")).toBe("per-user-secret");
+    expect(process.env.CUSTODY_API_SECRET_OPS).toBeUndefined();
+    expect(mod.secretSourceInfo()?.keys).toEqual(["CUSTODY_API_SECRET_OPS", "NEXTAUTH_SECRET"]);
     mod.__resetEnvForTests();
   });
 

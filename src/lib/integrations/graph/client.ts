@@ -42,7 +42,7 @@ export const mailboxSchema = z.array(
   z.object({
     label: z.string().regex(/^[a-z0-9_]+$/),
     address: z.string().email(),
-    purpose: z.enum(["custody", "fab_ics", "vendor_notifications"]),
+    purpose: z.enum(["custody", "bank_instructions", "vendor_notifications"]),
     /** Well-known names or folder ids polled besides the Inbox (spec §8.5). */
     folders: z.array(z.string().regex(/^[A-Za-z0-9=_-]{1,200}$/)).max(10).optional(),
   }),

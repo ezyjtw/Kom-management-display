@@ -14,7 +14,7 @@
  * middleware cannot capture route responses, so the guarantee is that the
  * effect happens at most once. The caller re-reads the state.
  *
- * Keys are claimed atomically in PostgreSQL (IdempotencyKey, migration 0044),
+ * Keys are claimed atomically in PostgreSQL (IdempotencyKey table),
  * so the guard holds across replicas. If the store cannot be reached the
  * request continues (logged): the mutation itself needs the same database.
  */

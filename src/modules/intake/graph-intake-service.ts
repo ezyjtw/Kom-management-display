@@ -54,10 +54,10 @@ export async function handleEmailIntake(mailboxLabel: string, msg: GraphMessage,
  * TODO(CONFIRM-TEAMS-FORMAT): confirm how the author's tenant is exposed.
  */
 export async function handleTeamsIntake(channelId: string, msg: GraphChannelMessage): Promise<IntakeOutcome | "skipped"> {
-  const cfg = await getSettings(["intake.teams.enabled", "intake.teams.komainuTenantId"] as const);
+  const cfg = await getSettings(["intake.teams.enabled", "intake.teams.custodyTenantId"] as const);
   if (!cfg["intake.teams.enabled"]) return "skipped";
-  if (!cfg["intake.teams.komainuTenantId"]) {
-    logger.error("Teams intake is enabled but intake.teams.komainuTenantId is not set");
+  if (!cfg["intake.teams.custodyTenantId"]) {
+    logger.error("Teams intake is enabled but intake.teams.custodyTenantId is not set");
     return "not_configured";
   }
   const mapping = await prisma.clientChannel.findUnique({
@@ -67,7 +67,7 @@ export async function handleTeamsIntake(channelId: string, msg: GraphChannelMess
   if (!mapping?.client?.isActive) return "skipped";
 
   const user = msg.from?.user as ({ id?: string; tenantId?: string } | null | undefined);
-  const kind = msg.from?.application ? "bot" : user?.tenantId === cfg["intake.teams.komainuTenantId"] ? "staff" : "external";
+  const kind = msg.from?.application ? "bot" : user?.tenantId === cfg["intake.teams.custodyTenantId"] ? "staff" : "external";
 
   return processIntakeMessage({
     channel: "teams",

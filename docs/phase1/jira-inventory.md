@@ -1,13 +1,13 @@
 # Jira inventory (Phase 1, spec §15)
 
-**Not generated yet.** This file is written by `scripts/jira-inventory.ts`, a read-only script that needs a Jira account with read access to the projects in spec §8.3. It has not been run against Komainu's Jira from this environment.
+**Not generated yet.** This file is written by `scripts/jira-inventory.ts`, a read-only script that needs a Jira account with read access to the projects in spec §8.3. It has not been run against the custody provider's Jira from this environment.
 
 To generate it:
 
 ```bash
 ATLASSIAN_BASE_URL=https://<site>.atlassian.net ATLASSIAN_EMAIL=<read-only service account> ATLASSIAN_API_TOKEN=<token> \
 DATABASE_URL=<KOMmand Centre database, optional> \
-npm run jira:inventory -- [--projects OTC,TOPS] [--users a@komainu.com,b@komainu.com]
+npm run jira:inventory -- [--projects OTC,OPS] [--users a@example.com,b@example.com]
 ```
 
 - **Projects:** the §8.3 list plus any `JiraProjectConfig` keys. Override with `--projects`.

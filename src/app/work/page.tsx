@@ -115,7 +115,7 @@ export default function WorkPage() {
         <select aria-label="SLA state" value={filters.sla} onChange={set("sla")} className={select}>
           <option value="">Any SLA</option><option value="breach">Breached</option><option value="warn">Warning</option><option value="ok">OK</option><option value="none">No SLA</option>
         </select>
-        <input aria-label="Ticket project" placeholder="Project (e.g. TOPS)" value={filters.project} onChange={(e) => setFilters((f) => ({ ...f, project: e.target.value.toUpperCase() }))} className={`${select} w-36`} />
+        <input aria-label="Ticket project" placeholder="Project (e.g. OPS)" value={filters.project} onChange={(e) => setFilters((f) => ({ ...f, project: e.target.value.toUpperCase() }))} className={`${select} w-36`} />
         <select aria-label="Owner" value={filters.owner} onChange={set("owner")} className={select}>
           <option value="any">Any owner</option><option value="me">Me</option><option value="unassigned">Unassigned</option><option value="team">My team&apos;s members</option>
         </select>

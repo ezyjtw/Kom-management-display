@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { AlertSeverity } from "@prisma/client";
 import { ensureAlertTicket } from "@/modules/work-items/tickets";
-import { maybeCreateIaiDraftForAlert } from "@/modules/iai/drafts";
+import { maybeCreateIncidentLogDraftForAlert } from "@/modules/incident-log/drafts";
 import { notifyAlert } from "@/modules/alerting/routing";
 import { getSetting } from "@/modules/settings/settings";
 
@@ -82,9 +82,9 @@ export async function raiseAlert(input: AlertCandidateInput): Promise<string | n
     throw error;
   }
 
-  // Spec §10.1: every alert that fires is ticketed; some also open an IAI draft (§10.4).
+  // Spec §10.1: every alert that fires is ticketed; some also open an INC draft (§10.4).
   await ensureAlertTicket(id, { repeat: false });
-  await maybeCreateIaiDraftForAlert(id);
+  await maybeCreateIncidentLogDraftForAlert(id);
   await safe("notify", () => notifyAlert(id, now));
   return id;
 }

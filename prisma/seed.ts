@@ -18,20 +18,20 @@ async function main() {
 
   // Create employees (upsert to be idempotent)
   // Transaction Operations has 3 sub-teams, each with a lead and juniors
-  // Locations: London (EMEA), Hong Kong (APAC), Jersey (EMEA)
+  // Locations: London (EMEA), Singapore (APAC), Dublin (EMEA)
   const employeeData: { name: string; email: string; role: EmployeeRole; team: TeamName; region: Region }[] = [
     // Transaction Operations — Leads & Seniors
-    { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },       // Hong Kong
+    { name: "Alice Chen", email: "alice@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },       // Singapore
     { name: "Carol Davies", email: "carol@ops.com", role: EmployeeRole.Lead, team: TeamName.TransactionOperations, region: Region.EMEA },        // London — overall team lead
     { name: "Grace Thompson", email: "grace@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.EMEA },     // London — sub-team lead
-    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },     // Hong Kong — sub-team lead
+    { name: "Kenji Yamamoto", email: "kenji@ops.com", role: EmployeeRole.Senior, team: TeamName.TransactionOperations, region: Region.APAC },     // Singapore — sub-team lead
     // Transaction Operations — Analysts (juniors who rotate)
     { name: "Liam O'Brien", email: "liam@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },      // London — late shift / WFH
     { name: "Maria Santos", email: "maria@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },      // London
-    { name: "Nikhil Patel", email: "nikhil@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },     // Jersey
-    { name: "Sophie Laurent", email: "sophie@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },   // Jersey
-    { name: "Tom Nakamura", email: "tom@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Hong Kong
-    { name: "Yuki Tanaka", email: "yuki@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Hong Kong
+    { name: "Nikhil Patel", email: "nikhil@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },     // Dublin
+    { name: "Sophie Laurent", email: "sophie@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.EMEA },   // Dublin
+    { name: "Tom Nakamura", email: "tom@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Singapore
+    { name: "Yuki Tanaka", email: "yuki@ops.com", role: EmployeeRole.Analyst, team: TeamName.TransactionOperations, region: Region.APAC },        // Singapore
     // Admin Operations
     { name: "Bob Martinez", email: "bob@ops.com", role: EmployeeRole.Analyst, team: TeamName.AdminOperations, region: Region.Americas },
     { name: "Eva Kowalski", email: "eva@ops.com", role: EmployeeRole.Senior, team: TeamName.AdminOperations, region: Region.EMEA },
@@ -739,7 +739,7 @@ async function main() {
     // - 3 leads (Carol, Grace, Kenji) stay on the same sub-team for a month
     // - Junior analysts rotate between sub-teams weekly
     // - Liam always works the late shift from home (London)
-    // - APAC (Hong Kong) and Jersey staff share weekend coverage
+    // - APAC (Singapore) and Dublin staff share weekend coverage
     // Week 1: March 2-6, 2026 — Week 2: March 9-13, 2026
     const currentWeekStart = new Date("2026-03-02");
     const currentWeekEnd = new Date("2026-03-06");
@@ -751,45 +751,45 @@ async function main() {
       // Team 1 — Lead: Carol, Members: Maria, Nikhil
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
       { subTeamId: subTeams[0].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
-      { subTeamId: subTeams[0].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+      { subTeamId: subTeams[0].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Dublin" },
 
       // Team 2 — Lead: Grace, Members: Alice, Tom, Liam (late shift WFH)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
-      { subTeamId: subTeams[1].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
-      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[1].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
+      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
       // Team 3 — Lead: Kenji, Members: Sophie, Yuki
-      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
-      { subTeamId: subTeams[2].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
-      { subTeamId: subTeams[2].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Singapore" },
+      { subTeamId: subTeams[2].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Dublin" },
+      { subTeamId: subTeams[2].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: currentWeekStart, endDate: currentWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
     ];
 
     // Week 2 rota: juniors rotate — same leads, different member assignments
     const week2Assignments = [
       // Team 1 — Lead: Carol, Members: Sophie, Tom (rotated in)
       { subTeamId: subTeams[0].id, employeeId: emp["carol@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
-      { subTeamId: subTeams[0].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
-      { subTeamId: subTeams[0].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[0].id, employeeId: emp["sophie@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Dublin" },
+      { subTeamId: subTeams[0].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
 
       // Team 2 — Lead: Grace, Members: Yuki, Nikhil, Liam (late)
       { subTeamId: subTeams[1].id, employeeId: emp["grace@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "London" },
-      { subTeamId: subTeams[1].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
-      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Jersey" },
+      { subTeamId: subTeams[1].id, employeeId: emp["yuki@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
+      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Dublin" },
       { subTeamId: subTeams[1].id, employeeId: emp["liam@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "late", isWfh: true, location: "London" },
 
       // Team 3 — Lead: Kenji, Members: Maria, Alice
-      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[2].id, employeeId: emp["kenji@ops.com"].id, role: "lead", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "monthly", shiftType: "standard", location: "Singapore" },
       { subTeamId: subTeams[2].id, employeeId: emp["maria@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "London" },
-      { subTeamId: subTeams[2].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Hong Kong" },
+      { subTeamId: subTeams[2].id, employeeId: emp["alice@ops.com"].id, role: "member", startDate: nextWeekStart, endDate: nextWeekEnd, rotationCycle: "weekly", shiftType: "standard", location: "Singapore" },
     ];
 
-    // Weekend shifts — APAC and Jersey share
+    // Weekend shifts — APAC and Dublin share
     const sat = new Date("2026-03-07");
     const sun = new Date("2026-03-08");
     const weekendAssignments = [
-      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: sat, endDate: sat, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Hong Kong" },
-      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: sun, endDate: sun, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Jersey" },
+      { subTeamId: subTeams[1].id, employeeId: emp["tom@ops.com"].id, role: "member", startDate: sat, endDate: sat, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Singapore" },
+      { subTeamId: subTeams[1].id, employeeId: emp["nikhil@ops.com"].id, role: "member", startDate: sun, endDate: sun, rotationCycle: "weekly" as const, shiftType: "weekend", location: "Dublin" },
     ];
 
     for (const a of [...week1Assignments, ...week2Assignments, ...weekendAssignments]) {
@@ -865,7 +865,7 @@ async function main() {
   // ─── 3rd Party Incidents ───
   // Seed example incidents to demonstrate the incident tracking workflow:
   // one active critical (Fireblocks down), one resolved (Ledger firmware),
-  // one monitoring (GX latency)
+  // one monitoring (Platform latency)
   const existingIncidents = await prisma.incident.count();
   if (existingIncidents === 0) {
     const incNow = new Date();
@@ -921,13 +921,13 @@ async function main() {
       },
     });
 
-    const gxIncident = await prisma.incident.create({
+    const platformIncident = await prisma.incident.create({
       data: {
-        title: "GX exchange API intermittent latency spikes",
-        provider: "GX",
+        title: "Platform exchange API intermittent latency spikes",
+        provider: "Platform",
         severity: "low",
         status: "monitoring",
-        description: "GX REST API response times spiking to 5-10s periodically. No failed requests but causing UI timeouts.",
+        description: "Platform REST API response times spiking to 5-10s periodically. No failed requests but causing UI timeouts.",
         impact: "Transaction status polling slower than usual. No direct client impact.",
         reportedById: emp["alice@ops.com"].id,
         linkedThreadIds: JSON.stringify([]),
@@ -1077,27 +1077,27 @@ async function main() {
       ],
     });
 
-    // GX: low-severity monitoring incident, RCA just raised — early lifecycle stage
+    // Platform: low-severity monitoring incident, RCA just raised — early lifecycle stage
     // Ticket linked but no drama yet
     await prisma.incident.update({
-      where: { id: gxIncident.id },
+      where: { id: platformIncident.id },
       data: {
         rcaStatus: "raised",
         rcaRaisedAt: new Date(incNow.getTime() - 2 * 60 * 60000),
         rcaResponsibleId: emp["alice@ops.com"].id,
         rcaSlaDeadline: new Date(incNow.getTime() + 5 * 24 * 60 * 60000), // 5 days for low severity
-        externalTicketRef: "GX-1103",
-        externalTicketUrl: "https://gx-support.atlassian.net/browse/GX-1103",
+        externalTicketRef: "Platform-1103",
+        externalTicketUrl: "https://platform-support.atlassian.net/browse/Platform-1103",
         externalTicketStatus: "Open",
       },
     });
     await prisma.externalTicketEvent.create({
       data: {
-        incidentId: gxIncident.id,
+        incidentId: platformIncident.id,
         event: "status_changed",
         toStatus: "linked",
         performedBy: emp["alice@ops.com"].id,
-        reason: "Linked external ticket GX-1103",
+        reason: "Linked external ticket Platform-1103",
         createdAt: new Date(incNow.getTime() - 1.5 * 60 * 60000),
       },
     });

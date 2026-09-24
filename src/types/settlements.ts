@@ -1,6 +1,6 @@
 // ─── OES Settlement Types ───
 
-export type OesVenue = "okx" | "fireblocks";
+export type OesVenue = "exchange" | "fireblocks";
 export type SettlementMatchStatus = "pending" | "matched" | "mismatch" | "missing_tx" | "flagged";
 export type SettlementStatus = "pending" | "confirmed" | "completed" | "escalated" | "failed";
 export type DelegationStatus = "n/a" | "delegated" | "undelegated" | "pending_delegation";
@@ -49,6 +49,6 @@ export interface OesSettlementOverview {
     mismatched: number;
     missingTx: number;
     flagged: number;
-    byVenue: { okx: number; fireblocks: number };
+    byVenue: { exchange: number; fireblocks: number };
   };
 }

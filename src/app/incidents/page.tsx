@@ -27,7 +27,7 @@ import { formatDistanceToNow } from "date-fns";
 const PROVIDERS = [
   "Fireblocks",
   "Ledger",
-  "GX",
+  "Platform",
   "Custody",
   "Notabene",
   "Chainalysis",
@@ -78,7 +78,7 @@ interface IncidentData {
 /**
  * 3rd Party Incidents page.
  *
- * Tracks outages and issues with external providers (Fireblocks, Ledger, GX, etc.)
+ * Tracks outages and issues with external providers (Fireblocks, Ledger, Platform, etc.)
  * that affect ops. Each incident can link to:
  *   - SLA-breached comms threads (explains why SLAs were missed)
  *   - Failed/rejected transactions (correlates transaction failures to root cause)

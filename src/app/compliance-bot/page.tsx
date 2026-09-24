@@ -8,7 +8,7 @@ interface Message {
   content: string;
 }
 
-const REGULATOR_CHIPS = ["JFSC", "MiCAR", "VARA", "FCA"] as const;
+const REGULATOR_CHIPS = ["MiCAR", "FCA", "FATF"] as const;
 
 export default function ComplianceBotPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -80,9 +80,9 @@ export default function ComplianceBotPage() {
           <Scale size={24} className="text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-foreground">KMR Compliance Bot</h1>
+          <h1 className="text-xl font-bold text-foreground">Compliance Bot</h1>
           <p className="text-sm text-muted-foreground">
-            Ask compliance questions about JFSC, MiCAR, VARA & FCA regulations
+            Ask compliance questions about digital asset regulation
           </p>
         </div>
       </div>
@@ -103,9 +103,9 @@ export default function ComplianceBotPage() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
               {[
-                "What are JFSC's AML requirements for VASPs?",
+                "What are the FATF Travel Rule requirements for VASPs?",
                 "How does MiCAR classify crypto-assets?",
-                "What are VARA's custody requirements?",
+                "What custody safeguarding rules apply under MiCAR?",
                 "FCA crypto registration process?",
               ].map((suggestion) => (
                 <button

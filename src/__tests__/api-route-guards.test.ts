@@ -23,7 +23,7 @@ const PUBLIC: Record<string, string> = {
 
 /** Guard name -> the file implementing it and what that file must do first. */
 const WRAPPERS: Record<string, { file: string; must: RegExp[]; validates?: boolean }> = {
-  fabGuard: { file: "src/modules/fab/route-helpers.ts", must: [/requireAuth\(\)/, /requireAuthorization\(/] },
+  bankGuard: { file: "src/modules/bank/route-helpers.ts", must: [/requireAuth\(\)/, /requireAuthorization\(/] },
   workAction: { file: "src/modules/work-items/http.ts", must: [/requireAuth\(\)/, /requireAuthorization\(/], validates: true },
   handoverAction: { file: "src/modules/morning/http.ts", must: [/requireAuth\(\)/], validates: true },
   verifySlackWebhook: { file: "src/lib/webhook-verify.ts", must: [/createHmac\(/, /timingSafeEqual\(/] },
@@ -95,10 +95,10 @@ const ANON: Array<[string, string]> = [
   ["@/app/api/morning/handover/route", "POST"],
   ["@/app/api/morning/handover/retry/route", "POST"],
   ["@/app/api/morning/absence/route", "POST"],
-  ["@/app/api/fab/route", "GET"],
-  ["@/app/api/fab/instructions/route", "POST"],
-  ["@/app/api/fab/settlements/route", "POST"],
-  ["@/app/api/fab/fee-balances/route", "POST"],
+  ["@/app/api/bank/route", "GET"],
+  ["@/app/api/bank/instructions/route", "POST"],
+  ["@/app/api/bank/settlements/route", "POST"],
+  ["@/app/api/bank/fee-balances/route", "POST"],
 ];
 
 describe("anonymous callers are rejected by wrapper-guarded routes", () => {

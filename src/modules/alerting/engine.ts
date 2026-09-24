@@ -18,7 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { ensureAlertTicket } from "@/modules/work-items/tickets";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
-import { maybeCreateIaiDraftForAlert } from "@/modules/iai/drafts";
+import { maybeCreateIncidentLogDraftForAlert } from "@/modules/incident-log/drafts";
 import { effectiveParams, missingConfirmParams, RULE_CATALOGUE } from "@/modules/alerting/catalogue";
 import { notifyAlert, runEscalations } from "@/modules/alerting/routing";
 import type { AlertCandidate, RuleDefinition } from "@/modules/alerting/types";
@@ -115,7 +115,7 @@ export async function applyCandidates(rule: AlertRule, def: RuleDefinition, cand
 
     const id = await openAlert(rule, def, c, now);
     await ensureAlertTicket(id, { repeat: false, seed: c.workItemSeed });
-    await safe("iai", () => maybeCreateIaiDraftForAlert(id));
+    await safe("incidentLog", () => maybeCreateIncidentLogDraftForAlert(id));
     if (def.onRaised) await safe("onRaised", () => def.onRaised!(id, c));
     await safe("notify", () => notifyAlert(id, now));
     result.raised.push(id);

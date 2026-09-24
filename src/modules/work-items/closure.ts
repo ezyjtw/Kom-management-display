@@ -59,7 +59,7 @@ export async function closeWorkItem(workItemId: string, input: CloseInput, logge
       : []),
   ]);
   if (item.kind === "uat_task" && writeUp.uat) {
-    const { recordUatOutcome } = await import("@/modules/gx-sprints/outcome");
+    const { recordUatOutcome } = await import("@/modules/platform-sprints/outcome");
     await recordUatOutcome(updated, writeUp.uat);
   }
   return updated;
