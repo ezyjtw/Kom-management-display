@@ -20,7 +20,10 @@ describe("Middleware Security", () => {
     expect(isPublicPath("/api/health/readiness", "GET")).toBe(true);
     expect(isPublicPath("/api/branding", "GET")).toBe(true);
     expect(isPublicPath("/api/branding", "POST")).toBe(false);
-    expect(isPublicPath("/api/health", "GET")).toBe(false); // detailed health needs a session
+    // Basic health is public for platform probes; ?deep=true needs a session (checked in the route).
+    expect(isPublicPath("/api/health", "GET")).toBe(true);
+    expect(isPublicPath("/api/health", "POST")).toBe(false);
+    expect(isPublicPath("/api/health/dependencies", "GET")).toBe(false);
     expect(isPublicPath("/work", "GET")).toBe(false);
     expect(isPublicPath("/api/users", "GET")).toBe(false);
   });

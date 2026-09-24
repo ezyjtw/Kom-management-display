@@ -5,6 +5,7 @@ import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { getIdempotencyStats } from "@/lib/idempotency";
 import { env } from "@/lib/env";
 import { requireAuth } from "@/lib/auth-user";
+import { logger } from "@/lib/logger";
 import { checkWorkerHealth } from "@/lib/worker-health";
 
 interface ComponentHealth {
@@ -46,10 +47,9 @@ export async function GET(request: NextRequest) {
     };
     if (dbLatency > 1000) overallStatus = "degraded";
   } catch (error) {
-    components.database = {
-      status: "unhealthy",
-      details: error instanceof Error ? error.message : "Connection failed",
-    };
+    // Public endpoint: never return the driver's error text (it can name hosts or users).
+    logger.error("Health check: database unreachable", { error: error instanceof Error ? error.message : String(error) });
+    components.database = { status: "unhealthy", details: "Connection failed" };
     overallStatus = "unhealthy";
   }
 
