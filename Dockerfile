@@ -1,11 +1,15 @@
+# Base image pinned by digest (spec §17.6): node:22-alpine (Node 22 LTS; Node 20
+# reached end of life in April 2026). Dependabot proposes digest updates.
+ARG NODE_IMAGE=node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # Stage 2: Build
-FROM node:20-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 
 # Prisma engines need OpenSSL during next build (page data collection)
@@ -31,7 +35,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Stage 3: Production
-FROM node:20-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

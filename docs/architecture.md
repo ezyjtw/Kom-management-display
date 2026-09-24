@@ -208,7 +208,7 @@ Alert Generation (if SLA thresholds breached)
 │                   Docker Host / Railway           │
 │                                                   │
 │  ┌─────────────────────────────────────────────┐ │
-│  │         App Container (node:20-alpine)      │ │
+│  │         App Container (node:22-alpine (pinned by digest))      │ │
 │  │                                             │ │
 │  │  Next.js Standalone Server (port 3000)      │ │
 │  │  ├─ SSR Pages                               │ │
@@ -236,9 +236,9 @@ Alert Generation (if SLA thresholds breached)
 
 | Stage | Base Image | Purpose |
 |-------|-----------|---------|
-| `deps` | node:20-alpine | Install npm dependencies |
-| `builder` | node:20-alpine | Generate Prisma client, build Next.js, compile seed |
-| `runner` | node:20-alpine | Minimal production image with standalone output |
+| `deps` | node:22-alpine (pinned by digest) | Install npm dependencies |
+| `builder` | node:22-alpine (pinned by digest) | Generate Prisma client, build Next.js, compile seed |
+| `runner` | node:22-alpine (pinned by digest) | Minimal production image with standalone output |
 
 The production image runs as a non-root `nextjs` user (UID 1001) and exposes port 3000.
 

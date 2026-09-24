@@ -1,22 +1,32 @@
 name: CI/CD Pipeline
 
+# Supply chain (spec §17.6): every action is pinned by commit SHA (the tag is in
+# the trailing comment; Dependabot proposes updates), the workflow token is
+# read-only, and each scan fails the build on a finding above the threshold.
+
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
 
-env:
-  NODE_VERSION: "20"
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: ".nvmrc"
           cache: npm
@@ -48,9 +58,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-typecheck
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: ".nvmrc"
           cache: npm
@@ -95,12 +107,14 @@ jobs:
           fi
 
   security:
-    name: Security Audit
+    name: Security Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: ".nvmrc"
           cache: npm
@@ -108,49 +122,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # SCA. BLOCKING: critical fails outright; every high advisory must be fixed or listed in
+      # .audit-exceptions.json with a mitigation and a reviewDate that has not passed.
       - name: Audit production dependencies
         run: |
           npm audit --omit=dev --audit-level=critical 2>&1 || {
             echo "::error::Critical vulnerabilities found in production dependencies"
             exit 1
           }
-          # BLOCKING: every high advisory must be fixed or listed in .audit-exceptions.json
-          # with a mitigation and a reviewDate that has not passed.
           npm audit --omit=dev --json > audit.json || true
           node scripts/check-audit-exceptions.js < audit.json
 
-      - name: Check for secrets in code
+      # Secret detection with a reviewed baseline (.secrets.baseline). A new finding fails the
+      # build; a false positive is marked in the baseline or with `pragma: allowlist secret`.
+      # TODO(CONFIRM-DETECT-SECRETS-BASELINE): align plugins/filters with the platform's baseline.
+      - name: Secret detection (detect-secrets)
         run: |
-          MATCHES=$(grep -rn --include='*.ts' --include='*.tsx' \
-            -E '(password|secret|api_key|apikey)\s*[:=]\s*["\x27][A-Za-z0-9+/]{20,}' \
-            src/ --exclude-dir=node_modules 2>/dev/null | \
-            grep -v 'process\.env' | grep -v '\.test\.' | grep -v 'type\s' | \
-            grep -v 'placeholder' | grep -v 'example' || true)
-          if [ -n "$MATCHES" ]; then
-            echo "$MATCHES" | head -5
-            echo "::error::Potential secrets found in source code"
-            exit 1
-          fi
-          echo "No secrets detected"
+          python3 -m pip install --disable-pip-version-check --quiet detect-secrets==1.5.0
+          git ls-files -z | grep -zvE '^(package-lock\.json|prisma/drift-baseline\.sql|\.secrets\.baseline)$' \
+            | xargs -0 detect-secrets-hook --baseline .secrets.baseline
 
-      # BLOCKING. Replaces the literal requireAuth/requireRole grep, which could not see
-      # wrapper guards (fabGuard, workAction, handoverAction, verifySlackWebhook): the test
-      # checks every route is public-by-name or guarded, that each wrapper authenticates,
-      # that every route reading a body validates it with Zod, and that anonymous calls get 401.
-      - name: API route guard and validation check
-        run: npx vitest run src/__tests__/api-route-guards.test.ts
-
-      - name: CSP header check
-        run: |
-          if ! grep -q "Content-Security-Policy" next.config.js; then
-            echo "::error::No CSP header found"
-            exit 1
-          fi
-          if grep -v '^\s*//' next.config.js | grep -q "unsafe-eval"; then
-            echo "::error::unsafe-eval found in CSP"
-            exit 1
-          fi
-          echo "CSP header validated"
+      # BLOCKING. Route guards (every route public-by-name or guarded, wrappers authenticate,
+      # anonymous calls get 401), request schemas, fail-closed audit policy, CSRF on mutations,
+      # security headers (nonce CSP, HSTS, frame and referrer policy), no secrets in env in
+      # production, client scoping, no dangerouslySetInnerHTML.
+      - name: Security control tests
+        run: >-
+          npx vitest run
+          src/__tests__/api-route-guards.test.ts
+          src/__tests__/every-api-route-has-a-schema.test.ts
+          src/__tests__/control-mutations-fail-closed.test.ts
+          src/__tests__/csrf-required-on-mutations.test.ts
+          src/__tests__/security-headers-present.test.ts
+          src/__tests__/no-secrets-in-env-in-production.test.ts
+          src/__tests__/client-scoping-enforced.test.ts
+          src/__tests__/no-dangerously-set-inner-html.test.ts
 
   schema-check:
     name: Schema Validation
@@ -158,6 +167,7 @@ jobs:
     needs: lint-and-typecheck
     services:
       postgres:
+        # Test-only service container (not shipped). TODO(CONFIRM-CI-IMAGE-PINS): pin by digest.
         image: postgres:16-alpine
         env:
           POSTGRES_USER: test
@@ -170,10 +180,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
+      SHADOW_DATABASE_URL: "postgresql://test:test@localhost:5432/shadow"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: ".nvmrc"
           cache: npm
@@ -183,30 +198,34 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate
-        env:
-          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
 
       - name: Apply migrations to fresh database
         run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
 
-      - name: Check for migration drift
+      # BLOCKING. New drift between schema.prisma and the migrations fails the build; the known
+      # historical drift is in prisma/drift-baseline.sql (docs/phase1/schema-drift.md) and the
+      # check also fails once an entry is resolved, so the baseline only shrinks.
+      - name: Migration drift (blocking, against the reviewed baseline)
         run: |
-          npx prisma migrate diff --from-migrations ./prisma/migrations --to-schema-datamodel ./prisma/schema.prisma --exit-code 2>&1 || {
-            echo "::warning::Migration drift detected — schema and migrations are out of sync"
-          }
+          PGPASSWORD=test psql -h localhost -U test -d testdb -c 'CREATE DATABASE shadow'
+          npx tsx scripts/check-migration-drift.ts
+
+      # The append-only triggers (AuditLog, BackgroundJobRun) exercised in a real database.
+      - name: Audit log is append-only (live)
+        run: npx vitest run src/__tests__/audit-log-is-append-only.test.ts
         env:
-          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
+          TEST_DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
 
   build:
     name: Build
     runs-on: ubuntu-latest
     needs: [lint-and-typecheck, test, schema-check]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: ".nvmrc"
           cache: npm
@@ -228,22 +247,47 @@ jobs:
             [ -f "$f" ] || { echo "::error::Missing $f"; exit 1; }
           done
 
+      # SBOM per build, retained with the artefact (spec §17.6).
+      - name: Generate SBOM (CycloneDX)
+        run: npm run sbom
+
+      - name: Retain SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          retention-days: 90
+
   docker:
-    name: Docker Build
+    name: Docker Build & Image Scan
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           push: false
-          tags: kommand-centre:latest
+          load: true
+          tags: kommand-centre:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Container image scan. Interim scanner until the platform's Wiz CI integration is wired
+      # in (TODO(CONFIRM-WIZ-CI)); the threshold is critical and high with a fix available
+      # (TODO(CONFIRM-VULN-THRESHOLD) with Platform Security).
+      - name: Scan image (Trivy, interim)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: kommand-centre:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Ops Team Management Dashboard with Comms & Ownership Module",
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.0.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
@@ -11,7 +11,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "worker": "KOM_WORKLOAD=worker tsx src/worker/index.ts",
-    "worker:prod": "node worker.js",
+    "worker:prod": "KOM_WORKLOAD=worker node worker.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -27,7 +27,9 @@
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
     "coverage:matrix": "tsx scripts/coverage-matrix.ts",
-    "jira:inventory": "tsx scripts/jira-inventory.ts"
+    "jira:inventory": "tsx scripts/jira-inventory.ts",
+    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json",
+    "drift:check": "tsx scripts/check-migration-drift.ts"
   },
   "repository": {
     "type": "git",
@@ -76,6 +78,9 @@
   "overrides": {
     "utf7": {
       "semver": "^7.6.3"
+    },
+    "next-auth": {
+      "nodemailer": "$nodemailer"
     }
   },
   "devDependencies": {
