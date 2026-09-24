@@ -41,9 +41,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["npm", "run", "worker:prod"]
+    command: ["node", "worker.js"]
     environment:
       - NODE_ENV=production
+      - KOM_WORKLOAD=worker
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/kommand
     depends_on:
       db:

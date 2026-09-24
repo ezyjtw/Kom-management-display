@@ -53,7 +53,9 @@ describe("deployment wiring", () => {
 
   it("docker-compose runs a worker service from the same image", () => {
     const compose = read("docker-compose.yml");
-    expect(compose).toMatch(/\n  worker:\n[\s\S]*npm", "run", "worker:prod/);
+    // The image has no npm (Phase 12h): the worker runs with node directly, labelled for credential-use audit.
+    expect(compose).toMatch(/\n  worker:\n[\s\S]*command: \["node", "worker\.js"\]/);
+    expect(compose).toMatch(/\n  worker:\n[\s\S]*KOM_WORKLOAD=worker/);
   });
 
   it("Railway config is out of the default deploy path (H10)", () => {

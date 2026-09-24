@@ -62,13 +62,21 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/package.json ./package.json
 
-# Worker bundle (docker-compose `worker` service runs `npm run worker:prod`)
+# Worker bundle (docker-compose `worker` service runs `node worker.js` with KOM_WORKLOAD=worker)
 COPY --from=builder /app/dist/worker.js ./worker.js
 
 # Copy the startup script
 COPY --from=builder /app/start.sh ./start.sh
 
 RUN chown -R nextjs:nodejs /app
+
+# No package manager at runtime: the web server, the worker and migrations all run
+# with `node` directly (start.sh, `node worker.js`). Removing npm, npx, corepack and
+# yarn drops the vulnerable copies bundled with the base image from the shipped image
+# (image scan, Phase 12h) and shrinks the attack surface.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 
 USER nextjs
 

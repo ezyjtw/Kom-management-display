@@ -141,7 +141,7 @@ jobs:
       # TODO(CONFIRM-DETECT-SECRETS-BASELINE): align plugins/filters with the platform's baseline.
       - name: Secret detection (detect-secrets)
         run: |
-          python3 -m pip install --disable-pip-version-check --quiet detect-secrets==1.5.0
+          python3 -m pip install --disable-pip-version-check --quiet -r .github/requirements/security-tools.txt
           git ls-files -z | grep -zvE '^(package-lock\.json|prisma/drift-baseline\.sql|\.secrets\.baseline)$' \
             | xargs -0 detect-secrets-hook --baseline .secrets.baseline
 
@@ -207,7 +207,7 @@ jobs:
       # (docs/phase1/schema-drift.md); the fix for a failure is a migration, not the baseline.
       - name: Migration drift (blocking, against the reviewed baseline)
         run: |
-          PGPASSWORD=test psql -h localhost -U test -d testdb -c 'CREATE DATABASE shadow'
+          psql "$DATABASE_URL" -c 'CREATE DATABASE shadow'
           npx tsx scripts/check-migration-drift.ts
 
       # The append-only triggers (AuditLog, BackgroundJobRun) exercised in a real database.
