@@ -4,6 +4,7 @@ import { lookupSensitiveAction } from "@/modules/auth/sensitive-actions-registry
 import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
 import { env } from "@/lib/env";
 import { recordPermissionDenied } from "@/modules/security/record";
+import { duplicateMutation } from "@/lib/idempotency";
 import { CSRF_HEADER, CSRF_EXEMPT_PATHS, buildCsp, csrfCookieName, SECURITY_HEADERS, isPublicPath } from "@/lib/security-policy";
 
 /**
@@ -180,6 +181,12 @@ export async function middleware(req: NextRequest) {
 
   const csrf = csrfViolation(req, path);
   if (csrf) return deny(csrf);
+
+  // At-most-once mutations: explicit Idempotency-Key, or a duplicate submission within 10 s.
+  if (isApi && MUTATION_METHODS.has(req.method)) {
+    const duplicate = await duplicateMutation(req, path, sub);
+    if (duplicate) return deny(duplicate);
+  }
   return pass(sub);
 }
 

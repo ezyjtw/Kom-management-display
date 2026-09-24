@@ -2318,3 +2318,15 @@ model ArchivedApprovalAuditEntry {
   @@index([performedById], map: "_archived_approval_audit_entry_performedById_idx")
   @@map("_archived_approval_audit_entry")
 }
+
+/// At-most-once mutations (src/lib/idempotency.ts): explicit Idempotency-Key
+/// claims (24 h) and duplicate-submission windows (10 s). Keys are hashes; no
+/// request content is stored.
+model IdempotencyKey {
+  key         String   @id
+  requestHash String
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+}

@@ -65,6 +65,16 @@ describe("security documents (spec §17.10)", () => {
     expect(missing).toEqual([]);
   });
 
+  it("the CONFIRM register contains every CONFIRM id in every tracked file (incl. extension-less ones)", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean)
+      .filter((f) => !["docs/phase1/confirm-register.md", "package-lock.json", "scripts/confirm-register.ts"].includes(f) && !/\.(png|jpe?g|ico|woff2?)$/.test(f) && fs.existsSync(f));
+    const ids = new Set(files.flatMap((f) => [...read(f).matchAll(/CONFIRM-[A-Z0-9]+(?:-[A-Z0-9]+)*/g)].map((m) => m[0])));
+    const register = read("docs/phase1/confirm-register.md");
+    expect([...ids].filter((id) => !new RegExp(`\\b${id}\\b`).test(register)).sort()).toEqual([]);
+    expect(ids.has("CONFIRM-CODEOWNERS")).toBe(true);
+  });
+
   it("confirm-register-current: the CONFIRM register lists every marker in the code", async () => {
     const { render } = await import("../../scripts/confirm-register");
     expect(read("docs/phase1/confirm-register.md")).toBe(render().markdown);

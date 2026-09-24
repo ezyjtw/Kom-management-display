@@ -74,12 +74,26 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return { expiredConfirmations: expired, closedInSource };
   },
 
+  async data_retention() {
+    const { getSetting } = await import("@/modules/settings/settings");
+    if (!(await getSetting("retention.enabled"))) {
+      // Evidence that the control ran and why it deleted nothing (the run is kept in BackgroundJobRun).
+      return { skipped: true, reason: "Retention periods not confirmed (CONFIRM-RETENTION); retention.enabled is off." };
+    }
+    const { enforceRetentionPolicies } = await import("@/lib/data-retention");
+    const results = await enforceRetentionPolicies();
+    const failed = results.filter((r) => r.error);
+    // No false green: a partial run fails the job, so it retries and, if it keeps failing, is dead-lettered.
+    if (failed.length) throw new Error(`Retention failed for ${failed.map((r) => r.policy).join(", ")}`);
+    return { deleted: results.map((r) => ({ policy: r.policy, deleted: r.deletedCount, cutoff: r.cutoffDate })) };
+  },
   async cleanup_sessions() {
     const { cleanupExpiredSessions } = await import("@/lib/session-revocation");
     const { prunePollCycles } = await import("@/modules/integrations/poll-cycles");
     const { pruneJobRuns } = await import("@/lib/background-jobs");
     const { pruneRateLimitBuckets } = await import("@/lib/api/shared-rate-limit");
-    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles(), prunedJobRuns: await pruneJobRuns(), prunedRateLimitBuckets: await pruneRateLimitBuckets() };
+    const { pruneIdempotencyKeys } = await import("@/lib/idempotency");
+    return { cleanedSessions: await cleanupExpiredSessions(), prunedPollCycles: await prunePollCycles(), prunedJobRuns: await pruneJobRuns(), prunedRateLimitBuckets: await pruneRateLimitBuckets(), prunedIdempotencyKeys: await pruneIdempotencyKeys() };
   },
 
   /** Spec §6.1: every registered channel once per 5-minute cycle, 24/7 (history from the cursor, then replies). */

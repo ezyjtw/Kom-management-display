@@ -149,7 +149,7 @@ SOC 2 Trust Services Criteria: Security, Availability, Processing Integrity, Con
 | TSC | Control | Implementation | Evidence |
 |---|---|---|---|
 | **C1.1** Confidential information | Data classification | Sensitive fields identified per resource type. Masked in API responses for non-admin roles. Export watermarking with user identity. | `SENSITIVE_FIELDS` map in auth types. `maskSensitiveFields()` function. Export headers include exporter name, timestamp, row count. |
-| **C1.2** Disposal of confidential data | Data retention | Retention jobs for sessions, poll cycles, job runs and rate-limit counters run today; other periods are CONFIRM-RETENTION. Audit records are never deleted by the application; retention is the regulatory period, to be confirmed with Compliance (CONFIRM-AUDIT-RETENTION). | `docs/phase1/data-inventory.md`; `src/lib/data-retention.ts` (defined, not yet scheduled). |
+| **C1.2** Disposal of confidential data | Data retention | Retention jobs for sessions, poll cycles, job runs and rate-limit counters run today; other periods are CONFIRM-RETENTION. Audit records are never deleted by the application; retention is the regulatory period, to be confirmed with Compliance (CONFIRM-AUDIT-RETENTION). | `docs/phase1/data-inventory.md`; `src/lib/data-retention.ts`, run daily by the `data_retention` job; it deletes only when `retention.enabled` is set and records every run (including skipped runs) in `BackgroundJobRun`. |
 
 ### 4.5 Privacy
 
