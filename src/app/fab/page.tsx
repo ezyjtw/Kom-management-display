@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Landmark, AlertTriangle } from "lucide-react";
+import { formatAmount } from "@/lib/decimal";
 
 interface Instruction { id: string; messageType: string; reference: string; instructionType: string; direction: string; asset: string; amount: number; valueDate: string; receivedAt: string; ackStatus: string; ackSentAt: string | null; correctedByRef: string | null }
 interface LogRow { id: string; reference: string; status: string; txHash: string | null; kytStatus: string; occurredAt: string }
@@ -44,7 +45,7 @@ export default function FabPage() {
         <h2 className="text-sm font-semibold">Instruction register</h2>
         <form className="flex gap-2 flex-wrap" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void send("/api/fab/instructions", "POST", {
           messageType: f.get("messageType"), reference: f.get("reference"), instructionType: f.get("instructionType"), direction: f.get("direction"),
-          asset: f.get("asset"), amount: Number(f.get("amount")), valueDate: f.get("valueDate"), receivedAt: iso(f.get("receivedAt")),
+          asset: f.get("asset"), amount: String(f.get("amount") ?? "").trim(), valueDate: f.get("valueDate"), receivedAt: iso(f.get("receivedAt")),
         }, "Instruction recorded; its ticket is opened."); }}>
           <select name="messageType" aria-label="Message type" className={input}><option>TRD_NTF</option><option>STL_INS</option></select>
           <input name="reference" required placeholder="Trade / agreement reference" aria-label="Reference" className={input} />
@@ -60,7 +61,7 @@ export default function FabPage() {
           <thead><tr className="text-left text-muted-foreground"><th>Type</th><th>Reference</th><th>Direction</th><th>Amount</th><th>Value date</th><th>Received</th><th>ACK/NACK sent</th><th /></tr></thead>
           <tbody>{(data?.instructions ?? []).map((i) => (
             <tr key={i.id} className="border-t border-border/50">
-              <td>{i.messageType} {i.instructionType}</td><td>{i.reference}</td><td>{i.direction}</td><td>{i.amount} {i.asset}</td><td>{i.valueDate}</td>
+              <td>{i.messageType} {i.instructionType}</td><td>{i.reference}</td><td>{i.direction}</td><td>{formatAmount(i.amount, 18)} {i.asset}</td><td>{i.valueDate}</td>
               <td>{new Date(i.receivedAt).toLocaleString()}</td>
               <td>{i.ackStatus === "none" ? "—" : `${i.ackStatus}${i.ackSentAt ? ` @ ${new Date(i.ackSentAt).toLocaleTimeString()}` : ""}`}{i.correctedByRef ? ` → corrected by ${i.correctedByRef}` : ""}</td>
               <td className="space-x-1">
@@ -100,13 +101,13 @@ export default function FabPage() {
 
       <section className="bg-card border border-border rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold">Fee reserve balances</h2>
-        <form className="flex gap-2 flex-wrap" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void send("/api/fab/fee-balances", "POST", { walletRef: f.get("walletRef"), asset: f.get("asset"), balance: Number(f.get("balance")) }, "Balance recorded."); }}>
+        <form className="flex gap-2 flex-wrap" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void send("/api/fab/fee-balances", "POST", { walletRef: f.get("walletRef"), asset: f.get("asset"), balance: String(f.get("balance") ?? "").trim() }, "Balance recorded."); }}>
           <input name="walletRef" required placeholder="Wallet reference" aria-label="Wallet reference" className={input} />
           <input name="asset" required placeholder="Asset" aria-label="Fee asset" className={`${input} w-20`} />
           <input name="balance" required type="number" step="any" min="0" placeholder="Balance" aria-label="Balance" className={`${input} w-28`} />
           <button type="submit" className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md">Record</button>
         </form>
-        <ul className="text-xs space-y-0.5">{(data?.balances ?? []).slice(0, 20).map((b) => <li key={b.id}>{b.walletRef}: {b.balance} {b.asset} <span className="text-muted-foreground">({new Date(b.recordedAt).toLocaleString()})</span></li>)}</ul>
+        <ul className="text-xs space-y-0.5">{(data?.balances ?? []).slice(0, 20).map((b) => <li key={b.id}>{b.walletRef}: {formatAmount(b.balance, 18)} {b.asset} <span className="text-muted-foreground">({new Date(b.recordedAt).toLocaleString()})</span></li>)}</ul>
       </section>
     </div>
   );

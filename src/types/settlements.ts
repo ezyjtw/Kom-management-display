@@ -12,7 +12,7 @@ export interface OesSettlementEntry {
   clientName: string;
   clientAccount: string;
   asset: string;
-  amount: number;
+  amount: string;
   direction: string; // custody_to_exchange | exchange_to_custody
   settlementCycle: string;
   exchangeInstructionId: string;
@@ -22,7 +22,7 @@ export interface OesSettlementEntry {
   matchStatus: SettlementMatchStatus;
   matchNote: string;
   delegationStatus: DelegationStatus;
-  delegatedAmount: number;
+  delegatedAmount: string;
   status: SettlementStatus;
   makerById: string | null;
   makerByName: string | null;

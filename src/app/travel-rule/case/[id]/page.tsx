@@ -7,6 +7,7 @@ import { ArrowLeft, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-reac
 import { EmailPreviewPanel } from "./EmailPreviewPanel";
 import { ActionSidebar } from "./ActionSidebar";
 import { StatusBanners } from "./StatusBanners";
+import { formatAmount } from "@/lib/decimal";
 
 /** Strip dangerous tags/attributes from HTML to prevent XSS */
 function sanitizeHtml(html: string): string {
@@ -34,7 +35,7 @@ interface CaseData {
   txHash: string;
   direction: string;
   asset: string;
-  amount: number;
+  amount: string;
   senderAddress: string;
   receiverAddress: string;
   matchStatus: string;
@@ -292,7 +293,7 @@ export default function CaseDetailPage() {
               </div>
               <div>
                 <span className="text-xs text-muted-foreground block">Asset / Amount</span>
-                <span className="font-mono text-foreground">{caseData.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} {caseData.asset}</span>
+                <span className="font-mono text-foreground">{formatAmount(caseData.amount, 8)} {caseData.asset}</span>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground block">Originator Address</span>

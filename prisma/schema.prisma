@@ -506,7 +506,7 @@ model TravelRuleCase {
   txHash             String                    @default("")
   direction          String // IN, OUT
   asset              String
-  amount             Float
+  amount             Decimal                   @db.Decimal(38, 18) // token quantity in `asset`
   senderAddress      String                    @default("")
   receiverAddress    String                    @default("")
   matchStatus        String // unmatched, missing_originator, missing_beneficiary
@@ -793,7 +793,7 @@ model Alert {
 
   // Alerting engine state (spec §11.1, §11.3)
   detail         String    @default("")
-  exposureUsd    Float?
+  exposureUsd    Decimal?  @db.Decimal(20, 2) // USD
   cleanRuns      Int       @default(0) // consecutive evaluations without this candidate; 2 = auto-resolve
   lastNotifiedAt DateTime? // quiet rule: no re-notify within 15 minutes
   escalationStep Int       @default(0) // next index in the rule's escalation ladder
@@ -911,7 +911,7 @@ model OesSettlement {
   clientName            String
   clientAccount         String    @default("")
   asset                 String // BTC, ETH, USDC, SOL, etc.
-  amount                Float
+  amount                Decimal   @db.Decimal(38, 18) // token quantity in `asset`
   direction             String // custody_to_exchange, exchange_to_custody
   settlementCycle       String    @default("") // e.g. "2026-03-07T09:00Z"
   // Matching: exchange instruction ↔ on-chain tx
@@ -923,7 +923,7 @@ model OesSettlement {
   matchNote             String    @default("") // mismatch reason or exchange escalation note
   // Delegation (OKX specific)
   delegationStatus      String    @default("n/a") // n/a, delegated, undelegated, pending_delegation
-  delegatedAmount       Float     @default(0)
+  delegatedAmount       Decimal   @default(0) @db.Decimal(38, 18)
   // Maker/Checker
   status                String    @default("pending") // pending, confirmed, escalated, failed, completed
   makerById             String? // maker who checked
@@ -952,9 +952,9 @@ model UsdcRampRequest {
   clientName         String
   clientAccount      String    @default("")
   direction          String // onramp (USD→USDC), offramp (USDC→USD)
-  amount             Float // USDC amount
+  amount             Decimal   @db.Decimal(38, 18) // USDC amount
   fiatCurrency       String    @default("USD")
-  fiatAmount         Float? // fiat equivalent
+  fiatAmount         Decimal?  @db.Decimal(20, 2) // fiat equivalent in fiatCurrency
   // Workflow status — tracks the full ops pipeline
   status             String    @default("instruction_received")
   // Onramp: instruction_received → usd_received → usd_receipt_confirmed → usd_sent_to_issuer → usdc_minted → usdc_delivered → completed
@@ -1051,7 +1051,7 @@ model StakingWallet {
   walletAddress           String    @unique
   asset                   String // BTC, ETH, SOL, DOT, etc.
   validator               String    @default("")
-  stakedAmount            Float     @default(0)
+  stakedAmount            Decimal   @default(0) @db.Decimal(38, 18)
   rewardModel             String // auto, daily, weekly, monthly, manual_claim, rebate
   clientName              String    @default("")
   isColdStaking           Boolean   @default(false)
@@ -1061,9 +1061,9 @@ model StakingWallet {
   actualFirstRewardDate   DateTime?
   lastRewardAt            DateTime?
   expectedNextRewardAt    DateTime?
-  onChainBalance          Float? // for reconciliation
-  platformBalance         Float? // internal representation
-  varianceThreshold       Float     @default(0.01) // flag if variance > this
+  onChainBalance          Decimal?  @db.Decimal(38, 18) // for reconciliation
+  platformBalance         Decimal?  @db.Decimal(38, 18) // internal representation
+  varianceThreshold       Decimal   @default(0.01) @db.Decimal(38, 18) // absolute, in `asset`: flag if |onChain - platform| > this
   tags                    Json      @default("[]") // JSON: test wallet, known deviations, minimum threshold
   notes                   String    @default("")
   status                  String    @default("active") // active, unstaking, inactive
@@ -1158,7 +1158,7 @@ model ScreeningEntry {
   transactionId          String    @unique // Custody transaction ID
   txHash                 String    @default("")
   asset                  String
-  amount                 Float     @default(0)
+  amount                 Decimal   @default(0) @db.Decimal(38, 18)
   direction              String    @default("IN") // IN, OUT
   screeningStatus        String    @default("not_submitted") // submitted, processing, completed, not_submitted, exception
   classification         String    @default("unclassified") // unclassified, legitimate, dust, scam
@@ -1366,7 +1366,7 @@ model TransactionConfirmation {
   requestId        String? // Custody request ID (if applicable)
   riskLevel        TransactionRiskLevel @default(unknown) // from GX only (H5)
   asset            String
-  amount           Float
+  amount           Decimal              @db.Decimal(38, 18) // token quantity in `asset`
   direction        String // IN, OUT
   account          String               @default("")
   workspace        String               @default("")
@@ -1617,7 +1617,7 @@ model Client {
   jurisdiction        String    @default("") // UK | JE | AE | EU (entity servicing)
   isActive            Boolean   @default(true)
   /// Client-attested inbound reporting threshold (spec §12 CHK-05).
-  inboundThresholdUsd Float?
+  inboundThresholdUsd Decimal?  @db.Decimal(20, 2) // USD
   /// When the threshold was last reviewed (CF-31); ALR-CLI-01 when older than 12 months (CONFIRM).
   thresholdReviewedAt DateTime?
   createdAt           DateTime  @default(now())
@@ -1702,7 +1702,7 @@ model WorkItem {
   resolvedAt       DateTime?
   resolutionNote   String?
   rootCause        String? // controlled list (spec §10.2)
-  exposureUsd      Float? // where relevant (OES, FAB)
+  exposureUsd      Decimal?      @db.Decimal(20, 2) // USD, where relevant (OES, FAB)
   clientTicketKey  String? // client-visible JSM request (spec §9.7), separate from ticketKey
   clientTicketUrl  String? // portal URL shared with the client
   sourceMessageRef String? // Slack permalink or Graph message id the entry was raised from
@@ -2017,7 +2017,7 @@ model FabInstruction {
   instructionType String    @default("") // e.g. OPEN, MARGIN_RECEIVE, CLOSE (as in the message)
   direction       String // RECEIVE | DELIVER
   asset           String
-  amount          Float
+  amount          Decimal   @db.Decimal(38, 18) // quantity in `asset`
   valueDate       String // YYYY-MM-DD
   receivedAt      DateTime
   ackStatus       String    @default("none") // none | ACK | NACK
@@ -2056,7 +2056,7 @@ model FabFeeBalance {
   id           String   @id @default(cuid())
   walletRef    String
   asset        String
-  balance      Float
+  balance      Decimal  @db.Decimal(38, 18) // quantity in `asset`
   recordedAt   DateTime @default(now())
   recordedById String?
 

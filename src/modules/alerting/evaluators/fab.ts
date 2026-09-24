@@ -10,6 +10,7 @@ import { logger } from "@/lib/logger";
 import { londonInstant, londonParts } from "@/modules/alerting/calendar";
 import { commentInternal } from "@/modules/work-items/ticket-writeback";
 import { numParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
+import { dec } from "@/lib/decimal";
 
 const on = () => isFeatureEnabled("module.fab");
 const hhmm = (v: unknown, fallback: string) => {
@@ -146,17 +147,17 @@ export async function evaluateInboundKytLock(_ctx: EvaluatorContext): Promise<Al
 /** ALR-FAB-08: latest fee-reserve balance below the confirmed threshold for its asset (CONFIRM-FEE-THRESHOLDS). */
 export async function evaluateFeeBufferLow(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   if (!(await on())) return [];
-  const thresholds = (ctx.params.thresholds && typeof ctx.params.thresholds === "object" ? ctx.params.thresholds : {}) as Record<string, number>;
+  const thresholds = (ctx.params.thresholds && typeof ctx.params.thresholds === "object" ? ctx.params.thresholds : {}) as Record<string, number | string>;
   const rows = await prisma.fabFeeBalance.findMany({ orderBy: { recordedAt: "desc" }, take: 1000 });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) if (!latest.has(r.walletRef)) latest.set(r.walletRef, r);
   return [...latest.values()]
-    .filter((b) => typeof thresholds[b.asset] === "number" && b.balance < thresholds[b.asset])
+    .filter((b) => (typeof thresholds[b.asset] === "number" || typeof thresholds[b.asset] === "string") && dec(b.balance).lt(dec(thresholds[b.asset])))
     .map((b) => ({
       dedupeKey: b.walletRef,
       severity: "high" as const,
       title: `FAB fee buffer low: ${b.asset}`,
-      detail: `Fee reserve ${b.walletRef} holds ${b.balance} ${b.asset} (threshold ${thresholds[b.asset]}), recorded ${b.recordedAt.toISOString()}.`,
+      detail: `Fee reserve ${b.walletRef} holds ${dec(b.balance).toFixed()} ${b.asset} (threshold ${thresholds[b.asset]}), recorded ${b.recordedAt.toISOString()}.`,
       workItemSeed: { kind: "fab_instruction" as const, team: "Team 1", taskCode: "TASK-FAB" },
     }));
 }

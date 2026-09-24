@@ -10,7 +10,7 @@ export interface ScreeningEntryData {
   transactionId: string;
   txHash: string;
   asset: string;
-  amount: number;
+  amount: string;
   direction: string;
   screeningStatus: ScreeningStatus;
   classification: ScreeningClassification;

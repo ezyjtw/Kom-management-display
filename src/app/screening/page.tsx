@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { RefreshCw, AlertTriangle, ScanSearch, Plus, X } from "lucide-react";
 import { ClassificationBadge } from "@/components/shared/StatusBadge";
 import type { ScreeningEntryData } from "@/types";
+import { formatAmount } from "@/lib/decimal";
 
 interface ScreeningData {
   entries: ScreeningEntryData[];
@@ -63,7 +64,7 @@ export default function ScreeningPage() {
         body: JSON.stringify({
           transactionId: form.get("transactionId"),
           asset: form.get("asset"),
-          amount: parseFloat(form.get("amount") as string) || 0,
+          amount: String(form.get("amount") || "0").trim(),
           direction: form.get("direction"),
           screeningStatus: form.get("screeningStatus"),
         }),
@@ -150,7 +151,7 @@ export default function ScreeningPage() {
                 <tr key={e.id} className="border-b border-border/50 hover:bg-accent/20">
                   <td className="px-4 py-3 font-mono text-xs">{e.transactionId}</td>
                   <td className="px-4 py-3">{e.asset}</td>
-                  <td className="px-4 py-3">{e.amount}</td>
+                  <td className="px-4 py-3">{formatAmount(e.amount, 18)}</td>
                   <td className="px-4 py-3 text-muted-foreground">{e.direction}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${e.screeningStatus === "completed" ? "bg-emerald-500/10 text-emerald-400" : e.screeningStatus === "not_submitted" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}>

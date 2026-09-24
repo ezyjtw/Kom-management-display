@@ -6,13 +6,14 @@
  */
 
 import { env } from "@/lib/env";
+import { formatAmount, type DecimalValue } from "@/lib/decimal";
 
 export interface TravelRuleCaseData {
   transactionId: string;
   txHash: string;
   direction: string;
   asset: string;
-  amount: number;
+  amount: DecimalValue;
   senderAddress: string;
   receiverAddress: string;
   matchStatus: string;
@@ -83,7 +84,7 @@ export function buildHtmlEmail(params: SendTravelRuleEmailParams): string {
       </tr>
       <tr>
         <th>Amount</th>
-        <td>${travelCase.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
+        <td>${formatAmount(travelCase.amount, 8)}</td>
       </tr>
     </table>
 
@@ -154,7 +155,7 @@ function buildPlainTextEmail(params: SendTravelRuleEmailParams): string {
     travelCase.txHash ? `  Transaction Hash: ${travelCase.txHash}` : "",
     `  Direction: ${travelCase.direction}`,
     `  Asset: ${travelCase.asset}`,
-    `  Amount: ${travelCase.amount}`,
+    `  Amount: ${formatAmount(travelCase.amount, 18)}`,
     "",
     "ORIGINATOR",
     `  Address: ${travelCase.senderAddress || "(Required)"}`,

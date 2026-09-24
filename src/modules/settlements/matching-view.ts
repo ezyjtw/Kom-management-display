@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger";
 import { komainuRecords, pick, stillListed, type Rec } from "@/modules/alerting/evaluators/source";
 import { CONFLUENCE_PLACEHOLDER_PREFIX } from "@/modules/daily-checks/definitions";
 import { getSetting } from "@/modules/settings/settings";
+import { dec } from "@/lib/decimal";
 
 export interface TimelineEntry {
   at: string;
@@ -30,7 +31,7 @@ export interface SettlementRow {
   ticketKey: string | null;
   ticketUrl: string | null;
   notes: Array<{ text: string; authorId: string; at: string }>;
-  exposure: null | { workItemId: string; exposureUsd: number | null; band: string | null };
+  exposure: null | { workItemId: string; exposureUsd: string | null; band: string | null };
 }
 
 export interface SettlementView {
@@ -106,7 +107,7 @@ export async function buildSettlementView(date: string, now = new Date()): Promi
       ticketKey: withTicket?.ticketKey ?? null,
       ticketUrl: withTicket?.ticketUrl ?? null,
       notes: rowNotes.map((n) => ({ text: n.text, authorId: n.authorId, at: n.createdAt.toISOString() })),
-      exposure: oes06?.workItem ? { workItemId: oes06.workItem.id, exposureUsd: oes06.workItem.exposureUsd, band: typeof meta.exposureBand === "string" ? meta.exposureBand : null } : null,
+      exposure: oes06?.workItem ? { workItemId: oes06.workItem.id, exposureUsd: oes06.workItem.exposureUsd != null ? dec(oes06.workItem.exposureUsd).toFixed(2) : null, band: typeof meta.exposureBand === "string" ? meta.exposureBand : null } : null,
     };
   };
 

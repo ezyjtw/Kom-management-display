@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/modules/settings/settings";
 import { ensureTicketedWorkItem } from "@/modules/work-items/tickets";
 import { redactRef } from "@/modules/daily-checks/collectors";
+import { tokenAmount } from "@/lib/decimal";
 
 export const instructionSchema = z.object({
   messageType: z.enum(["TRD_NTF", "STL_INS"]),
@@ -24,7 +25,7 @@ export const instructionSchema = z.object({
   instructionType: z.string().trim().toUpperCase().max(40).default(""),
   direction: z.enum(["RECEIVE", "DELIVER"]),
   asset: z.string().trim().toUpperCase().min(1).max(20),
-  amount: z.number().positive(),
+  amount: tokenAmount({ min: "positive" }),
   valueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   receivedAt: z.string().datetime({ offset: true }),
   sourceMessageId: z.string().max(300).optional(),
@@ -50,7 +51,7 @@ export const settlementLogSchema = z.object({
 export const feeBalanceSchema = z.object({
   walletRef: z.string().trim().min(1).max(100),
   asset: z.string().trim().toUpperCase().min(1).max(20),
-  balance: z.number().min(0),
+  balance: tokenAmount({ min: "nonNegative" }),
 });
 
 export async function createInstruction(input: z.infer<typeof instructionSchema>, actorId: string | null) {

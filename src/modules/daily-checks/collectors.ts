@@ -14,6 +14,7 @@ import { redactString } from "@/lib/log-redaction";
 import { komainuRecords, minsSince, pick, pickNumber, stillListed } from "@/modules/alerting/evaluators/source";
 import { londonParts } from "@/modules/alerting/calendar";
 import type { ExceptionRow } from "@/modules/daily-checks/enforcement";
+import { absDiff, dec } from "@/lib/decimal";
 
 export interface Collected {
   available: boolean;
@@ -223,7 +224,7 @@ export const COLLECTORS: Record<string, Collector> = {
     });
     // TODO(CONFIRM-STAKING-EXCLUSION): how staking exclusions are marked; known exceptions with a staking reason for now.
     const staking = rows.filter((r) => r.isKnownException && /stak/i.test(r.exceptionReason));
-    const unscreenable = rows.filter((r) => !staking.includes(r) && (r.amount === 0 || !r.txHash));
+    const unscreenable = rows.filter((r) => !staking.includes(r) && (dec(r.amount).isZero() || !r.txHash));
     const screened = rows.filter((r) => !staking.includes(r) && !unscreenable.includes(r) && r.screeningStatus === "completed");
     return {
       available: true, recordCount: screened.length, dataAsOf: now.toISOString(), source: "Screening module",
@@ -252,8 +253,9 @@ export const COLLECTORS: Record<string, Collector> = {
     const asOf = await heartbeatAsOf("komainu_api.eod_balances");
     if (!asOf) return unavailable("No successful EOD balance poll yet");
     const wallets = await prisma.stakingWallet.findMany({ where: { status: "active", isTestWallet: false } });
-    const variances = wallets.filter((w) => w.onChainBalance != null && w.platformBalance != null && w.platformBalance !== 0 &&
-      Math.abs(w.onChainBalance - w.platformBalance) / Math.abs(w.platformBalance) > w.varianceThreshold);
+    // varianceThreshold is an absolute quantity in the wallet's asset (as in the staking module), compared exactly.
+    const variances = wallets.filter((w) => w.onChainBalance != null && w.platformBalance != null &&
+      absDiff(w.onChainBalance, w.platformBalance).gt(w.varianceThreshold));
     const since = new Date(asOf.getTime() - 36 * 3_600_000);
     const balances = await komainuRecords("eod_balance", { lastSeenAt: { gte: since } });
     // TODO(CONFIRM-KOMAINU-OPENAPI): staked and total balance field names.
@@ -266,7 +268,7 @@ export const COLLECTORS: Record<string, Collector> = {
       available: true, recordCount: wallets.length, dataAsOf: asOf.toISOString(), source: "Komainu API EOD balances and staking wallets",
       fields: { variancesCount: variances.length, positionViolations: violations.length },
       exceptions: [
-        ...variances.map((w) => ({ summary: `${w.asset} staking variance above ${w.varianceThreshold * 100}%`, reference: redactRef(w.walletAddress) })),
+        ...variances.map((w) => ({ summary: `${w.asset} staking variance above ${dec(w.varianceThreshold).toFixed()} ${w.asset}`, reference: redactRef(w.walletAddress) })),
         ...violations.map((b) => ({ summary: `${pick(b, "asset") ?? "Asset"}: staked balance exceeds total (position check)`, reference: redactRef(b.externalId) })),
       ],
       suppressed: [],

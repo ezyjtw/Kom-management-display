@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { Lock, AlertTriangle, ExternalLink } from "lucide-react";
+import { formatUsd } from "@/lib/decimal";
 
 interface KpsCase {
   id: string;
@@ -11,7 +12,7 @@ interface KpsCase {
   ticketKey: string | null;
   ticketUrl: string | null;
   state: string;
-  exposureUsd: number | null;
+  exposureUsd: string | null;
   clockStartedAt: string;
   riskcoThresholdAlert: boolean;
 }
@@ -42,7 +43,7 @@ export default function KpsPage() {
               <td className="px-4 py-2">{c.title}</td>
               <td className="text-xs">{c.ticketUrl ? <a href={c.ticketUrl} target="_blank" rel="noreferrer" className="text-primary inline-flex items-center gap-1">{c.ticketKey} <ExternalLink size={10} /></a> : c.ticketKey ?? "—"}</td>
               <td className="text-xs">{c.state}</td>
-              <td className="text-xs">{c.exposureUsd?.toLocaleString() ?? "—"}</td>
+              <td className="text-xs">{formatUsd(c.exposureUsd)}</td>
               <td className="text-xs">{new Date(c.clockStartedAt).toLocaleDateString()}</td>
               <td className="text-xs">{c.riskcoThresholdAlert && <span className="text-red-400">Above RiskCo threshold, no approval link</span>}</td>
             </tr>

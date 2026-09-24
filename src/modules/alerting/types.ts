@@ -1,4 +1,5 @@
 import type { AlertSeverity, WorkItemKind } from "@prisma/client";
+import type { DecimalValue } from "@/lib/decimal";
 
 /** Spec §11.1: what an evaluator returns for each condition that currently holds. */
 export interface AlertCandidate {
@@ -10,7 +11,7 @@ export interface AlertCandidate {
   workItemId?: string;
   /** Otherwise the engine creates an alert WorkItem from this seed. */
   workItemSeed?: { kind?: WorkItemKind; team?: string; taskCode?: string; clientId?: string | null; priority?: string };
-  exposureUsd?: number;
+  exposureUsd?: DecimalValue | null;
   priority?: string;
 }
 

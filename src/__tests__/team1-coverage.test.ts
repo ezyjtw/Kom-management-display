@@ -83,7 +83,7 @@ describe("CHK-10 settlement matching view", () => {
     await add("workItem", { id: "wi-oes", kind: "oes_settlement", title: "Settlement failed", taskCode: "OES", sourceSystem: "alert", sourceId: "x", ticketKey: "TOPS-9", ticketSystem: "jira", exposureUsd: 250000, clockStartedAt: new Date() });
     await add("alert", { type: "ALR-OES-06", ruleCode: "ALR-OES-06", dedupeKey: "s-1", message: "EOD", severity: "critical", workItemId: "wi-oes" });
     const row = (await buildSettlementView("2026-09-23", new Date("2026-09-23T17:00:00Z"))).rows[0];
-    expect(row.exposure).toEqual({ workItemId: "wi-oes", exposureUsd: 250000, band: null });
+    expect(row.exposure).toEqual({ workItemId: "wi-oes", exposureUsd: "250000.00", band: null });
 
     const writeUp = { resolutionNote: "Exchange settled the next morning.", rootCause: "vendor_issue", riskScore: "Low" };
     const item = await p().workItem.findUnique({ where: { id: "wi-oes" } });

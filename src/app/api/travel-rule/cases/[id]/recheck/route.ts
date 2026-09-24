@@ -13,6 +13,7 @@ import type { NotabeneTransfer, TravelRuleMatchStatus } from "@/types";
 import { apiSuccess, apiValidationError, apiNotFoundError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { z } from "zod";
+import { absDiff, dec, type DecimalValue } from "@/lib/decimal";
 
 const recheckParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -186,7 +187,7 @@ function findMatchForCase(
   travelCase: {
     txHash: string;
     asset: string;
-    amount: number;
+    amount: DecimalValue;
     senderAddress: string;
     receiverAddress: string;
   },
@@ -207,8 +208,14 @@ function findMatchForCase(
     const tAsset = (t.transactionAsset || "").toUpperCase();
     if (tAsset !== travelCase.asset.toUpperCase()) continue;
 
-    const tAmount = parseFloat(t.transactionAmount) || 0;
-    if (Math.abs(tAmount - travelCase.amount) > 0.0001) continue;
+    // Same 0.0001 tolerance as before, compared exactly (no float arithmetic).
+    let tAmount: DecimalValue;
+    try {
+      tAmount = dec(t.transactionAmount || 0);
+    } catch {
+      continue;
+    }
+    if (absDiff(tAmount, travelCase.amount).gt("0.0001")) continue;
 
     const addresses = new Set<string>();
     if (t.originator?.accountNumber) {

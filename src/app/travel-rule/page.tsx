@@ -91,7 +91,7 @@ export default function TravelRulePage() {
         txHash: row.txHash,
         direction: row.direction,
         asset: row.asset,
-        amount: row.amount,
+        amount: String(row.amount),
         senderAddress: row.senderAddress,
         receiverAddress: row.receiverAddress,
         matchStatus: row.matchStatus,

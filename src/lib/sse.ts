@@ -215,7 +215,7 @@ export function emitHighRiskTransaction(data: {
   confirmationId: string;
   transactionId: string;
   asset: string;
-  amount: number;
+  amount: string;
   riskLevel: string;
 }): void {
   sendToRoles(["admin", "lead"], {
@@ -270,7 +270,7 @@ export function emitSettlementUpdate(data: {
   status: string;
   venue: string;
   asset: string;
-  amount: number;
+  amount: string;
 }): void {
   sendToRoles(["admin", "lead"], {
     type: "settlement_update",

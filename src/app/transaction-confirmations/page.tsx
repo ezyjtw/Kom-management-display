@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { RefreshCw, Shield, ShieldCheck, ShieldAlert, Clock, UserCheck, XCircle, ArrowUpRight, StickyNote, Link2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { formatAmount } from "@/lib/decimal";
 
 interface Confirmation {
   id: string;
@@ -10,7 +11,7 @@ interface Confirmation {
   requestId: string | null;
   riskLevel: string;
   asset: string;
-  amount: number;
+  amount: string;
   direction: string;
   account: string;
   workspace: string;
@@ -159,7 +160,7 @@ export default function TransactionConfirmationsPage() {
                   </div>
                   <div className="mt-2 font-mono text-sm text-foreground truncate">{c.transactionId}</div>
                   <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
-                    <span><strong>{c.asset}</strong> {c.amount.toLocaleString()}</span>
+                    <span><strong>{c.asset}</strong> {formatAmount(c.amount, 18)}</span>
                     <span className="flex items-center gap-1">
                       <ArrowUpRight size={12} className={c.direction === "OUT" ? "text-red-400" : "text-emerald-400"} />
                       {c.direction}

@@ -5,6 +5,7 @@ import { requireAuthorization } from "@/modules/auth/services/authorization";
 import { apiSuccess, apiValidationError, handleApiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createStakingWalletSchema, updateStakingPatchSchema } from "@/lib/validation";
+import { absDiff } from "@/lib/decimal";
 
 function computeRewardHealth(wallet: { expectedNextRewardAt: Date | null; lastRewardAt: Date | null }): string {
   if (!wallet.expectedNextRewardAt) return "no_data";
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       try { tags = typeof w.tags === "string" ? JSON.parse(w.tags) : (w.tags as string[] ?? []); } catch { /* */ }
       const rewardHealth = computeRewardHealth(w);
       const varianceFlag = w.onChainBalance != null && w.platformBalance != null
-        ? Math.abs(w.onChainBalance - w.platformBalance) > w.varianceThreshold
+        ? absDiff(w.onChainBalance, w.platformBalance).gt(w.varianceThreshold)
         : false;
 
       return { ...w, tags, rewardHealth, varianceFlag };

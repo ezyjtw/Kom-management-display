@@ -17,12 +17,13 @@ import {
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 import type { TransactionRiskLevel } from "@prisma/client";
+import { formatAmount, type DecimalValue } from "@/lib/decimal";
 
 export interface TransactionForConfirmation {
   transactionId: string;
   requestId?: string;
   asset: string;
-  amount: number;
+  amount: DecimalValue;
   direction: string;
   account?: string;
   workspace?: string;
@@ -82,7 +83,7 @@ export async function createTransactionConfirmation(
       "",
       `*Transaction:* \`${tx.transactionId}\``,
       `*Asset:* ${tx.asset}`,
-      `*Amount:* ${tx.amount.toLocaleString()}`,
+      `*Amount:* ${formatAmount(tx.amount, 18)}`,
       `*Direction:* ${tx.direction}`,
       tx.account ? `*Account:* ${tx.account}` : "",
       "",
@@ -260,7 +261,7 @@ async function escalateConfirmation(confirmationId: string, reason: string): Pro
   const complianceChannel = env("SLACK_COMPLIANCE_CHANNEL") || "#compliance-alerts";
   await sendSlackNotification(
     complianceChannel,
-    `*Transaction awaiting action in GX has been escalated*\n\nTransaction \`${confirmation.transactionId}\`\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${confirmation.amount.toLocaleString()}`,
+    `*Transaction awaiting action in GX has been escalated*\n\nTransaction \`${confirmation.transactionId}\`\n*Reason:* ${reason}\n*Asset:* ${confirmation.asset}\n*Amount:* ${formatAmount(confirmation.amount, 18)}`,
   ).catch(() => {});
 
   await prisma.auditLog.create({

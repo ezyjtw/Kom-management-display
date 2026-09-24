@@ -26,9 +26,9 @@ export interface UsdcRampTicket {
   clientName: string;
   clientAccount: string;
   direction: RampDirection;
-  amount: number;
+  amount: string;
   fiatCurrency: string;
-  fiatAmount: number | null;
+  fiatAmount: string | null;
   status: string; // OnrampStatus | OfframpStatus
   bankReference: string;
   instructionRef: string;

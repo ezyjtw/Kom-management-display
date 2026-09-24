@@ -6,12 +6,13 @@
 import nodemailer from "nodemailer";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
+import { formatAmount, type DecimalValue } from "@/lib/decimal";
 
 interface ConfirmationEmailData {
   to: string[];
   transactionId: string;
   asset: string;
-  amount: number;
+  amount: DecimalValue;
   direction: string;
   riskLevel: string;
   account: string;
@@ -62,7 +63,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
           </tr>
           <tr>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:bold;">Amount</td>
-            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${data.amount.toLocaleString()}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${formatAmount(data.amount, 18)}</td>
           </tr>
           <tr>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:bold;">Direction</td>
@@ -91,7 +92,7 @@ export async function sendConfirmationEmail(data: ConfirmationEmailData): Promis
     </div>
   `;
 
-  const subject = `[${data.riskLevel.toUpperCase()}] Awaiting action in GX: ${data.asset} ${data.amount.toLocaleString()} ${data.direction}`;
+  const subject = `[${data.riskLevel.toUpperCase()}] Awaiting action in GX: ${data.asset} ${formatAmount(data.amount, 18)} ${data.direction}`;
 
   try {
     await transporter.sendMail({

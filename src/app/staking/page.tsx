@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { RefreshCw, AlertTriangle, Plus, Layers, X } from "lucide-react";
 import { RewardHealthBadge } from "@/components/shared/StatusBadge";
 import type { StakingWalletEntry } from "@/types";
+import { dec, formatAmount } from "@/lib/decimal";
 
 interface StakingData {
   wallets: StakingWalletEntry[];
@@ -47,7 +48,7 @@ export default function StakingPage() {
       asset: form.get("asset"),
       rewardModel: form.get("rewardModel"),
       clientName: form.get("clientName"),
-      stakedAmount: parseFloat(form.get("stakedAmount") as string) || 0,
+      stakedAmount: String(form.get("stakedAmount") || "0").trim(),
       validator: form.get("validator"),
       isColdStaking: form.get("isColdStaking") === "on",
     };
@@ -141,7 +142,7 @@ export default function StakingPage() {
                 <td className="px-4 py-3 font-medium">{w.asset}</td>
                 <td className="px-4 py-3 text-muted-foreground">{w.clientName || "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs truncate max-w-[160px]">{w.walletAddress}</td>
-                <td className="px-4 py-3">{w.stakedAmount.toLocaleString()}</td>
+                <td className="px-4 py-3">{formatAmount(w.stakedAmount, 8)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{w.rewardModel}</td>
                 <td className="px-4 py-3"><RewardHealthBadge status={w.rewardHealth} /></td>
                 <td className="px-4 py-3">
@@ -153,7 +154,7 @@ export default function StakingPage() {
                   <td className="px-4 py-3">
                     {w.onChainBalance != null && w.platformBalance != null ? (
                       <span className={w.varianceFlag ? "text-red-400 font-medium" : "text-muted-foreground"}>
-                        {(w.onChainBalance - w.platformBalance).toFixed(4)}
+                        {formatAmount(dec(w.onChainBalance).minus(dec(w.platformBalance)), 8)}
                       </span>
                     ) : "—"}
                   </td>

@@ -6,6 +6,7 @@ import { apiSuccess, apiValidationError, apiNotFoundError, apiForbiddenError, ha
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody, createUsdcRampSchema, updateUsdcRampSchema } from "@/lib/validation";
 import { featureGate } from "@/lib/feature-gate";
+import { sum } from "@/lib/decimal";
 
 /**
  * GET /api/usdc-ramp
@@ -70,8 +71,8 @@ export async function GET(request: NextRequest) {
       ).length,
       completed: completed.length,
       feeBufferLow: tickets.some((t) => t.feeBufferLow),
-      totalOnrampVolume: completed.filter((t) => t.direction === "onramp").reduce((s, t) => s + t.amount, 0),
-      totalOfframpVolume: completed.filter((t) => t.direction === "offramp").reduce((s, t) => s + t.amount, 0),
+      totalOnrampVolume: sum(completed.filter((t) => t.direction === "onramp").map((t) => t.amount)).toFixed(),
+      totalOfframpVolume: sum(completed.filter((t) => t.direction === "offramp").map((t) => t.amount)).toFixed(),
     };
 
     const enriched = tickets.map((t) => ({
