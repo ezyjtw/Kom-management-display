@@ -7,6 +7,15 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
+  // Mark the database as holding synthetic demo data. A production-tier start
+  // refuses a database with this marker (start.sh, scripts/go-live-check.ts):
+  // going live means a fresh database, never a promoted demo one.
+  await prisma.appSetting.upsert({
+    where: { key: "system.dataOrigin" },
+    update: {},
+    create: { key: "system.dataOrigin", value: { origin: "demo_seed", seededAt: new Date().toISOString() } },
+  });
+
   // Create employees (upsert to be idempotent)
   // Transaction Operations has 3 sub-teams, each with a lead and juniors
   // Locations: London (EMEA), Hong Kong (APAC), Jersey (EMEA)

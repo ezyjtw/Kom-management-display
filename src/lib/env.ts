@@ -99,6 +99,8 @@ const envSchema = z.object({
 
   // Build metadata
   GIT_COMMIT_SHA: z.string().optional(),
+  // Deployment tier (src/lib/deployment-tier.ts): production | demo | development
+  KOM_ENVIRONMENT: z.enum(["production", "demo", "development"]).optional(),
   // Which workload this process is (web | worker), recorded with credential use (spec §17.7)
   KOM_WORKLOAD: z.enum(["web", "worker"]).optional(),
 

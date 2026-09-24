@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
 import { recordSession, revokeSession } from "@/lib/session-revocation";
 import { recordNonSsoLogin, recordRoleChange } from "@/modules/security/events";
 import { env } from "@/lib/env";
+import { deploymentTier } from "@/lib/deployment-tier";
 import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
 import {
   decideSsoLogin,
@@ -115,6 +116,7 @@ const credentialsProvider = () =>
 
 export interface ProviderConfig {
   NODE_ENV?: string;
+  KOM_ENVIRONMENT?: string;
   ALLOW_LOCAL_LOGIN?: string;
   AZURE_AD_TENANT_ID?: string;
   AZURE_AD_CLIENT_ID?: string;
@@ -137,7 +139,7 @@ export function buildProviders(cfg: ProviderConfig): Provider[] {
       }),
     );
   }
-  if (isLocalLoginAllowed(cfg.NODE_ENV, cfg.ALLOW_LOCAL_LOGIN)) {
+  if (isLocalLoginAllowed(cfg.NODE_ENV, cfg.ALLOW_LOCAL_LOGIN, cfg.KOM_ENVIRONMENT)) {
     providers.push(credentialsProvider());
   }
   return providers;
@@ -182,6 +184,7 @@ async function upsertSsoUser(email: string, name: string, role: "admin" | "lead"
 export const authOptions: NextAuthOptions = {
   providers: buildProviders({
     NODE_ENV: env("NODE_ENV"),
+    KOM_ENVIRONMENT: env("KOM_ENVIRONMENT"),
     ALLOW_LOCAL_LOGIN: env("ALLOW_LOCAL_LOGIN"),
     AZURE_AD_TENANT_ID: env("AZURE_AD_TENANT_ID"),
     AZURE_AD_CLIENT_ID: env("AZURE_AD_CLIENT_ID"),
@@ -192,7 +195,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider !== "azure-ad") {
         // Spec §17.3/§17.7: any production sign-in not through Entra is break-glass or a
         // misconfiguration (production never registers the credentials provider). ALR-SEC-04.
-        if (env("NODE_ENV") === "production") {
+        if (deploymentTier({ NODE_ENV: env("NODE_ENV"), KOM_ENVIRONMENT: env("KOM_ENVIRONMENT") }) === "production") {
           await recordNonSsoLogin({ userId: (user?.id as string | undefined) ?? null, provider: account?.provider ?? "unknown" });
         }
         return true;

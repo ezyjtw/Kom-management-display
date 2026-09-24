@@ -8,6 +8,7 @@ This register covers spec §17.3. Each credential has a named owner and a rotati
 
 - **Production.** Third-party and signing secrets sit in Azure Key Vault. They are mounted as **files on an in-memory tmpfs volume**, one file per key, in `SECRETS_DIR` (default `/mnt/secrets`). They are read once at startup into the validated config (`src/lib/secrets.ts`, `src/lib/env.ts`) and never copied into `process.env`. Do not create Kubernetes `Secret` objects, and do not inject secrets as environment variables. If a secret-bearing environment variable is present, the app refuses to start (it returns 500 on every request and logs the key name, never the value). Test: `no-secrets-in-env-in-production`.
 - **Azure services** (database, Key Vault, storage) use a **user-assigned managed identity per workload** (web and worker separately), not secrets. `DATABASE_URL` holds no password in production (TODO(CONFIRM-DB-IDENTITY)), so it stays an ordinary environment variable, which Prisma and the migration step need.
+- **Demo tier** (`KOM_ENVIRONMENT=demo`, e.g. Railway): secrets may be environment variables, because a hosted demo cannot mount Key Vault files. A demo holds only demo credentials, never live ones (`go-live.md`).
 - **Development.** Leave `SECRETS_DIR` unset and use `.env`, which is in `.gitignore`. `.env.example` holds placeholders only, never a real endpoint (H9).
 - **Detection.** `detect-secrets` runs in CI against a reviewed `.secrets.baseline`, and a new finding fails the build.
 

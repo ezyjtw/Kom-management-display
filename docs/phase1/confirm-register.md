@@ -31,7 +31,7 @@ this file.
 | CONFIRM-NFT-SOURCE | Where pending NFTs are listed | CHK-07 automation | `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-PROJECT-ROLES | Purpose of ITR and RCM for this team | Project config | `prisma/migrations/0026_integrations/migration.sql` |
 | CONFIRM-RISK-SCORE-SCALE | The team's ticket risk score scale | Closure validation | `src/modules/daily-checks/mtd.ts`, `src/modules/settings/registry.ts`, `src/modules/work-items/closure-rules.ts` |
-| CONFIRM-IAI-OWNER | IAI log owner agreement to automated drafts | `iai.drafts.enabled` | `src/lib/feature-flag-defaults.ts`, `src/modules/iai/drafts.ts` |
+| CONFIRM-IAI-OWNER | IAI log owner agreement to automated drafts | `iai.drafts.enabled` | `prisma/seed.js`, `src/lib/feature-flag-defaults.ts`, `src/modules/iai/drafts.ts` |
 | CONFIRM-CHECK-GAPS | Whether TOP checks 14 and 18–20 exist | Coverage sign-off | `docs/phase1/coverage-matrix.md`, `scripts/coverage-matrix.ts`, `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-KPS-THRESHOLD | Current RiskCo realisation threshold (was $1m; an increase was tabled in August) | ALR-KPS-01 | not referenced yet |
 | CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/lib/data-retention.ts` |

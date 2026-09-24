@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { Role } from "@/modules/auth/types";
+import { deploymentTier } from "@/lib/deployment-tier";
 
 const ROLE_PRECEDENCE: Role[] = ["admin", "lead", "employee", "auditor"];
 
@@ -79,8 +80,9 @@ export async function decideSsoLogin(
 }
 
 /** Local username/password login: never in production, and only with ALLOW_LOCAL_LOGIN=true. */
-export function isLocalLoginAllowed(nodeEnv: string | undefined, allowLocalLogin: string | undefined): boolean {
-  return nodeEnv !== "production" && allowLocalLogin === "true";
+export function isLocalLoginAllowed(nodeEnv: string | undefined, allowLocalLogin: string | undefined, komEnvironment?: string): boolean {
+  // Never in the production tier; in demo or development only when explicitly switched on.
+  return deploymentTier({ NODE_ENV: nodeEnv, KOM_ENVIRONMENT: komEnvironment }) !== "production" && allowLocalLogin === "true";
 }
 
 export function isAzureAdConfigured(e: {
