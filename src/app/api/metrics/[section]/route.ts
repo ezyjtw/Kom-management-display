@@ -21,7 +21,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (limited) return limited;
   try {
     const { section } = await params;
-    if (!(section in SECTIONS)) return apiNotFoundError("Metrics section");
+    // Own keys only: `in` would also accept inherited names such as "constructor".
+    if (!Object.hasOwn(SECTIONS, section)) return apiNotFoundError("Metrics section");
     const period = parsePeriod(new URL(request.url).searchParams);
     if (typeof period === "string") return apiValidationError(period);
     return apiSuccess(await SECTIONS[section as SectionName](period));

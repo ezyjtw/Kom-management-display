@@ -6,6 +6,7 @@
 
 import type { GxImpactRule } from "@prisma/client";
 import type { ItemType, ParsedRow } from "@/modules/gx-sprints/parse";
+import { boundedTest, safeRegex } from "@/lib/safe-regex";
 
 export interface Classification {
   qualifies: boolean;
@@ -31,12 +32,9 @@ const PRIORITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const WALLET_TECH = /wallet\s*tech|new wallet technolog/i;
 
+/** Admin-authored patterns run against release-note text: unsafe patterns are ignored (ReDoS). */
 function regex(pattern: string): RegExp | null {
-  try {
-    return new RegExp(pattern, "i");
-  } catch {
-    return null;
-  }
+  return safeRegex(pattern, "i");
 }
 
 function workstreamOf(row: ParsedRow): string {
@@ -47,9 +45,9 @@ function ruleMatches(rule: MappingConfig["rules"][number], row: ParsedRow): bool
   const re = regex(rule.pattern);
   if (!re) return false;
   switch (rule.matchOn) {
-    case "section": return re.test(row.section);
-    case "workstream": return !!workstreamOf(row) && re.test(workstreamOf(row));
-    case "keyword": return re.test(row.text);
+    case "section": return boundedTest(re, row.section);
+    case "workstream": return !!workstreamOf(row) && boundedTest(re, workstreamOf(row));
+    case "keyword": return boundedTest(re, row.text);
     case "jira_project": return row.gxJiraKeys.some((k) => re.test(k.split("-")[0]));
     default: return false;
   }

@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { unsafeRegexReason } from "@/lib/safe-regex";
 
 export const PRIORITY_KEYWORDS_DEFAULT = [
   "urgent", "stuck", "not received", "failed", "withdraw", "settlement", "compromised", "phishing", "unauthorised",
@@ -75,7 +76,7 @@ export const SETTINGS = {
   "scamDust.techProject": { schema: z.string().regex(/^([A-Z][A-Z0-9_]+|)$/), default: "", label: "Tech project for scam/dust false positives" },
   /** Spec §12 CF-22: expected import filename per template (regex with a named group `date`). Missing = uploads refused (CONFIRM-IMPORT-FILENAMES). */
   "imports.filenamePatterns": {
-    schema: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.string().min(3).max(300).refine((v) => { try { return new RegExp(v).source.includes("?<date>"); } catch { return false; } }, "Must be a valid regex with a (?<date>...) group")),
+    schema: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.string().min(3).max(300).refine((v) => !unsafeRegexReason(v) && v.includes("?<date>"), "Must be a valid, safe regex (no nested quantifiers) with a (?<date>...) group")),
     default: {} as Record<string, string>,
     label: "Import filename patterns",
   },

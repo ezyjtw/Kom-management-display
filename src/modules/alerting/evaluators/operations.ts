@@ -11,16 +11,14 @@ import { businessMinutesWith, loadCalendar, londonInstant, londonParts } from "@
 import { periodsFor } from "@/modules/daily-checks/schedule";
 import { fieldsOf, komainuRecords, minsSince, pick, stillListed } from "@/modules/alerting/evaluators/source";
 import { numParam, strListParam, type AlertCandidate, type EvaluatorContext } from "@/modules/alerting/types";
+import { boundedTest, safeRegex, unsafeRegexReason } from "@/lib/safe-regex";
 
 /** ALR-CFG-01: ADMINISTRATION audit events matching the configured patterns (TODO(CONFIRM-AUDIT-EVENTS)). */
 export async function evaluateConfigChange(ctx: EvaluatorContext): Promise<AlertCandidate[]> {
   const patterns = strListParam(ctx.params, "eventPatterns").flatMap((p) => {
-    try {
-      return [new RegExp(p, "i")];
-    } catch {
-      logger.warn("Invalid ALR-CFG-01 pattern ignored", { pattern: p });
-      return [];
-    }
+    const re = safeRegex(p, "i");
+    if (!re) logger.warn("Invalid or unsafe ALR-CFG-01 pattern ignored", { reason: unsafeRegexReason(p, "i") });
+    return re ? [re] : [];
   });
   if (!patterns.length) return [];
   const since = new Date(ctx.now.getTime() - numParam(ctx.params, "lookbackHours", 24) * 3_600_000);
@@ -29,7 +27,7 @@ export async function evaluateConfigChange(ctx: EvaluatorContext): Promise<Alert
     .filter((l) => {
       const f = fieldsOf(l);
       const text = ["event", "action", "type", "event_type", "description"].map((k) => (typeof f[k] === "string" ? f[k] : "")).join(" ");
-      return patterns.some((p) => p.test(text));
+      return patterns.some((p) => boundedTest(p, text));
     })
     .map((l) => ({
       dedupeKey: l.externalId,

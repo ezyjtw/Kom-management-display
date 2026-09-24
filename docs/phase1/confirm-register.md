@@ -108,4 +108,4 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-TR-RECON-EXPORT | `src/__tests__/imports.test.ts`, `src/modules/imports/templates.ts` |
 | CONFIRM-VND-HOURS | `src/modules/alerting/catalogue.ts`, `src/modules/alerting/evaluators/operations.ts`, `src/modules/daily-checks/collectors.ts` |
 | CONFIRM-VULN-THRESHOLD | `.github/workflows/ci.yml` |
-| CONFIRM-WIZ-CI | `.github/workflows/ci.yml`, `docs/phase1/threat-model.md` |
+| CONFIRM-WIZ-CI | `.github/workflows/ci.yml`, `docs/phase1/security-scan-2026-09.md`, `docs/phase1/threat-model.md` |

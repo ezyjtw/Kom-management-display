@@ -19,6 +19,7 @@ import { apiNotFoundError, apiSuccess, apiValidationError, handleApiError } from
 import { checkRateLimit, RATE_LIMIT_PRESETS } from "@/lib/api/rate-limit-middleware";
 import { validateBody } from "@/lib/validation";
 import { auditActor } from "@/modules/core-data/audit-actor";
+import { unsafeRegexReason } from "@/lib/safe-regex";
 
 const teamConfig = z.object({
   team: z.enum(["Team 1", "Team 2", "Team 3"]),
@@ -61,7 +62,7 @@ const gxImpactRule = z.object({
   id: z.string().min(1).max(100).optional(),
   name: z.string().trim().min(2).max(100),
   matchOn: z.enum(["section", "workstream", "keyword", "jira_project"]),
-  pattern: z.string().min(1).max(300).refine((p) => { try { new RegExp(p, "i"); return true; } catch { return false; } }, "Not a valid regular expression"),
+  pattern: z.string().min(1).max(300).superRefine((p, ctx) => { const reason = unsafeRegexReason(p, "i"); if (reason) ctx.addIssue({ code: "custom", message: reason }); }),
   taskCodes: codeList,
   alertCodes: codeList,
   controls: codeList,

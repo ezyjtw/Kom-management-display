@@ -4,48 +4,8 @@
   "_reviewedBy": "Engineering (Next.js 15 upgrade); owner to confirm",
   "_history": [
     "2026-09-24: GHSA-9g9p-9gw9-jx7f and GHSA-h25m-26qc-wcjf (next) resolved by upgrading Next.js 14.2.35 -> 15.5.26 (Maintenance LTS); both entries removed.",
-    "2026-09-24: axios, form-data, nanoid, qs fixed by npm audit fix; nodemailer 7 -> 10."
+    "2026-09-24: axios, form-data, nanoid, qs fixed by npm audit fix; nodemailer 7 -> 10.",
+    "2026-09-24: postcss GHSA-qx2v-qp2m-jg93 and GHSA-6g55-p6wh-862q (next's bundled postcss 8.4.31) resolved without a Next.js major upgrade: package.json overrides next -> postcss $postcss (8.5.28); both entries removed. Found by the Phase 12 local Trivy scan."
   ],
-  "accepted": [
-    {
-      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
-      "severity": "high",
-      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
-      "acceptedAt": "2026-09-24",
-      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
-      "reviewDate": "2026-12-24",
-      "advisory": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
-      "title": "PostCSS XSS via unescaped </style> in CSS stringify output"
-    },
-    {
-      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
-      "severity": "high",
-      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
-      "acceptedAt": "2026-09-24",
-      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
-      "reviewDate": "2026-12-24",
-      "advisory": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
-      "title": "PostCSS arbitrary file read via attacker-controlled sourceMappingURL"
-    },
-    {
-      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
-      "severity": "high",
-      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
-      "acceptedAt": "2026-09-24",
-      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
-      "reviewDate": "2026-12-24",
-      "advisory": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
-      "title": "PostCSS incomplete fix of GHSA-6g55-p6wh-862q"
-    },
-    {
-      "package": "postcss (bundled in next@15.5.26 as next/node_modules/postcss)",
-      "severity": "high",
-      "mitigation": "PostCSS runs only at build time, on the application's own CSS (Tailwind); no attacker-controlled CSS or source maps are processed and PostCSS is not reachable at runtime. The fix requires next@16 (major).",
-      "acceptedAt": "2026-09-24",
-      "fixAvailable": "next@16.x (breaking change; planned after the Next.js 15 upgrade)",
-      "reviewDate": "2026-12-24",
-      "advisory": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
-      "title": "PostCSS path traversal in previous source map auto-loading"
-    }
-  ]
+  "accepted": []
 }

@@ -92,7 +92,8 @@ export function sanitizeEmail(input: string): string {
 
   // Basic email format validation
   const emailRegex = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
-  if (!emailRegex.test(cleaned) || cleaned.length > 255) {
+  // Length first: never run the pattern on unbounded input.
+  if (cleaned.length > 255 || !emailRegex.test(cleaned)) {
     return "";
   }
 

@@ -10,6 +10,7 @@
  */
 
 import { getSetting } from "@/modules/settings/settings";
+import { safeRegex, unsafeRegexReason } from "@/lib/safe-regex";
 
 export interface ImportTemplate {
   id: string;
@@ -47,12 +48,8 @@ export async function filenameIssues(templateId: string, filename: string, dataD
   const patterns = await getSetting("imports.filenamePatterns");
   const source = patterns[templateId];
   if (!source) return [`No expected filename pattern is configured for "${templateId}" (CONFIRM-IMPORT-FILENAMES). The file was not imported.`];
-  let re: RegExp;
-  try {
-    re = new RegExp(source);
-  } catch {
-    return [`The filename pattern for "${templateId}" is not a valid regular expression.`];
-  }
+  const re = safeRegex(source);
+  if (!re) return [`The filename pattern for "${templateId}" is not usable: ${unsafeRegexReason(source)}.`];
   const base = filename.split(/[\\/]/).pop() ?? filename;
   const m = re.exec(base);
   if (!m) return [`File name "${base}" does not match the expected pattern for ${templateId}. The file was not imported.`];

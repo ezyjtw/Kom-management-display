@@ -308,8 +308,8 @@ export const COLLECTORS: Record<string, Collector> = {
 export async function collectForItem(itemId: string, now = new Date()): Promise<Collected | null> {
   const item = await prisma.dailyCheckItem.findUnique({ where: { id: itemId }, include: { definition: true } });
   if (!item?.definitionCode) return null;
+  if (!Object.hasOwn(COLLECTORS, item.definitionCode)) return null;
   const collector = COLLECTORS[item.definitionCode];
-  if (!collector) return null;
   const spec = (item.definition?.evidenceSpec ?? {}) as Record<string, unknown>;
   let result: Collected;
   try {

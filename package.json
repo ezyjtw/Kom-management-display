@@ -82,6 +82,9 @@
     },
     "next-auth": {
       "nodemailer": "$nodemailer"
+    },
+    "next": {
+      "postcss": "$postcss"
     }
   },
   "devDependencies": {

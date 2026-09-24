@@ -76,7 +76,7 @@ export function buildHtmlEmail(params: SendTravelRuleEmailParams): string {
       ${travelCase.txHash ? `<tr><th>Transaction Hash</th><td>${escapeHtml(travelCase.txHash)}</td></tr>` : ""}
       <tr>
         <th>Direction</th>
-        <td>${travelCase.direction === "IN" ? "Inbound" : travelCase.direction === "OUT" ? "Outbound" : travelCase.direction}</td>
+        <td>${travelCase.direction === "IN" ? "Inbound" : travelCase.direction === "OUT" ? "Outbound" : escapeHtml(travelCase.direction)}</td>
       </tr>
       <tr>
         <th>Asset</th>
