@@ -21,7 +21,7 @@ p.\$connect().then(() => { p.\$disconnect(); process.exit(0); }).catch(() => pro
 done
 
 # Run migrations unless explicitly skipped (e.g. SKIP_MIGRATIONS=true)
-if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then
+if [ "${NODE_ENV}" = "production" ] && [ "${SKIP_MIGRATIONS}" != "true" ]; then  # production builds (production and demo tiers): fail fast
   echo "Running database migrations (production — fail-fast)..."
 
   # Auto-resolve previously failed migrations (P3009).
@@ -54,18 +54,44 @@ else
   echo "Skipping migrations (SKIP_MIGRATIONS=true)"
 fi
 
-# Never seed production. Elsewhere, seed only with explicit opt-in (ALLOW_SEED=true).
-if [ "${NODE_ENV}" = "production" ]; then
+# Deployment tier (src/lib/deployment-tier.ts): a production build is the
+# production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly.
+TIER="development"
+if [ "${KOM_ENVIRONMENT}" = "demo" ]; then
+  TIER="demo"
+elif [ "${KOM_ENVIRONMENT}" = "production" ] || [ "${NODE_ENV}" = "production" ]; then
+  TIER="production"
+fi
+echo "Deployment tier: ${TIER}"
+
+if [ "${TIER}" = "production" ]; then
+  # Never seed production, and never go live on a database that holds demo data:
+  # going live means a fresh database (docs/phase1/go-live.md).
   echo "Skipping seed (never seeds in production)"
+  DEMO_MARKER=$(node -e "
+    const { PrismaClient } = require('@prisma/client');
+    const p = new PrismaClient();
+    p.appSetting.findUnique({ where: { key: 'system.dataOrigin' } })
+      .then(r => { if (r) console.log('present'); return p.\$disconnect(); })
+      .catch(e => { console.log('error:' + e.message); return p.\$disconnect(); });
+  " 2>/dev/null)
+  if [ "${DEMO_MARKER}" = "present" ]; then
+    echo "FATAL: this database holds demo (seeded) data and the tier is production."
+    echo "Go live on a fresh database; see docs/phase1/go-live.md. Aborting startup."
+    exit 1
+  fi
+  case "${DEMO_MARKER}" in
+    error:*) echo "FATAL: could not check the database for demo data (${DEMO_MARKER#error:}). Aborting startup."; exit 1 ;;
+  esac
 elif [ "${ALLOW_SEED}" = "true" ]; then
-  echo "Seeding database (idempotent — safe to re-run)..."
+  echo "Seeding database with synthetic demo data (idempotent - safe to re-run)..."
   if node prisma/seed.js 2>&1; then
     echo "Seed completed successfully."
   else
     echo "WARNING: Seed script failed. Check logs above for details."
   fi
 else
-  echo "Skipping seed (set ALLOW_SEED=true outside production to seed)"
+  echo "Skipping seed (set ALLOW_SEED=true in the demo or development tier to seed)"
 fi
 
 # Normalize NEXTAUTH_URL: prepend https:// if set but missing a protocol

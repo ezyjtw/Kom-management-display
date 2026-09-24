@@ -4,6 +4,7 @@ import { SessionProvider } from "@/components/shared/SessionProvider";
 import { AppShell } from "@/components/shared/AppShell";
 import { CsrfFetch } from "@/components/shared/CsrfFetch";
 import { headers } from "next/headers";
+import { deploymentTier } from "@/lib/deployment-tier";
 
 // Validate environment variables at startup — fails fast on misconfiguration in production
 import "@/lib/env";
@@ -30,6 +31,11 @@ export default async function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen bg-background text-foreground antialiased" data-nonce-present={nonce ? "true" : undefined}>
         <CsrfFetch />
+        {deploymentTier() === "demo" && (
+          <div role="status" data-testid="demo-banner" className="sticky top-0 z-[100] w-full bg-amber-500 px-4 py-1 text-center text-xs font-semibold text-black">
+            DEMO environment: synthetic data only. Not connected to live systems; do not enter real client information.
+          </div>
+        )}
         <SessionProvider>
           <AppShell>{children}</AppShell>
         </SessionProvider>

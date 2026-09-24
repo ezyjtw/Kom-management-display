@@ -64,9 +64,11 @@ describe("deployment wiring", () => {
     expect(fs.existsSync(path.join(root, "Procfile"))).toBe(false);
   });
 
-  it("start.sh never seeds production and otherwise requires ALLOW_SEED=true", () => {
+  it("start.sh never seeds the production tier and otherwise requires ALLOW_SEED=true", () => {
     const sh = read("start.sh");
-    expect(sh).toMatch(/if \[ "\$\{NODE_ENV\}" = "production" \]; then\n\s*echo "Skipping seed/);
+    // A production build is the production tier unless KOM_ENVIRONMENT=demo (Phase 12j).
+    expect(sh).toMatch(/elif \[ "\$\{KOM_ENVIRONMENT\}" = "production" \] \|\| \[ "\$\{NODE_ENV\}" = "production" \]; then\n\s*TIER="production"/);
+    expect(sh).toMatch(/if \[ "\$\{TIER\}" = "production" \]; then\n[^\n]*\n[^\n]*\n\s*echo "Skipping seed \(never seeds in production\)"/);
     expect(sh).toMatch(/elif \[ "\$\{ALLOW_SEED\}" = "true" \]; then\n[\s\S]*node prisma\/seed\.js/);
   });
 });

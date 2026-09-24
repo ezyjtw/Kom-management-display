@@ -136,6 +136,7 @@ Every mutation route is classified in `src/lib/api/audit-policy.ts`:
 | Origin/Referer plus double-submit token for CSRF, rather than a synchroniser token | Stateless and works across replicas; the token is per browser, not per form. | `SameSite=Strict` host-only cookie, constant-time compare, Origin required in production. | Accepted |
 | Middleware runs on the Node.js runtime, not Edge | Needed to read secrets through the file loader. | None needed. | Accepted |
 | Amount inputs still accept JSON numbers | Backward compatibility for existing forms. | Stored as Decimal(38,18) or Decimal(20,2); strings are preferred. | Numbers are refused from **2027-03-31** (enforced by test `amount-number-input-sunset`) |
+| Demo tier (`KOM_ENVIRONMENT=demo`) takes secrets from environment variables and may allow local login and seeding | A hosted demo on synthetic data (Railway) cannot mount Key Vault files, and the owner wants a demo before the APIs are connected. | Only when named explicitly (a production build defaults to the production tier). Every page shows a DEMO banner. Never connected to live systems (H9). A production-tier start refuses a database carrying the demo marker, and `go-live:check` fails on the demo tier, environment-variable secrets, local login, seeding or seeded identities. | Accepted by the owner, 2026-09-24 (`go-live.md`) |
 | Container image scan uses Trivy, not Wiz | The Wiz CI integration is not wired yet. | Critical and high with a fix available fail the build. | TODO(CONFIRM-WIZ-CI) |
 
 ## 8. Residual risks and future work
