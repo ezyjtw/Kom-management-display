@@ -5,12 +5,15 @@
  *   KOM_ENVIRONMENT=production NODE_ENV=production SECRETS_DIR=/mnt/secrets \
  *     DATABASE_URL=... npx tsx scripts/go-live-check.ts
  *
+ * On Railway, run it in the service (`railway run`) so the Railway variables
+ * and RAILWAY_* host variables are present; SECRETS_DIR is not needed there.
+ *
  * Prints a checklist and exits 1 if any item fails. It reads configuration and
  * the database; it changes nothing.
  */
 import * as fs from "node:fs";
 import { PrismaClient } from "@prisma/client";
-import { deploymentTier, DEMO_DATA_MARKER_KEY } from "@/lib/deployment-tier";
+import { deploymentTier, isRailwayHost, DEMO_DATA_MARKER_KEY } from "@/lib/deployment-tier";
 import { loadSecrets } from "@/lib/secrets";
 import { isAzureAdConfigured, isLocalLoginAllowed } from "@/lib/sso";
 import { FLAG_DEFAULTS } from "@/lib/feature-flag-defaults";
@@ -31,14 +34,16 @@ export function configChecks(env: Env, readSecrets = loadSecrets): Check[] {
 
   const s = readSecrets(env);
   const has = (k: string) => Boolean(s.values[k]);
-  add("Secrets", "Secrets are read from SECRETS_DIR (Key Vault files), not environment variables", s.source === "secrets_dir", `source=${s.source} dir=${s.dir ?? "-"}`);
-  add("Secrets", "No secret-bearing environment variables", s.leakedEnvKeys.length === 0, s.leakedEnvKeys.join(", ") || undefined);
+  // On Railway (a permitted production host since 2026-09-25) secrets are Railway variables; elsewhere Key Vault files.
+  const railway = isRailwayHost(env);
+  add("Secrets", railway ? "Secrets are read from Railway variables (or SECRETS_DIR)" : "Secrets are read from SECRETS_DIR (Key Vault files), not environment variables", s.source === "secrets_dir" || (railway && s.source === "environment"), `source=${s.source} dir=${s.dir ?? "-"}`);
+  add("Secrets", "No secret-bearing environment variables alongside SECRETS_DIR", s.leakedEnvKeys.length === 0, s.leakedEnvKeys.join(", ") || undefined);
   add("Secrets", "NEXTAUTH_SECRET present", has("NEXTAUTH_SECRET"));
 
   const sso = { AZURE_AD_TENANT_ID: env.AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID: env.AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET: s.values.AZURE_AD_CLIENT_SECRET };
   add("Identity", "Entra ID SSO configured", isAzureAdConfigured(sso));
   add("Identity", "ROLE_GROUP_MAP set", Boolean(env.ROLE_GROUP_MAP?.trim()));
-  add("Identity", "Local username/password login is off", !isLocalLoginAllowed(env.NODE_ENV, env.ALLOW_LOCAL_LOGIN, env.KOM_ENVIRONMENT) && env.ALLOW_LOCAL_LOGIN !== "true");
+  add("Identity", "Local username/password login is off", !isLocalLoginAllowed(env.NODE_ENV, env.ALLOW_LOCAL_LOGIN, env.KOM_ENVIRONMENT, railway) && env.ALLOW_LOCAL_LOGIN !== "true");
   add("Identity", "NEXTAUTH_URL is https", (env.NEXTAUTH_URL ?? "").startsWith("https://"));
   add("Data", "Seeding is off (ALLOW_SEED)", env.ALLOW_SEED !== "true");
 

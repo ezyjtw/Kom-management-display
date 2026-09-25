@@ -58,16 +58,11 @@ describe("deployment wiring", () => {
     expect(compose).toMatch(/\n  worker:\n[\s\S]*KOM_WORKLOAD=worker/);
   });
 
-  it("Railway config is out of the default deploy path (H10)", () => {
-    expect(fs.existsSync(path.join(root, "railway.toml"))).toBe(false);
-    expect(fs.existsSync(path.join(root, "railway.json"))).toBe(false);
-    expect(fs.existsSync(path.join(root, "Procfile"))).toBe(false);
-  });
 
   it("start.sh never seeds the production tier and otherwise requires ALLOW_SEED=true (or a demo rebuild)", () => {
     const sh = read("start.sh");
     // A production build is the production tier unless KOM_ENVIRONMENT=demo (Phase 12j).
-    // KOM_ENVIRONMENT=production always wins; Railway with it unset is demo (H10); otherwise a production build is production.
+    // KOM_ENVIRONMENT=production always wins; Railway with it unset is demo; otherwise a production build is production.
     expect(sh).toMatch(/elif \[ "\$\{KOM_ENVIRONMENT\}" = "production" \]; then\n\s*TIER="production"\n\s*elif \[ "\$\{ON_RAILWAY\}" = "true" \]; then\n\s*TIER="demo"\n\s*elif \[ "\$\{NODE_ENV\}" = "production" \]; then\n\s*TIER="production"/);
     expect(sh).toMatch(/if \[ "\$\{TIER\}" = "production" \]; then\n[^\n]*\n[^\n]*\n\s*echo "Skipping seed \(never seeds in production\)"/);
     expect(sh).toMatch(/elif \[ "\$\{ALLOW_SEED\}" = "true" \] \|\| \[ "\$\{FORCE_SEED\}" = "true" \]; then\n[\s\S]*node prisma\/seed\.js/);

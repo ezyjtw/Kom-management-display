@@ -46,7 +46,7 @@ Each has an enforcing test.
 | H7 | **No secrets in code, fixtures, seeds or logs.** Secrets come from mounted files or, outside production, environment variables validated in `src/lib/env.ts`. |
 | H8 | **Redaction.** Wallet addresses, tx hashes, client names, account numbers, IPs and geolocation are redacted in logs. |
 | H9 | **No production targets in development or tests.** Tests use mocks or `custody-demo.example.com`. |
-| H10 | **No platform-specific hosting files** (`railway.json`, `railway.toml`, `Procfile`). |
+| H10 | *Removed by the owner, 2026-09-25.* It barred Railway as a host. Railway may now host production (`KOM_ENVIRONMENT=production`, secrets as Railway variables); see `docs/phase1/go-live.md`. |
 | H11 | **Travel-rule connector disabled by default** (`integration.notabene.enabled=false`). |
 | H12 | **Client-visible content is human-written and client-scoped.** A client-facing request or public comment contains only that client's information, is written or approved by a named person, and is never generated automatically or by AI. Compliance-sensitive categories never create client-visible tickets without a recorded Compliance decision (tipping-off risk). |
 

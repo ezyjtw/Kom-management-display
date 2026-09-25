@@ -22,12 +22,31 @@ describe("deployment tier", () => {
     expect(deploymentTier({ NODE_ENV: "development", KOM_ENVIRONMENT: "production" })).toBe("production");
   });
 
-  it("on Railway an unset tier is demo (Railway is never the production host, H10); production still wins when named", () => {
+  it("on Railway an unset tier is demo; production wins when named (Railway may host production)", () => {
     expect(deploymentTier({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "p1" })).toBe("demo");
     expect(deploymentTier({ NODE_ENV: "production", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("demo");
     expect(deploymentTier({ NODE_ENV: "production", RAILWAY_SERVICE_ID: "s1", KOM_ENVIRONMENT: "production" })).toBe("production");
     expect(deploymentTier({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "  " })).toBe("production");
     expect(loadSecrets({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "p1", NEXTAUTH_SECRET: "x".repeat(32) }).source).toBe("environment");
+  });
+
+  it("production on Railway takes secrets from Railway variables; production elsewhere still requires SECRETS_DIR", () => {
+    const railwayProd = loadSecrets({ NODE_ENV: "production", KOM_ENVIRONMENT: "production", RAILWAY_PROJECT_ID: "p1", NEXTAUTH_SECRET: "x".repeat(32) });
+    expect(railwayProd.source).toBe("environment");
+    expect(railwayProd.values.NEXTAUTH_SECRET).toBe("x".repeat(32));
+    expect(railwayProd.leakedEnvKeys).toEqual([]);
+    const azure = loadSecrets({ NODE_ENV: "production", KOM_ENVIRONMENT: "production", NEXTAUTH_SECRET: "x".repeat(32) });
+    expect(azure.source).toBe("secrets_dir");
+    expect(azure.leakedEnvKeys).toEqual(["NEXTAUTH_SECRET"]);
+  });
+
+  it("the go-live check accepts Railway variables for secrets on Railway, and still refuses local login there", () => {
+    const env = { NODE_ENV: "production", KOM_ENVIRONMENT: "production", RAILWAY_PROJECT_ID: "p1", NEXTAUTH_SECRET: "x".repeat(32) };
+    const checks = configChecks(env);
+    expect(checks.find((c) => c.area === "Tier")!.status).toBe("PASS");
+    expect(checks.find((c) => c.item.startsWith("Secrets are read from"))!.status).toBe("PASS");
+    expect(checks.find((c) => c.item.startsWith("Local username/password login is off"))!.status).toBe("PASS");
+    expect(configChecks({ ...env, ALLOW_LOCAL_LOGIN: "true" }).find((c) => c.item.startsWith("Local username/password login is off"))!.status).toBe("FAIL");
   });
 
   it("the Railway demo allows local login unless switched off; elsewhere it must be switched on", () => {
@@ -93,7 +112,7 @@ describe("go-live check (configuration)", () => {
       "Slack: bot token, signing secret and channels",
     ]));
     const envSecrets = configChecks(liveEnv, () => ({ source: "environment" as const, dir: null, values: liveSecrets, leakedEnvKeys: ["SLACK_BOT_TOKEN"] }));
-    expect(failing(envSecrets)).toEqual(expect.arrayContaining(["Secrets are read from SECRETS_DIR (Key Vault files), not environment variables", "No secret-bearing environment variables"]));
+    expect(failing(envSecrets)).toEqual(expect.arrayContaining(["Secrets are read from SECRETS_DIR (Key Vault files), not environment variables", "No secret-bearing environment variables alongside SECRETS_DIR"]));
     const demoApi = configChecks({ ...liveEnv, CUSTODY_API_BASE_URL: "https://custody-demo.example.com" }, files(liveSecrets));
     expect(failing(demoApi)).toEqual(["Custody API base URL is not a demo, sandbox, staging or test host"]);
   });

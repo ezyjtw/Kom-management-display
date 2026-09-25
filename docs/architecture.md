@@ -244,4 +244,4 @@ The production image runs as a non-root `nextjs` user (UID 1001) and exposes por
 
 ### Azure Deployment
 
-Production runs on the Azure runtime described in `deploy/azure/README.md`. Secrets come from Key Vault, mounted as tmpfs files in `SECRETS_DIR` (never environment variables). Azure services use managed identities. The database is Azure Database for PostgreSQL behind a private endpoint, and the database roles are in `docs/phase1/db-roles.sql`. There is no Railway configuration in the repository (H10).
+Production runs on the Azure runtime described in `deploy/azure/README.md`. Secrets come from Key Vault, mounted as tmpfs files in `SECRETS_DIR` (never environment variables). Azure services use managed identities. The database is Azure Database for PostgreSQL behind a private endpoint, and the database roles are in `docs/phase1/db-roles.sql`. Railway may also host production since 2026-09-25 (secrets as Railway variables; `docs/phase1/go-live.md`). There is no Railway configuration in the repository; its settings live in the Railway dashboard.

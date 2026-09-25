@@ -7,14 +7,17 @@
  * are never copied into process.env.
  *
  * - Production: secrets come only from SECRETS_DIR. A secret-bearing
- *   environment variable is a misconfiguration and fails startup.
+ *   environment variable is a misconfiguration and fails startup. Exception:
+ *   production on Railway (owner decision 2026-09-25, H10 removed), where the
+ *   platform cannot mount files: secrets come from Railway variables, unless
+ *   SECRETS_DIR is set.
  * - Development, test and the demo tier (KOM_ENVIRONMENT=demo): if SECRETS_DIR
  *   is set, the same rule applies; otherwise secrets fall back to environment
  *   variables (src/lib/deployment-tier.ts).
  */
 import * as fs from "fs";
 import * as path from "path";
-import { deploymentTier } from "@/lib/deployment-tier";
+import { deploymentTier, isRailwayHost } from "@/lib/deployment-tier";
 
 export const DEFAULT_SECRETS_DIR = "/mnt/secrets";
 
@@ -91,7 +94,7 @@ export function loadSecrets(processEnv: Env = process.env): SecretSource {
   const production = deploymentTier(processEnv) === "production";
   const configuredDir = processEnv.SECRETS_DIR?.trim() || null;
 
-  if (!production && !configuredDir) {
+  if ((!production || isRailwayHost(processEnv)) && !configuredDir) {
     const values: Record<string, string> = {};
     for (const [k, v] of Object.entries(processEnv)) if (v && isSecretKey(k)) values[k] = v;
     return { source: "environment", dir: null, values, leakedEnvKeys: [] };
