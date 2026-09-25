@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
 import { recordSession, revokeSession } from "@/lib/session-revocation";
 import { recordNonSsoLogin, recordRoleChange } from "@/modules/security/events";
 import { env } from "@/lib/env";
-import { deploymentTier } from "@/lib/deployment-tier";
+import { deploymentTier, isRailwayHost } from "@/lib/deployment-tier";
 import { SESSION_MAX_AGE_SECONDS, sessionCookieName } from "@/lib/session-config";
 import {
   decideSsoLogin,
@@ -139,7 +139,7 @@ export function buildProviders(cfg: ProviderConfig): Provider[] {
       }),
     );
   }
-  if (isLocalLoginAllowed(cfg.NODE_ENV, cfg.ALLOW_LOCAL_LOGIN, cfg.KOM_ENVIRONMENT)) {
+  if (isLocalLoginAllowed(cfg.NODE_ENV, cfg.ALLOW_LOCAL_LOGIN, cfg.KOM_ENVIRONMENT, isRailwayHost(process.env))) {
     providers.push(credentialsProvider());
   }
   return providers;
@@ -195,7 +195,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider !== "azure-ad") {
         // Spec §17.3/§17.7: any production sign-in not through Entra is break-glass or a
         // misconfiguration (production never registers the credentials provider). ALR-SEC-04.
-        if (deploymentTier({ NODE_ENV: env("NODE_ENV"), KOM_ENVIRONMENT: env("KOM_ENVIRONMENT") }) === "production") {
+        if (deploymentTier(process.env) === "production") {
           await recordNonSsoLogin({ userId: (user?.id as string | undefined) ?? null, provider: account?.provider ?? "unknown" });
         }
         return true;

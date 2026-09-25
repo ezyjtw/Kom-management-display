@@ -15,26 +15,28 @@ A production build is the production tier unless `KOM_ENVIRONMENT=demo` is set. 
 
 ## Running the demo (Railway)
 
+Railway is never the production host (H10). The app detects Railway from the variables Railway injects (`RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_NAME`, `RAILWAY_SERVICE_ID`), and with `KOM_ENVIRONMENT` unset it runs as the **demo tier** (Phase 12o). So the demo needs no tier variable.
+
 Set these service variables:
 
 ```
-KOM_ENVIRONMENT=demo
 NEXTAUTH_URL=https://<railway-host>
 NEXTAUTH_SECRET=<random, 32+ characters>
 DATABASE_URL=<the Railway Postgres URL>
-ALLOW_LOCAL_LOGIN=true
 ALLOW_SEED=true
 SEED_ADMIN_PASSWORD=<strong, demo only>
 SEED_USER_PASSWORD=<strong, demo only>
 SEED_LEAD_PASSWORD=<strong, demo only>
 ```
 
+- **Local login:** on by default on the Railway demo (there is no SSO there). Set `ALLOW_LOCAL_LOGIN=false` to turn it off.
+- **Overrides:** `KOM_ENVIRONMENT=demo` also works. `KOM_ENVIRONMENT=production` makes the service strict (and it will refuse to start with environment-variable secrets, as intended).
 - **Health check path:** `/api/health` (public; `/api/health/liveness` also works).
 - **Service name:** rename the Railway service from `production` to `demo`, so nobody mistakes it for the live system.
 - **Integration variables:** leave them unset, or point them at mocks or `custody-demo.example.com`. Never set live credentials on the demo.
-- **What you'll see:** on start, the logs show `Deployment tier: demo` and the seed runs. Sign in with the seeded accounts.
+- **What you'll see:** on start, the logs show `Deployment tier: demo (Railway detected, KOM_ENVIRONMENT unset)` and the seed runs. Sign in with the seeded accounts.
 
-**Upgrading a demo database from before the Phase 12l baseline.** The migration history was consolidated into `0001_baseline`, so a demo database built with the old history cannot take it. On the demo tier, `start.sh` runs `prisma/demo-legacy-reset.cjs` first: if the database has the old history and carries the demo-data marker, it drops and recreates the schema, then migrates and reseeds the same synthetic data. A demo database seeded before the marker existed is refused with a message; set `KOM_DEMO_RESET_LEGACY=true` once, deploy, then remove it. The script never acts outside the demo tier.
+**Upgrading a demo database from before the Phase 12l baseline.** The migration history was consolidated into `0001_baseline`, so a demo database built with the old history cannot take it. On the demo tier, `start.sh` runs `prisma/demo-legacy-reset.cjs` first: if the database has the old history and carries the demo-data marker, it drops and recreates the schema, then migrates and reseeds the same synthetic data. A demo database seeded before the marker existed is refused with a message; set `KOM_DEMO_RESET_LEGACY=true` once, deploy, then remove it. On Railway this opt-in is implied (set `KOM_DEMO_RESET_LEGACY=false` to refuse instead). The script never acts outside the demo tier.
 
 There is no Railway configuration in the repository (H10). The settings above live in the Railway dashboard, and Railway is never the production host.
 

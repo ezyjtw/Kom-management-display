@@ -10,18 +10,28 @@
  *   production APIs or data (H9). Reviewed exception: docs/phase1/threat-model.md.
  * - development: local work and tests.
  *
- * A production build is production unless KOM_ENVIRONMENT=demo says otherwise:
- * it can be relaxed only by naming the demo tier, never by omission.
+ * A production build is production unless KOM_ENVIRONMENT=demo says otherwise,
+ * with one exception: on Railway (detected by the variables Railway injects)
+ * an unset KOM_ENVIRONMENT means demo, because Railway is never the production
+ * host (H10, docs/phase1/go-live.md). KOM_ENVIRONMENT=production still wins.
  * Edge-safe (no Node imports).
  */
 export type DeploymentTier = "production" | "demo" | "development";
 
 type Env = Record<string, string | undefined>;
 
+/** Variables Railway sets on every deployment. */
+export const RAILWAY_HOST_VARS = ["RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_SERVICE_ID"] as const;
+
+export function isRailwayHost(env: Env = process.env): boolean {
+  return RAILWAY_HOST_VARS.some((k) => Boolean(env[k]?.trim()));
+}
+
 export function deploymentTier(env: Env = process.env): DeploymentTier {
   const declared = env.KOM_ENVIRONMENT?.trim().toLowerCase();
   if (declared === "demo") return "demo";
   if (declared === "production") return "production";
+  if (isRailwayHost(env)) return "demo";
   return env.NODE_ENV === "production" ? "production" : "development";
 }
 

@@ -21,14 +21,24 @@ p.\$connect().then(() => { p.\$disconnect(); process.exit(0); }).catch(() => pro
 done
 
 # Deployment tier (src/lib/deployment-tier.ts): a production build is the
-# production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly.
+# production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly,
+# or it runs on Railway with KOM_ENVIRONMENT unset (Railway is never the
+# production host, H10). KOM_ENVIRONMENT=production always wins.
+ON_RAILWAY="false"
+if [ -n "${RAILWAY_PROJECT_ID}" ] || [ -n "${RAILWAY_ENVIRONMENT_NAME}" ] || [ -n "${RAILWAY_SERVICE_ID}" ]; then
+  ON_RAILWAY="true"
+fi
 TIER="development"
 if [ "${KOM_ENVIRONMENT}" = "demo" ]; then
   TIER="demo"
-elif [ "${KOM_ENVIRONMENT}" = "production" ] || [ "${NODE_ENV}" = "production" ]; then
+elif [ "${KOM_ENVIRONMENT}" = "production" ]; then
+  TIER="production"
+elif [ "${ON_RAILWAY}" = "true" ]; then
+  TIER="demo"
+elif [ "${NODE_ENV}" = "production" ]; then
   TIER="production"
 fi
-echo "Deployment tier: ${TIER}"
+echo "Deployment tier: ${TIER}$( [ "${ON_RAILWAY}" = "true" ] && [ -z "${KOM_ENVIRONMENT}" ] && echo " (Railway detected, KOM_ENVIRONMENT unset)")"
 
 # Demo tier only: a demo database built before the Phase 12l baseline is rebuilt
 # and reseeded with the same synthetic data (prisma/demo-legacy-reset.cjs).

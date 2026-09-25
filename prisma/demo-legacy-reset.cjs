@@ -5,23 +5,36 @@
  * recreated, then start.sh migrates and reseeds the same synthetic data.
  *
  * It acts only when all of these hold:
- *   - KOM_ENVIRONMENT=demo (never the production or development tier);
+ *   - the demo tier: KOM_ENVIRONMENT=demo, or Railway with KOM_ENVIRONMENT
+ *     unset (Railway is never the production host, H10);
  *   - _prisma_migrations lists a migration that is not in prisma/migrations;
  *   - the database carries the demo-data marker (AppSetting system.dataOrigin),
  *     or KOM_DEMO_RESET_LEGACY=true is set for a demo database seeded before
- *     the marker existed.
+ *     the marker existed. On Railway this opt-in is implied unless
+ *     KOM_DEMO_RESET_LEGACY=false.
  * Otherwise it changes nothing. Exit codes: 0 nothing to do, 10 reset done,
  * 1 refused or failed (start.sh stops).
  */
 const fs = require("fs");
 const path = require("path");
 
+const RAILWAY_HOST_VARS = ["RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_SERVICE_ID"];
+const onRailway = (env) => RAILWAY_HOST_VARS.some((k) => Boolean(env[k] && String(env[k]).trim()));
+
+/** Same rule as src/lib/deployment-tier.ts. */
+function isDemoTier(env) {
+  const declared = (env.KOM_ENVIRONMENT || "").trim().toLowerCase();
+  if (declared) return declared === "demo";
+  return onRailway(env);
+}
+
 /** Pure decision, unit-tested in src/__tests__/demo-legacy-reset.test.ts. */
 function decide({ env, applied, local, markerPresent }) {
-  if (env.KOM_ENVIRONMENT !== "demo") return { action: "none", reason: "not the demo tier" };
+  if (!isDemoTier(env)) return { action: "none", reason: "not the demo tier" };
   const unknown = applied.filter((name) => !local.includes(name));
   if (unknown.length === 0) return { action: "none", reason: "migration history matches" };
-  if (markerPresent || env.KOM_DEMO_RESET_LEGACY === "true") {
+  const optedIn = env.KOM_DEMO_RESET_LEGACY === "true" || (onRailway(env) && env.KOM_DEMO_RESET_LEGACY !== "false");
+  if (markerPresent || optedIn) {
     return { action: "reset", reason: `${unknown.length} migration(s) from the old history (e.g. ${unknown[0]})` };
   }
   return {
@@ -35,7 +48,7 @@ function localMigrations(dir = path.join(__dirname, "migrations")) {
 }
 
 async function main() {
-  if (process.env.KOM_ENVIRONMENT !== "demo") return 0;
+  if (!isDemoTier(process.env)) return 0;
   const { PrismaClient } = require("@prisma/client");
   const db = new PrismaClient();
   try {
@@ -68,7 +81,7 @@ async function main() {
   }
 }
 
-module.exports = { decide, localMigrations };
+module.exports = { decide, localMigrations, isDemoTier };
 
 if (require.main === module) {
   main().then((code) => process.exit(code)).catch((e) => {
