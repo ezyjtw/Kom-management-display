@@ -8,7 +8,6 @@
  * - sync_slack: Poll Slack channels for new messages
  * - sync_email: Poll IMAP mailboxes for new emails
  * - sync_jira: Poll Jira for issue updates
- * - check_sla: Monitor SLA deadlines and generate alerts
  * - check_staking: Check staking reward heartbeats
  * - poll_custody: Poll Custody API for new transactions/requests
  * - check_confirmations: Check for expired transaction confirmations
@@ -21,10 +20,10 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { CronExpressionParser } from "cron-parser";
+import { effectiveSchedules, type ScheduledJobType } from "@/lib/job-schedules";
 
 export type JobType =
   | "sync_jira"
-  | "check_sla"
   | "check_staking"
   | "check_confirmations"
   | "cleanup_sessions"
@@ -61,8 +60,9 @@ export type JobType =
 /**
  * Recurring job types that were replaced; their stored rows are removed on registration.
  * Spec v2 §6.1: sync_slack_channel merged into sync_slack; graph_mail_sync (every 3 min) is now sync_mail (every 5 min).
+ * check_sla counted breached threads every minute and nothing used the count; SLA alerts come from the alert engine (Phase 12n).
  */
-export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack_channel", "graph_mail_sync"] as const;
+export const RETIRED_JOB_TYPES = ["sync_email", "poll_custody", "sync_slack_channel", "graph_mail_sync", "check_sla"] as const;
 
 /**
  * Job priority levels — lower number = higher priority.
@@ -81,79 +81,70 @@ export interface JobDefinition {
   description: string;
 }
 
+/** Schedules with the admin overrides (setting jobs.schedules) applied. */
+export async function currentSchedules(): Promise<Record<ScheduledJobType, string>> {
+  try {
+    const { getSetting } = await import("@/modules/settings/settings");
+    return effectiveSchedules(await getSetting("jobs.schedules"));
+  } catch {
+    return effectiveSchedules();
+  }
+}
+
+/**
+ * Bring stored recurring jobs in line with the current schedules. One query
+ * when nothing changed; the next run of a changed job is recomputed.
+ */
+export async function syncJobSchedules(now = new Date()): Promise<number> {
+  const schedules = await currentSchedules();
+  const rows = await prisma.backgroundJob.findMany({
+    where: { isRecurring: true, type: { in: Object.keys(schedules) } },
+    select: { id: true, type: true, cronExpression: true, status: true },
+  });
+  let changed = 0;
+  for (const row of rows) {
+    const cron = schedules[row.type as ScheduledJobType];
+    if (!cron || row.cronExpression === cron) continue;
+    await prisma.backgroundJob.update({
+      where: { id: row.id },
+      data: { cronExpression: cron, ...(row.status === "running" ? {} : { nextRunAt: getNextCronRun(cron, now) }) },
+    });
+    logger.job(row.type, `Recurring job cadence updated: ${cron}`);
+    changed++;
+  }
+  return changed;
+}
+
 /**
  * Register default recurring jobs.
  * Call this on application startup to ensure all recurring jobs exist.
  */
 export async function registerDefaultJobs(): Promise<void> {
-  const defaultJobs: Array<{
-    type: string;
-    cronExpression: string;
-    payload?: Record<string, unknown>;
-  }> = [
-    { type: "sync_jira", cronExpression: "*/2 * * * *" },          // spec §8.2: every 2 min, updated >= -5m
-    { type: "check_sla", cronExpression: "*/1 * * * *" },
-    { type: "check_staking", cronExpression: "0 */6 * * *" },
-    { type: "check_confirmations", cronExpression: "*/5 * * * *" },
-    { type: "cleanup_sessions", cronExpression: "0 2 * * *" },
-    // Spec §6.1: every registered Slack channel and shared mailbox, every 5 minutes, 24/7. Never paused out of hours.
-    { type: "sync_slack", cronExpression: "*/5 * * * *" },
-    { type: "sync_mail", cronExpression: "*/5 * * * *" },
-    { type: "custody_poll_requests", cronExpression: "*/1 * * * *" },
-    { type: "custody_poll_transactions", cronExpression: "*/2 * * * *" },
-    // Every 10 min; the per-window 60-second cadence comes with OesWindow in Phase 6.
-    { type: "custody_poll_collateral", cronExpression: "*/10 * * * *" },
-    { type: "custody_poll_audit_logs", cronExpression: "*/5 * * * *" },
-    { type: "custody_poll_eod_balances", cronExpression: "0 7 * * *" },
-    { type: "custody_poll_staking", cronExpression: "30 7 * * *" },
-    { type: "custody_poll_stakes", cronExpression: "45 7 * * *" },
-    { type: "graph_teams_sync", cronExpression: "*/5 * * * *" },
-    { type: "poll_status_pages", cronExpression: "*/10 * * * *" },  // no-op unless module.status_pages
-    { type: "report_unticketed", cronExpression: "TZ=Europe/London 30 8 * * *" }, // spec §10.3: 08:30 UK
-    { type: "reconcile_tickets", cronExpression: "15 * * * *" },   // spec §10.3: hourly
-    { type: "incident_log_overdue", cronExpression: "5 * * * *" },          // spec §10.4
-    { type: "evaluate_alerts", cronExpression: "*/1 * * * *" },    // spec §11.1: every 60 s; rules may declare their own cadence
-    { type: "alert_digest", cronExpression: "TZ=Europe/London 0 8 * * *" }, // spec §11.3: daily digest of medium config rules
-    { type: "poll_risk_signals", cronExpression: "*/1 * * * *" },  // spec §11.4
-    { type: "generate_daily_checks", cronExpression: "*/15 * * * *" }, // spec §12: today's items (idempotent; per-window items as windows open)
-    { type: "collect_check_evidence", cronExpression: "*/10 * * * *" }, // spec §12 (b): automated data pulls
-    { type: "mtd_autoclose", cronExpression: "20 * * * *" },       // spec §12 CHK-02: close the daily OPS MTD ticket
-    { type: "poll_client_ticket_comments", cronExpression: "*/5 * * * *" }, // spec §9.7: client portal comments
-    { type: "platform_sprint_intake", cronExpression: "20 * * * *" }, // spec §16.1: hourly check; full intake on platform.sprint_intake.cron or CHG changes
-    // Retention: runs daily and records its outcome; deletes nothing until retention.enabled is set (CONFIRM-RETENTION).
-    { type: "data_retention", cronExpression: "TZ=Europe/London 0 3 * * *" },
-    { type: "morning_handover", cronExpression: "TZ=Europe/London */15 9-11 * * 1-5" }, // spec §14.3: from 09:00 UK post handovers, retry failed tickets, remind when missing
-  ];
-
   await prisma.backgroundJob.deleteMany({
     where: { type: { in: [...RETIRED_JOB_TYPES] }, isRecurring: true },
   });
 
-  for (const job of defaultJobs) {
+  const schedules = await currentSchedules();
+  for (const [type, cronExpression] of Object.entries(schedules)) {
     const existing = await prisma.backgroundJob.findFirst({
-      where: { type: job.type, isRecurring: true },
+      where: { type, isRecurring: true },
     });
-
-    if (existing && existing.cronExpression !== job.cronExpression) {
-      // A recurring job whose cadence changed (e.g. an older sync_slack row) is brought in line with the code.
-      await prisma.backgroundJob.update({ where: { id: existing.id }, data: { cronExpression: job.cronExpression } });
-      logger.job(job.type, `Recurring job cadence updated: ${job.cronExpression}`);
-    }
-
     if (!existing) {
       await prisma.backgroundJob.create({
         data: {
-          type: job.type,
-          cronExpression: job.cronExpression,
+          type,
+          cronExpression,
           isRecurring: true,
-          payload: (job.payload ?? {}) as Prisma.InputJsonValue,
+          payload: {} as Prisma.InputJsonValue,
           status: "pending",
           nextRunAt: new Date(),
         },
       });
-      logger.job(job.type, `Registered recurring job: ${job.cronExpression}`);
+      logger.job(type, `Registered recurring job: ${cronExpression}`);
     }
   }
+  // A recurring job whose cadence changed (in code or by an admin override) is brought in line.
+  await syncJobSchedules();
 }
 
 /**
@@ -265,6 +256,14 @@ export async function claimNextJob(): Promise<{
   return null;
 }
 
+/** Jobs whose every run, including a skipped one, is kept as evidence. */
+export const RUN_EVIDENCE_JOB_TYPES: ReadonlySet<string> = new Set(["data_retention"]);
+
+/** A handler result that says the run did nothing: `{ skipped: true, ... }`. */
+export function isNoOpResult(result: unknown): boolean {
+  return typeof result === "object" && result !== null && (result as Record<string, unknown>).skipped === true;
+}
+
 /**
  * Mark a job as completed.
  */
@@ -280,9 +279,15 @@ export async function completeJob(jobId: string, result?: unknown): Promise<void
       lastRunAt: now,
     },
   });
-  await prisma.backgroundJobRun.create({
-    data: { jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: "succeeded", result: json },
-  });
+  // A run that had nothing to do (integration not configured, feature off) is not
+  // written to the run history: about 9,600 rows a day otherwise. The job row
+  // keeps its last result and lastRunAt. Jobs whose skipped run is itself
+  // evidence (retention) are always recorded (load review, Phase 12n).
+  if (!isNoOpResult(result) || RUN_EVIDENCE_JOB_TYPES.has(job.type)) {
+    await prisma.backgroundJobRun.create({
+      data: { jobId, type: job.type, attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: "succeeded", result: json },
+    });
+  }
 
   // If recurring, schedule the next run
   if (job.isRecurring && job.cronExpression) {

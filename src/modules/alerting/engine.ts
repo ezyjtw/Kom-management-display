@@ -168,6 +168,7 @@ export async function runAlertEngine(now = new Date()): Promise<EngineRunSummary
   await syncRuleCatalogue();
   const summary: EngineRunSummary = { evaluated: [], skipped: [], raised: 0, refired: 0, resolved: 0, escalated: 0 };
   const rules = await prisma.alertRule.findMany({ where: { enabled: true } });
+  const run = new Map<string, unknown>(); // per-run memo shared by the evaluators
 
   for (const rule of rules) {
     const def = RULE_CATALOGUE[rule.code];
@@ -181,7 +182,7 @@ export async function runAlertEngine(now = new Date()): Promise<EngineRunSummary
 
     let candidates: AlertCandidate[];
     try {
-      candidates = await def.evaluate({ code: rule.code, now, params: effectiveParams(rule.code, rule.params) });
+      candidates = await def.evaluate({ code: rule.code, now, params: effectiveParams(rule.code, rule.params), run });
     } catch (error) {
       // An evaluator error is not a clean run: never auto-resolve on failure.
       logger.error("Alert evaluator failed", { code: rule.code, error: error instanceof Error ? error.message : String(error) });

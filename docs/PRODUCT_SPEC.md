@@ -147,6 +147,8 @@ Given custody balance and transaction data, the product recomputes daily varianc
 
 ## 19. Testing, security and quality gates
 
+Load and refresh behaviour (schedules, polling, retention) is described in `docs/phase1/load-and-refresh.md`.
+
 Unit tests for every evaluator, formula, parser and enforcement rule; integration tests against mocks only (no live network in CI); security tests for every hard constraint; data retention for message bodies, raw payloads and time logs (CONFIRM-RETENTION).
 
 ---

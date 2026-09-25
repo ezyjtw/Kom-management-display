@@ -43,6 +43,8 @@ import {
   ResponsiveContainer,
   XAxis,
 } from "recharts";
+import { useVisiblePolling } from "@/hooks/useVisiblePolling";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 // ─── Types ───
 
@@ -297,10 +299,9 @@ export default function CommandCenterPage() {
 
   useEffect(() => {
     fetchData();
-    fetchMarketData();
-    const interval = setInterval(fetchMarketData, 60_000);
-    return () => clearInterval(interval);
   }, []);
+  // Market ticker (module.market_ticker, off by default): refreshed while the tab is visible.
+  useVisiblePolling(fetchMarketData, 60_000);
 
   async function fetchData() {
     setLoading(true);
@@ -319,7 +320,7 @@ export default function CommandCenterPage() {
 
   async function fetchMarketData() {
     try {
-      const res = await fetch("/api/market-data");
+      const res = await backgroundFetch("/api/market-data");
       const json = await res.json();
       if (json.success) setMarket(json.data);
     } catch { /* non-critical */ }

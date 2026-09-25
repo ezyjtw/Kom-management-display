@@ -11,8 +11,27 @@ const WORKER_ALERT_DEDUPE_KEY = "worker";
  * is dead. Opens one ALR-HB-WORKER alert while no worker is alive and resolves
  * it once a heartbeat returns.
  */
-export async function checkWorkerHealth(): Promise<{ workerAlive: boolean }> {
+/**
+ * The alert is maintained at most once per ALERT_MAINTENANCE_MS per process:
+ * every open tab and every platform probe calls /api/health, and each call
+ * used to write (load review, Phase 12n). The worker state is still read on
+ * every call.
+ */
+export const ALERT_MAINTENANCE_MS = 60_000;
+let lastMaintenance: { at: number; alive: boolean } | null = null;
+
+/** Test hook. */
+export function resetWorkerHealthThrottle(): void {
+  lastMaintenance = null;
+}
+
+export async function checkWorkerHealth(now = Date.now()): Promise<{ workerAlive: boolean }> {
   const workerAlive = await isAnyWorkerAlive(WORKER_HEARTBEAT_THRESHOLD_MS);
+  // A change of state is acted on at once; otherwise at most once a minute.
+  if (lastMaintenance && lastMaintenance.alive === workerAlive && now - lastMaintenance.at < ALERT_MAINTENANCE_MS) {
+    return { workerAlive };
+  }
+  lastMaintenance = { at: now, alive: workerAlive };
 
   try {
     if (!workerAlive) {

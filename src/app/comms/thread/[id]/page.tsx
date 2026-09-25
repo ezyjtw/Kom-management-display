@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ThreadDetail, ThreadDetailData } from "@/components/comms/ThreadDetail";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 interface EmployeeListItem {
   id: string;
@@ -41,7 +42,7 @@ export default function ThreadDetailPage() {
     if (!params.id) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
-      fetch(`/api/comms/threads/${params.id}`)
+      backgroundFetch(`/api/comms/threads/${params.id}`)
         .then((r) => r.json())
         .then((json) => { if (json.success) setThread(json.data); })
         .catch(() => {});

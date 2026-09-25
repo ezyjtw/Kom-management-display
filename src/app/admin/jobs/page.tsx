@@ -42,7 +42,6 @@ const JOB_LABELS: Record<string, string> = {
   sync_slack: "Slack Sync",
   sync_email: "Email Sync",
   sync_jira: "Jira Sync",
-  check_sla: "SLA Monitor",
   check_staking: "Staking Heartbeat",
   poll_custody: "Custody Poll",
   check_confirmations: "Confirmation Expiry",

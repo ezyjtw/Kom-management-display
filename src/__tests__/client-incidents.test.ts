@@ -48,7 +48,7 @@ const req = (url: string, method: string, body?: unknown) => new NextRequest(`ht
 const ctx = <T extends Record<string, string>>(params: T) => ({ params: Promise.resolve(params) });
 
 type Call = { method: string; path: string; body: Record<string, unknown> | null };
-const jsm = { calls: [] as Call[], n: 0, comments: [] as Array<Record<string, unknown>>, orgUsers: [{ accountId: "cust-acme-1" }] as Array<{ accountId: string }> };
+const jsm = { calls: [] as Call[], n: 0, comments: [] as Array<Record<string, unknown>>, updatedKeys: [] as string[], orgUsers: [{ accountId: "cust-acme-1" }] as Array<{ accountId: string }> };
 
 function stubAtlassian() {
   vi.stubGlobal("fetch", vi.fn(async (input: URL | string, init?: RequestInit) => {
@@ -63,6 +63,7 @@ function stubAtlassian() {
     if (c.method === "GET" && c.path.startsWith("/rest/servicedeskapi/request/") && c.path.endsWith("/comment")) return json({ values: jsm.comments });
     if (c.method === "GET" && c.path.endsWith("/transitions")) return json({ transitions: [{ id: "31", name: "Done", to: { statusCategory: { key: "done" } } }] });
     if (c.method === "POST" && c.path.endsWith("/comment")) return json({ id: `cm-${++jsm.n}` }, 201);
+    if (c.method === "POST" && c.path === "/rest/api/3/search/jql") return json({ issues: jsm.updatedKeys.map((key) => ({ id: key, key, fields: {} })), isLast: true });
     return new Response(null, { status: 204 });
   }));
 }
@@ -297,6 +298,24 @@ describe("client updates and statuses", () => {
 });
 
 describe("client portal comments", () => {
+  it("between sweeps, reads comments only on requests the search reports as updated", async () => {
+    const out = await raiseOk();
+    const key = String((await p().workItem.findUnique({ where: { id: out.id } }))!.clientTicketKey);
+    jsm.comments = [{ id: "cm-70", body: "Still waiting", public: true, author: { emailAddress: "ops@acme.example" } }];
+    const between = new Date("2026-09-24T10:25:00Z");
+    const commentReads = () => jsm.calls.filter((c) => c.method === "GET" && c.path.endsWith("/comment")).length;
+
+    jsm.updatedKeys = [];
+    expect(await ingestPortalComments(between)).toEqual({ checked: 0, newComments: 0 });
+    expect(commentReads()).toBe(0);
+    const search = jsm.calls.find((c) => c.path === "/rest/api/3/search/jql")!;
+    expect(String((search.body as { jql: string }).jql)).toBe(`key in (${key}) AND updated >= "-10m"`);
+
+    jsm.updatedKeys = [key];
+    expect(await ingestPortalComments(between)).toEqual({ checked: 1, newComments: 1 });
+    expect(commentReads()).toBe(1);
+  });
+
   it("ingests a client's portal comment once and restarts the first-response clock", async () => {
     const out = await raiseOk();
     await p().workItem.update({ where: { id: out.id }, data: { firstResponseAt: new Date() } });
@@ -308,8 +327,9 @@ describe("client portal comments", () => {
     const item = await p().workItem.findUnique({ where: { id: out.id } });
     await p().workItem.update({ where: { id: out.id }, data: { metadata: { ...(item!.metadata as Record<string, unknown>), postedCommentIds: ["cm-2"] } } });
 
-    expect(await ingestPortalComments()).toEqual({ checked: 1, newComments: 1 });
-    expect(await ingestPortalComments()).toEqual({ checked: 1, newComments: 0 });
+    const sweep = new Date("2026-09-24T10:00:00Z"); // first cycle of the hour: full sweep
+    expect(await ingestPortalComments(sweep)).toEqual({ checked: 1, newComments: 1 });
+    expect(await ingestPortalComments(sweep)).toEqual({ checked: 1, newComments: 0 });
     const after = await p().workItem.findUnique({ where: { id: out.id } });
     expect(after!.firstResponseAt).toBeNull();
     expect(after!.metadata).toMatchObject({ firstResponseClockStartedAt: "2026-09-24T09:00:00.000Z" });

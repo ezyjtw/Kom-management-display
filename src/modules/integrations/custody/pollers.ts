@@ -16,19 +16,32 @@ import type { CustodyRequest, CustodyTransaction } from "@/lib/integrations/cust
 import { recordHeartbeat } from "@/modules/integrations/heartbeat";
 import { newestTimestamp, upsertSourceRecords, type SourceRecordInput } from "@/modules/integrations/source-records";
 import { mapStatuses, type StatusEntity } from "@/modules/integrations/custody/status-map";
+import { currentSchedules } from "@/lib/background-jobs";
+import { scheduleIntervalMins, type ScheduledJobType } from "@/lib/job-schedules";
 
 export const SOURCE = "custody_api";
 
 /** Heartbeat sources and their expected cadence (minutes). */
 export const CUSTODY_HEARTBEATS = {
-  requests: { source: "custody_api.requests", expectedEveryMins: 1 },
-  transactions: { source: "custody_api.transactions", expectedEveryMins: 2 },
-  collateral: { source: "custody_api.collateral", expectedEveryMins: 10 },
-  auditLogs: { source: "custody_api.audit_logs", expectedEveryMins: 5 },
-  eodBalances: { source: "custody_api.eod_balances", expectedEveryMins: 24 * 60 },
-  staking: { source: "custody_api.staking", expectedEveryMins: 24 * 60 },
-  stakes: { source: "custody_api.stakes", expectedEveryMins: 24 * 60 },
+  requests: { source: "custody_api.requests", expectedEveryMins: 2, job: "custody_poll_requests" },
+  transactions: { source: "custody_api.transactions", expectedEveryMins: 2, job: "custody_poll_transactions" },
+  collateral: { source: "custody_api.collateral", expectedEveryMins: 10, job: "custody_poll_collateral" },
+  auditLogs: { source: "custody_api.audit_logs", expectedEveryMins: 5, job: "custody_poll_audit_logs" },
+  eodBalances: { source: "custody_api.eod_balances", expectedEveryMins: 24 * 60, job: "custody_poll_eod_balances" },
+  staking: { source: "custody_api.staking", expectedEveryMins: 24 * 60, job: "custody_poll_staking" },
+  stakes: { source: "custody_api.stakes", expectedEveryMins: 24 * 60, job: "custody_poll_stakes" },
 } as const;
+
+type Heartbeat = { source: string; expectedEveryMins: number; job: ScheduledJobType };
+
+/** The heartbeat expectation follows the job's current schedule, so an admin cadence change never raises a false "silent feed" alert. */
+export async function expectedEveryMins(hb: Heartbeat): Promise<number> {
+  try {
+    return scheduleIntervalMins((await currentSchedules())[hb.job]);
+  } catch {
+    return hb.expectedEveryMins;
+  }
+}
 
 const date = (v: unknown): Date | null => {
   if (typeof v !== "string" || !v) return null;
@@ -118,7 +131,7 @@ async function pollByStatus<T>(
   path: string,
   statuses: string[],
   toRecord: (item: T, label: string) => SourceRecordInput,
-  heartbeat: { source: string; expectedEveryMins: number },
+  heartbeat: Heartbeat,
   pageLimit?: (cred: CustodyCredential, status: string) => Promise<T[]>,
 ) {
   const started = new Date();
@@ -134,7 +147,7 @@ async function pollByStatus<T>(
   await upsertSourceRecords(SOURCE, kind, records);
   await markNoLongerListed(kind, statuses, records.map((r) => r.externalId), results.map((r) => r.label), started);
   if (errors.length) logger.warn("the custody provider poll had credential errors", { kind, errors: errors.map((e) => e.label) });
-  if (results.length > 0) await recordHeartbeat(heartbeat.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: heartbeat.expectedEveryMins });
+  if (results.length > 0) await recordHeartbeat(heartbeat.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: await expectedEveryMins(heartbeat) });
   if (results.length === 0 && errors.length) throw new Error(`the custody provider ${kind} poll failed for every credential`);
   return { kind, count: records.length, credentialErrors: errors.length };
 }
@@ -193,7 +206,7 @@ export async function pollCollateral() {
     await recordHeartbeat(CUSTODY_HEARTBEATS.collateral.source, {
       count: all.length,
       newestRecordAt: newestTimestamp(all),
-      expectedEveryMins: CUSTODY_HEARTBEATS.collateral.expectedEveryMins,
+      expectedEveryMins: await expectedEveryMins(CUSTODY_HEARTBEATS.collateral),
     });
   } else if (parts.some((p) => p.errors.length)) {
     throw new Error("the custody provider collateral poll failed for every credential");
@@ -229,14 +242,14 @@ export async function pollAuditLogs(now = new Date()) {
   const records = results.flatMap((r) => r.items);
   await upsertSourceRecords(SOURCE, "audit_log", records);
   if (results.length > 0) {
-    await recordHeartbeat(CUSTODY_HEARTBEATS.auditLogs.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: CUSTODY_HEARTBEATS.auditLogs.expectedEveryMins });
+    await recordHeartbeat(CUSTODY_HEARTBEATS.auditLogs.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: await expectedEveryMins(CUSTODY_HEARTBEATS.auditLogs) });
   } else if (errors.length) {
     throw new Error("the custody provider audit-log poll failed for every credential");
   }
   return { count: records.length };
 }
 
-async function pollDaily(kind: string, path: string, hb: { source: string; expectedEveryMins: number }, idOf: (r: Record<string, unknown>) => string | null) {
+async function pollDaily(kind: string, path: string, hb: Heartbeat, idOf: (r: Record<string, unknown>) => string | null) {
   const { results, errors } = await forEachCredential<SourceRecordInput>(async (cred) =>
     (await fetchAllPages<Record<string, unknown>>(path, {}, cred)).flatMap((r) => {
       const id = idOf(r);
@@ -245,7 +258,7 @@ async function pollDaily(kind: string, path: string, hb: { source: string; expec
   );
   const records = results.flatMap((r) => r.items);
   await upsertSourceRecords(SOURCE, kind, records);
-  if (results.length > 0) await recordHeartbeat(hb.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: hb.expectedEveryMins });
+  if (results.length > 0) await recordHeartbeat(hb.source, { count: records.length, newestRecordAt: newestTimestamp(records), expectedEveryMins: await expectedEveryMins(hb) });
   else if (errors.length) throw new Error(`the custody provider ${kind} poll failed for every credential`);
   return { count: records.length };
 }

@@ -45,24 +45,48 @@ export function clockProgress(item: WorkItem, policy: SlaPolicy, clock: SlaClock
 
 const LABEL: Record<SlaClock, string> = { ownership: "ownership", first_response: "first response", resolution: "resolution" };
 
+type SlaItem = WorkItem & { slaPolicy: SlaPolicy | null };
+type SlaSnapshot = { items: SlaItem[]; calendars: Map<string, BusinessCalendar> };
+
+/**
+ * The six SLA rules read the same open items and calendars. Within one engine
+ * run they share one snapshot (ctx.run) instead of six identical scans (load
+ * review, Phase 12n). Outside a run each call loads fresh.
+ */
+async function loadSnapshot(now: Date): Promise<SlaSnapshot> {
+  const items = await prisma.workItem.findMany({
+    where: { state: { in: [...OPEN] }, slaPolicyId: { not: null }, slaPolicy: { isActive: true } },
+    include: { slaPolicy: true },
+    take: 5000,
+  });
+  const calendars = new Map<string, BusinessCalendar>();
+  if (items.length) {
+    const from = new Date(Math.min(...items.map((i) => i.clockStartedAt.getTime())));
+    for (const name of new Set(items.map((i) => i.slaPolicy!.calendar))) {
+      calendars.set(name, await loadCalendar(name, from, new Date(now.getTime() + 7 * 86_400_000)));
+    }
+  }
+  return { items, calendars };
+}
+
+export function slaSnapshot(ctx: EvaluatorContext): Promise<SlaSnapshot> {
+  if (!ctx.run) return loadSnapshot(ctx.now);
+  let value = ctx.run.get("sla.snapshot") as Promise<SlaSnapshot> | undefined;
+  if (!value) {
+    value = loadSnapshot(ctx.now);
+    ctx.run.set("sla.snapshot", value);
+  }
+  return value;
+}
+
 export function slaEvaluator(code: string) {
   const { clock, phase } = SLA_RULES[code];
   return async (ctx: EvaluatorContext): Promise<AlertCandidate[]> => {
-    const items = await prisma.workItem.findMany({
-      where: { state: { in: [...OPEN] }, slaPolicyId: { not: null }, slaPolicy: { isActive: true } },
-      include: { slaPolicy: true },
-      take: 5000,
-    });
-    const calendars = new Map<string, BusinessCalendar>();
+    const { items, calendars } = await slaSnapshot(ctx);
     const out: AlertCandidate[] = [];
     for (const item of items) {
       const policy = item.slaPolicy!;
-      let cal = calendars.get(policy.calendar);
-      if (!cal) {
-        const from = new Date(Math.min(...items.map((i) => i.clockStartedAt.getTime())));
-        cal = await loadCalendar(policy.calendar, from, new Date(ctx.now.getTime() + 7 * 86_400_000));
-        calendars.set(policy.calendar, cal);
-      }
+      const cal = calendars.get(policy.calendar)!;
       const p = clockProgress(item, policy, clock, cal, ctx.now);
       if (!p) continue;
       const hit = phase === "breach" ? p.pct >= 100 : p.pct >= policy.warnAtPct && p.pct < 100;

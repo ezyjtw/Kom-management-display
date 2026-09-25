@@ -15,9 +15,10 @@ import { recordHeartbeat } from "@/modules/integrations/heartbeat";
 import { recordPollCycle } from "@/modules/integrations/poll-cycles";
 import * as slackChannelRepo from "@/modules/slack/repositories/slack-channel-repository";
 import { ingestChannelMessage, syncThreadReplies } from "@/modules/slack/services/slack-ingestion-service";
+import { getSetting } from "@/modules/settings/settings";
 
 export const SLACK_HEARTBEAT = { source: "slack.channels", expectedEveryMins: 5 } as const;
-/** How far back parents are checked for new replies. */
+/** Default for how far back parents are checked for new replies (setting slack.replyLookbackDays). */
 export const REPLY_LOOKBACK_DAYS = 7;
 const MAX_PAGES = 5;
 
@@ -31,7 +32,8 @@ export async function pollChannel(channelId: string, now = new Date()): Promise<
   const client = getSlackClient();
   if (!channel?.isActive || !client) return { newMessages: 0, threadsWithNewReplies: 0, newest: null };
 
-  const lookback = String((now.getTime() - REPLY_LOOKBACK_DAYS * 86_400_000) / 1000);
+  const lookbackDays = await getSetting("slack.replyLookbackDays").catch(() => REPLY_LOOKBACK_DAYS);
+  const lookback = String((now.getTime() - lookbackDays * 86_400_000) / 1000);
   const oldest = channel.syncCursor && channel.syncCursor < lookback ? channel.syncCursor : lookback;
   const messages: SlackMessage[] = [];
   let cursor: string | undefined;

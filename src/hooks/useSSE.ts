@@ -28,89 +28,131 @@ const ALL_EVENT_TYPES = [
 export type SSEEventType = (typeof ALL_EVENT_TYPES)[number];
 
 interface UseSSEOptions {
-  /** Auto-reconnect on disconnect (default: true) */
+  /** Kept for compatibility; reconnection is handled by the shared connection. */
   autoReconnect?: boolean;
-  /** Reconnect delay in ms (default: 5000) */
   reconnectDelay?: number;
-  /** Max reconnect attempts (default: 10) */
   maxReconnects?: number;
   /** Only receive events of these types (default: all) */
   filter?: SSEEventType[];
 }
 
 /**
- * Hook for connecting to the SSE events endpoint.
- * Returns live events and connection status.
+ * One EventSource per browser tab, shared by every component that listens
+ * (load review, Phase 12n). Each tab used to open 2–3 connections. The
+ * connection closes shortly after the last listener unmounts, so a route
+ * change does not reconnect.
+ */
+const RECONNECT_DELAY_MS = 5_000;
+const MAX_RECONNECTS = 10;
+const CLOSE_GRACE_MS = 2_000;
+
+type Listener = (event: SSEEvent) => void;
+type StatusListener = (connected: boolean) => void;
+
+const hub = {
+  source: null as EventSource | null,
+  connected: false,
+  reconnects: 0,
+  reconnectTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  closeTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  listeners: new Set<Listener>(),
+  statusListeners: new Set<StatusListener>(),
+};
+
+function setConnectedAll(value: boolean) {
+  hub.connected = value;
+  for (const l of hub.statusListeners) l(value);
+}
+
+function openSource() {
+  if (typeof window === "undefined" || typeof EventSource === "undefined") return;
+  hub.source?.close();
+  const source = new EventSource("/api/events");
+  hub.source = source;
+  source.addEventListener("connected", () => {
+    hub.reconnects = 0;
+    setConnectedAll(true);
+  });
+  for (const type of ALL_EVENT_TYPES) {
+    source.addEventListener(type, (e) => {
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse((e as MessageEvent).data);
+      } catch {
+        return;
+      }
+      for (const l of hub.listeners) l({ type, data });
+    });
+  }
+  source.onerror = () => {
+    setConnectedAll(false);
+    source.close();
+    if (hub.source === source) hub.source = null;
+    if (hub.listeners.size > 0 && hub.reconnects < MAX_RECONNECTS) {
+      hub.reconnects++;
+      const delay = Math.min(RECONNECT_DELAY_MS * Math.pow(1.5, hub.reconnects - 1), 30_000);
+      hub.reconnectTimer = setTimeout(() => { if (hub.listeners.size > 0) openSource(); }, delay);
+    }
+  };
+}
+
+function closeSource() {
+  clearTimeout(hub.reconnectTimer);
+  hub.source?.close();
+  hub.source = null;
+  hub.reconnects = 0;
+  setConnectedAll(false);
+}
+
+/** Subscribe to the shared stream; returns the unsubscribe function. */
+export function subscribeSSE(listener: Listener, onStatus: StatusListener): () => void {
+  clearTimeout(hub.closeTimer);
+  hub.listeners.add(listener);
+  hub.statusListeners.add(onStatus);
+  if (!hub.source) openSource();
+  onStatus(hub.connected);
+  return () => {
+    hub.listeners.delete(listener);
+    hub.statusListeners.delete(onStatus);
+    if (hub.listeners.size === 0) hub.closeTimer = setTimeout(closeSource, CLOSE_GRACE_MS);
+  };
+}
+
+/** Test hook: the number of open EventSources (0 or 1). */
+export function sseConnectionCount(): number {
+  return hub.source ? 1 : 0;
+}
+
+/**
+ * Hook for the shared SSE stream. Returns live events and connection status.
  */
 export function useSSE(options: UseSSEOptions = {}) {
-  const { autoReconnect = true, reconnectDelay = 5000, maxReconnects = 10, filter } = options;
+  const { filter } = options;
 
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [lastEvent, setLastEvent] = useState<SSEEvent | null>(null);
-  const sourceRef = useRef<EventSource | null>(null);
-  const reconnectCountRef = useRef(0);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   // Stabilize filter reference
   const filterSet = useMemo(
-    () => (filter ? new Set(filter) : null),
+    () => (filter ? new Set<string>(filter) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filter?.join(",")],
   );
 
   const connect = useCallback(() => {
-    if (sourceRef.current) {
-      sourceRef.current.close();
-    }
-
-    const source = new EventSource("/api/events");
-    sourceRef.current = source;
-
-    source.addEventListener("connected", () => {
-      setConnected(true);
-      reconnectCountRef.current = 0;
-    });
-
-    source.addEventListener("heartbeat", () => {
-      // Keep-alive, no action needed
-    });
-
-    // Listen for all event types
-    for (const type of ALL_EVENT_TYPES) {
-      source.addEventListener(type, (e) => {
-        // Skip events not in filter (if filter is set)
-        if (filterSet && !filterSet.has(type)) return;
-
-        try {
-          const data = JSON.parse((e as MessageEvent).data);
-          const event: SSEEvent = { type, data };
-          setLastEvent(event);
-          setEvents((prev) => [...prev.slice(-99), event]); // Keep last 100 events
-        } catch {
-          // Ignore parse errors
-        }
-      });
-    }
-
-    source.onerror = () => {
-      setConnected(false);
-      source.close();
-
-      if (autoReconnect && reconnectCountRef.current < maxReconnects) {
-        reconnectCountRef.current++;
-        const delay = reconnectDelay * Math.pow(1.5, reconnectCountRef.current - 1);
-        reconnectTimerRef.current = setTimeout(connect, Math.min(delay, 30000));
-      }
-    };
-  }, [autoReconnect, reconnectDelay, maxReconnects, filterSet]);
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = subscribeSSE((event) => {
+      if (filterSet && !filterSet.has(event.type)) return;
+      setLastEvent(event);
+      setEvents((prev) => [...prev.slice(-99), event]); // Keep last 100 events
+    }, setConnected);
+  }, [filterSet]);
 
   const disconnect = useCallback(() => {
-    clearTimeout(reconnectTimerRef.current);
-    if (sourceRef.current) {
-      sourceRef.current.close();
-      sourceRef.current = null;
-    }
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
     setConnected(false);
   }, []);
 

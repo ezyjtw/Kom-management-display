@@ -34,7 +34,7 @@ this file.
 | CONFIRM-INCIDENT-LOG-OWNER | Incident log owner agreement to automated drafts | `incident_log.drafts.enabled` | `src/lib/feature-flag-defaults.ts`, `src/modules/incident-log/drafts.ts` |
 | CONFIRM-CHECK-GAPS | Numbering gaps in the team checklist | Coverage sign-off | `docs/phase1/coverage-matrix.md`, `scripts/coverage-matrix.ts`, `src/modules/daily-checks/definitions.ts` |
 | CONFIRM-REALISATION-THRESHOLD | Current risk committee realisation threshold | ALR-RLS-01 | not referenced yet |
-| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/logging.md`, `src/__tests__/retention-job.test.ts` +4 |
+| CONFIRM-RETENTION | Retention periods | Retention jobs | `docs/compliance-audit-framework.md`, `docs/phase1/data-inventory.md`, `docs/phase1/load-and-refresh.md`, `docs/phase1/logging.md` +5 |
 | CONFIRM-JSM-INCIDENT-REQUEST-TYPE | Request type for client incident and risk notifications, and its portal-visible statuses | Client incident tickets | `src/modules/client-incidents/service.ts`, `src/modules/settings/registry.ts` |
 | CONFIRM-JSM-PORTAL | Client portal set-up: customer accounts, organisation membership, branding | Clients viewing their tickets | `src/modules/client-incidents/service.ts` |
 | CONFIRM-CLIENT-CONTACTS | Which client contacts become request participants | Client incident tickets | `src/modules/client-incidents/service.ts` |

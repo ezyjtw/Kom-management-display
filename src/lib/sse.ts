@@ -11,7 +11,6 @@
  */
 
 import { logger } from "@/lib/logger";
-import { publishEvent } from "@/lib/pg-notify";
 
 export type SSEEventType =
   | "sla_breach"
@@ -78,12 +77,14 @@ export function removeClient(clientId: string): void {
 
 /**
  * Broadcast an event to all connected clients on this instance.
- * Also publishes to PG NOTIFY for multi-instance fan-out.
  *
- * @param skipPGNotify - Set true when event was received FROM PG NOTIFY
- *   (to avoid infinite re-publish loops).
+ * Events reach browsers connected to the process that emits them. The earlier
+ * PG NOTIFY publish was removed (load review, Phase 12n): nothing listened to
+ * it, so every event cost a database round trip for no effect. Events emitted
+ * by the worker are picked up by the pages' periodic refresh; a cross-process
+ * bridge is needed before running more than one web instance.
  */
-export function broadcastEvent(event: SSEEvent, skipPGNotify = false): void {
+export function broadcastEvent(event: SSEEvent): void {
   const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
   const encoder = new TextEncoder();
   const encoded = encoder.encode(payload);
@@ -95,13 +96,6 @@ export function broadcastEvent(event: SSEEvent, skipPGNotify = false): void {
       // Client disconnected — clean up
       clients.delete(clientId);
     }
-  }
-
-  // Fan out to other instances via PG NOTIFY (fire-and-forget)
-  if (!skipPGNotify) {
-    publishEvent(event).catch(() => {
-      // Silently degrade — local clients still got the event
-    });
   }
 }
 

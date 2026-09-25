@@ -9,7 +9,7 @@ const envVars = vi.hoisted(() => ({ SLACK_SIGNING_SECRET: "test-signing-secret",
 vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k] }));
 
 const prismaMock = vi.hoisted(() => ({
-  sourceRecord: { upsert: vi.fn() },
+  sourceRecord: { upsert: vi.fn(), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
   backgroundJob: { findFirst: vi.fn(), create: vi.fn() },
   commsThread: { upsert: vi.fn(), findUnique: vi.fn() },
   commsMessage: { upsert: vi.fn() },

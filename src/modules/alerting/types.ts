@@ -19,6 +19,8 @@ export interface EvaluatorContext {
   code: string;
   now: Date;
   params: Record<string, unknown>;
+  /** Shared by all rules in one engine run, for data several rules read (e.g. the SLA snapshot). */
+  run?: Map<string, unknown>;
 }
 
 export type Evaluator = (ctx: EvaluatorContext) => Promise<AlertCandidate[]>;
