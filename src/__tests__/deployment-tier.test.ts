@@ -22,6 +22,21 @@ describe("deployment tier", () => {
     expect(deploymentTier({ NODE_ENV: "development", KOM_ENVIRONMENT: "production" })).toBe("production");
   });
 
+  it("on Railway an unset tier is demo (Railway is never the production host, H10); production still wins when named", () => {
+    expect(deploymentTier({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "p1" })).toBe("demo");
+    expect(deploymentTier({ NODE_ENV: "production", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("demo");
+    expect(deploymentTier({ NODE_ENV: "production", RAILWAY_SERVICE_ID: "s1", KOM_ENVIRONMENT: "production" })).toBe("production");
+    expect(deploymentTier({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "  " })).toBe("production");
+    expect(loadSecrets({ NODE_ENV: "production", RAILWAY_PROJECT_ID: "p1", NEXTAUTH_SECRET: "x".repeat(32) }).source).toBe("environment");
+  });
+
+  it("the Railway demo allows local login unless switched off; elsewhere it must be switched on", () => {
+    expect(isLocalLoginAllowed("production", undefined, undefined, true)).toBe(true);
+    expect(isLocalLoginAllowed("production", "false", undefined, true)).toBe(false);
+    expect(isLocalLoginAllowed("production", undefined, "production", true)).toBe(false);
+    expect(isLocalLoginAllowed("production", undefined, undefined, false)).toBe(false);
+  });
+
   it("demo may take secrets from environment variables; production may not", () => {
     const demo = loadSecrets({ NODE_ENV: "production", KOM_ENVIRONMENT: "demo", NEXTAUTH_SECRET: "x".repeat(32) });
     expect(demo.source).toBe("environment");

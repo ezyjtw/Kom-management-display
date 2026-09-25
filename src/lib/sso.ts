@@ -80,9 +80,13 @@ export async function decideSsoLogin(
 }
 
 /** Local username/password login: never in production, and only with ALLOW_LOCAL_LOGIN=true. */
-export function isLocalLoginAllowed(nodeEnv: string | undefined, allowLocalLogin: string | undefined, komEnvironment?: string): boolean {
-  // Never in the production tier; in demo or development only when explicitly switched on.
-  return deploymentTier({ NODE_ENV: nodeEnv, KOM_ENVIRONMENT: komEnvironment }) !== "production" && allowLocalLogin === "true";
+export function isLocalLoginAllowed(nodeEnv: string | undefined, allowLocalLogin: string | undefined, komEnvironment?: string, onRailway = false): boolean {
+  // Never in the production tier. In demo or development only when switched on,
+  // except the Railway demo (no SSO there), where it is on unless ALLOW_LOCAL_LOGIN=false.
+  const tier = deploymentTier({ NODE_ENV: nodeEnv, KOM_ENVIRONMENT: komEnvironment, ...(onRailway ? { RAILWAY_PROJECT_ID: "railway" } : {}) });
+  if (tier === "production") return false;
+  if (allowLocalLogin === "true") return true;
+  return tier === "demo" && onRailway && allowLocalLogin !== "false";
 }
 
 export function isAzureAdConfigured(e: {
