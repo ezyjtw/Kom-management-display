@@ -16,6 +16,8 @@ import {
   BarChart3,
   MapPin,
 } from "lucide-react";
+import { useVisiblePolling } from "@/hooks/useVisiblePolling";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 interface EmployeeActivity {
   employeeId: string;
@@ -81,9 +83,9 @@ export default function ActivityPage() {
   const [changingActivity, setChangingActivity] = useState<string | null>(null);
   const [newActivity, setNewActivity] = useState({ activity: "", detail: "" });
 
-  const fetchCurrent = useCallback(async () => {
+  const fetchCurrent = useCallback(async (background = false) => {
     try {
-      const res = await fetch(`/api/activity?team=${encodeURIComponent(teamFilter)}`);
+      const res = await (background ? backgroundFetch : fetch)(`/api/activity?team=${encodeURIComponent(teamFilter)}`);
       const json = await res.json();
       if (json.success) setEmployees(json.data || []);
     } catch { /* ignore */ }
@@ -106,10 +108,9 @@ export default function ActivityPage() {
 
   useEffect(() => {
     loadData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchCurrent, 30000);
-    return () => clearInterval(interval);
-  }, [loadData, fetchCurrent]);
+  }, [loadData]);
+  // Auto-refresh every 30 seconds while the tab is visible (not user activity).
+  useVisiblePolling(() => fetchCurrent(true), 30_000, { immediate: false });
 
   async function handleSetActivity(employeeId: string) {
     if (!newActivity.activity) return;

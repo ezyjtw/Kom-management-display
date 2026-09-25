@@ -11,14 +11,21 @@ import {
   failJob,
   workerHeartbeat,
   recoverStaleJobs,
+  syncJobSchedules,
 } from "@/lib/background-jobs";
+import { SCHEDULE_SYNC_MS } from "@/lib/job-schedules";
 import { dispatchJob } from "@/worker/dispatch";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 export const DRAIN_TIMEOUT_MS = 25_000;
-const IDLE_POLL_MS = 2_000;
+/**
+ * Idle check for due jobs. Schedules are minute-granular, so 10 s is enough
+ * and cuts the idle database polling five-fold (load review, Phase 12n). After
+ * a job completes, the worker checks again at once.
+ */
+export const IDLE_POLL_MS = 10_000;
 const STALE_CHECK_INTERVAL_MS = 60_000;
 
 export interface WorkerDeps {
@@ -28,6 +35,7 @@ export interface WorkerDeps {
   failJob: typeof failJob;
   workerHeartbeat: typeof workerHeartbeat;
   recoverStaleJobs: typeof recoverStaleJobs;
+  syncJobSchedules?: typeof syncJobSchedules;
   dispatchJob: typeof dispatchJob;
   sleep: (ms: number) => Promise<void>;
 }
@@ -39,6 +47,7 @@ const defaultDeps: WorkerDeps = {
   failJob,
   workerHeartbeat,
   recoverStaleJobs,
+  syncJobSchedules,
   dispatchJob,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
@@ -49,6 +58,7 @@ export class Worker {
   private inFlight: Promise<void> | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private lastStaleCheck = 0;
+  private lastScheduleSync = Date.now();
 
   constructor(private readonly deps: WorkerDeps = defaultDeps, id?: string) {
     this.id = id ?? `${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -78,6 +88,10 @@ export class Worker {
       if (Date.now() - this.lastStaleCheck > STALE_CHECK_INTERVAL_MS) {
         this.lastStaleCheck = Date.now();
         await this.deps.recoverStaleJobs();
+      }
+      if (this.deps.syncJobSchedules && Date.now() - this.lastScheduleSync > SCHEDULE_SYNC_MS) {
+        this.lastScheduleSync = Date.now();
+        await this.deps.syncJobSchedules();
       }
       const job = await this.deps.claimNextJob();
       if (!job) return false;

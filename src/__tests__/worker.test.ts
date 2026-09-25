@@ -5,7 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { Worker, DRAIN_TIMEOUT_MS, HEARTBEAT_INTERVAL_MS, type WorkerDeps } from "@/worker/index";
+import { Worker, DRAIN_TIMEOUT_MS, HEARTBEAT_INTERVAL_MS, IDLE_POLL_MS, type WorkerDeps } from "@/worker/index";
+import { SCHEDULE_SYNC_MS } from "@/lib/job-schedules";
 
 function makeDeps(overrides: Partial<WorkerDeps> = {}): WorkerDeps {
   return {
@@ -67,10 +68,27 @@ describe("Worker lifecycle", () => {
     expect(deps.workerHeartbeat).toHaveBeenCalledWith("w1");
 
     await worker.stop();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS);
     await running;
     await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     expect(deps.workerHeartbeat).toHaveBeenCalledTimes(3);
+  });
+
+  it("checks for due jobs every 10 s when idle, and re-applies schedule overrides every 5 min", async () => {
+    const syncJobSchedules = vi.fn().mockResolvedValue(0);
+    const deps = makeDeps({ sleep: (ms) => new Promise((r) => setTimeout(r, ms)), syncJobSchedules });
+    const worker = new Worker(deps, "w2");
+    const running = worker.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const claimsAtStart = vi.mocked(deps.claimNextJob).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.mocked(deps.claimNextJob).mock.calls.length - claimsAtStart).toBeLessThanOrEqual(60_000 / IDLE_POLL_MS);
+    expect(syncJobSchedules).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(SCHEDULE_SYNC_MS);
+    expect(syncJobSchedules).toHaveBeenCalledTimes(1);
+    await worker.stop();
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS);
+    await running;
   });
 
   it("on stop, waits for the in-flight job to finish", async () => {

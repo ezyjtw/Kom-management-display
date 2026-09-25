@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { unsafeRegexReason } from "@/lib/safe-regex";
+import { scheduleOverrideProblem } from "@/lib/job-schedules";
 
 export const PRIORITY_KEYWORDS_DEFAULT = [
   "urgent", "stuck", "not received", "failed", "withdraw", "settlement", "compromised", "phishing", "unauthorised",
@@ -60,6 +61,27 @@ export const SETTINGS = {
   "alerting.oohAckMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Out-of-hours acknowledgement window (minutes, critical)" },
   /** Spec §11.3 quiet rule: the same alert never re-notifies within this window. */
   "alerting.quietMins": { schema: z.number().int().min(1).max(240), default: 15, label: "Re-notification quiet window (minutes)" },
+  /**
+   * How far back each 5-minute Slack poll re-reads a channel so that new replies on existing
+   * threads are caught (load review, Phase 12n). Older messages are read, not rewritten; a shorter
+   * window means smaller responses, but replies to threads older than the window are missed.
+   */
+  "slack.replyLookbackDays": { schema: z.number().int().min(1).max(14), default: 7, label: "Slack reply look-back (days)" },
+  /**
+   * Cadence overrides for recurring jobs, `{ jobType: cron }` (load review, Phase 12n). Defaults are in
+   * src/lib/job-schedules.ts; Slack and mailbox polling stay fixed at every 5 minutes, 24/7. The worker
+   * applies a change within 5 minutes.
+   */
+  "jobs.schedules": {
+    schema: z.record(z.string(), z.string().max(100)).superRefine((v, ctx) => {
+      for (const [type, cron] of Object.entries(v)) {
+        const problem = scheduleOverrideProblem(type, cron);
+        if (problem) ctx.addIssue({ code: "custom", path: [type], message: problem });
+      }
+    }),
+    default: {} as Record<string, string>,
+    label: "Job schedule overrides (cron per job)",
+  },
   /** Retention job (data_retention, daily). Off until Compliance confirms the periods (TODO(CONFIRM-RETENTION)); each run is recorded either way. */
   "retention.enabled": { schema: z.boolean(), default: false, label: "Enforce data retention (delete records past their retention period)" },
   /** Spec §17.4: exports and reports per user per UTC day; above it requests are refused and ALR-SEC-03 is raised (TODO(CONFIRM-EXPORT-CAP)). */

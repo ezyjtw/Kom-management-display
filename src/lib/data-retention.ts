@@ -65,6 +65,24 @@ export const DEFAULT_RETENTION_POLICIES: RetentionPolicy[] = [
     dateField: "timestamp",
     retentionDays: 365,
   },
+  // Load review, Phase 12n: the two tables that otherwise grow without limit.
+  // Periods are proposals until TODO(CONFIRM-RETENTION); nothing runs while retention.enabled is off.
+  {
+    // Custody, mail, Teams and Slack snapshots, and intake de-duplication claims. A record still
+    // returned by its source has lastSeenAt refreshed on every poll, so only records the source
+    // stopped returning a year ago are removed.
+    name: "Source records no longer seen",
+    model: "sourceRecord",
+    dateField: "lastSeenAt",
+    retentionDays: 365,
+  },
+  {
+    // Jira/JSM update history used to de-duplicate the 2-minute sync, whose window is 5 minutes.
+    name: "Old Jira issue events",
+    model: "jiraIssueEvent",
+    dateField: "createdAt",
+    retentionDays: 180,
+  },
   {
     name: "Archived scoring configs",
     model: "scoringConfig",

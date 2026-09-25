@@ -84,7 +84,7 @@ describe("recoverStaleJobs", () => {
 describe("dispatch", () => {
   it("has a handler for every job type the queue can hold", () => {
     expect(Object.keys(JOB_HANDLERS).sort()).toEqual([
-      "alert_digest", "check_confirmations", "check_sla", "check_staking", "classify_thread", "cleanup_sessions", "collect_check_evidence", "data_retention",
+      "alert_digest", "check_confirmations", "check_staking", "classify_thread", "cleanup_sessions", "collect_check_evidence", "data_retention",
       "draft_client_comms", "evaluate_alerts", "generate_daily_checks", "graph_teams_sync", "platform_sprint_intake", "incident_log_overdue",
       "custody_poll_audit_logs", "custody_poll_collateral", "custody_poll_eod_balances",
       "custody_poll_requests", "custody_poll_stakes", "custody_poll_staking", "custody_poll_transactions", "morning_handover", "mtd_autoclose",

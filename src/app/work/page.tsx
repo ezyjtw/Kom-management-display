@@ -6,13 +6,15 @@
  * (SSE) and re-orders by time remaining.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { Inbox, RefreshCw, ExternalLink } from "lucide-react";
 import { useSSE } from "@/hooks/useSSE";
 import { SlaTimer, liveState, useNow } from "@/components/work/SlaTimer";
 import { KIND_META, KindIcon } from "@/components/work/kind";
 import type { QueueRow } from "@/modules/work-items/queue";
+import { useVisiblePolling } from "@/hooks/useVisiblePolling";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 interface Filters {
   team: string;
@@ -37,6 +39,9 @@ function relative(iso: string, now: number): string {
   return `${Math.round(mins / 1440)}d ago`;
 }
 
+/** Minimum gap between queue reloads triggered by push events (load review, Phase 12n). */
+const EVENT_RELOAD_MIN_MS = 5_000;
+
 export default function WorkPage() {
   const [filters, setFilters] = useState<Filters>(DEFAULT);
   const [rows, setRows] = useState<QueueRow[]>([]);
@@ -47,10 +52,15 @@ export default function WorkPage() {
   const now = useNow();
   const { lastEvent, connected } = useSSE({ filter: ["work_item_update", "sla_breach", "alert"] });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const lastLoadRef = useRef(0);
+  const eventReloadRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  /** `background`: an automatic refresh (not user activity, no spinner). */
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
+    lastLoadRef.current = Date.now();
     const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== ""));
-    const json = await fetch(`/api/work-items?${qs}`).then((r) => r.json()).catch(() => null);
+    const json = await (background ? backgroundFetch : fetch)(`/api/work-items?${qs}`).then((r) => r.json()).catch(() => null);
     if (json?.success) {
       setRows(json.data.rows);
       setTeam(json.data.team);
@@ -67,11 +77,16 @@ export default function WorkPage() {
     if (Object.keys(known).length) setFilters((f) => ({ ...f, ...known }));
   }, []);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (lastEvent) void load(); }, [lastEvent, load]);
+  // Push events reload the queue at most once per EVENT_RELOAD_MIN_MS (a burst becomes one reload).
   useEffect(() => {
-    const t = setInterval(() => void load(), 60_000);
-    return () => clearInterval(t);
-  }, [load]);
+    if (!lastEvent) return;
+    const wait = Math.max(0, EVENT_RELOAD_MIN_MS - (Date.now() - lastLoadRef.current));
+    clearTimeout(eventReloadRef.current);
+    eventReloadRef.current = setTimeout(() => void load(true), wait);
+    return () => clearTimeout(eventReloadRef.current);
+  }, [lastEvent, load]);
+  // Safety refresh every minute while the tab is visible.
+  useVisiblePolling(() => load(true), 60_000, { immediate: false });
 
   // Re-order by time remaining as timers run (breached first, untimed last).
   const ordered = useMemo(() => {

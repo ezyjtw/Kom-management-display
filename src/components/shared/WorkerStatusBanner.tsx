@@ -1,31 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertOctagon } from "lucide-react";
+import { useVisiblePolling } from "@/hooks/useVisiblePolling";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 const POLL_MS = 60_000;
 
 export function WorkerStatusBanner() {
   const [workerAlive, setWorkerAlive] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      try {
-        const res = await fetch("/api/health", { cache: "no-store" });
-        const json = await res.json();
-        if (!cancelled) setWorkerAlive(json?.data?.worker_alive !== false);
-      } catch {
-        /* network blip: keep last known state */
-      }
+  useVisiblePolling(async () => {
+    try {
+      const res = await backgroundFetch("/api/health");
+      const json = await res.json();
+      setWorkerAlive(json?.data?.worker_alive !== false);
+    } catch {
+      /* network blip: keep last known state */
     }
-    check();
-    const interval = setInterval(check, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  }, POLL_MS);
 
   if (workerAlive) return null;
 

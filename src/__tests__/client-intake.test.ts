@@ -45,6 +45,8 @@ vi.mock("@/lib/prisma", () => ({
         db.claims.set(id, { ...db.claims.get(id), ...data });
       }),
       upsert: vi.fn(),
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(),
     },
     workItem: {
       findUnique: vi.fn(async ({ where }: { where: { id?: string; sourceSystem_sourceId?: { sourceSystem: string; sourceId: string } } }) =>

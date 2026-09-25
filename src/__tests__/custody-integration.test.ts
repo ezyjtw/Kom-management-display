@@ -8,7 +8,7 @@ vi.mock("@/lib/env", () => ({ env: (k: string) => envVars[k], secret: (k: string
 vi.mock("@/lib/http/allowed-hosts", () => ({ getAllowedHosts: () => new Set(["custody-demo.example.com"]) }));
 
 const prismaMock = vi.hoisted(() => ({
-  sourceRecord: { upsert: vi.fn(), updateMany: vi.fn() },
+  sourceRecord: { upsert: vi.fn(), updateMany: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
   sourceHeartbeat: { findUnique: vi.fn(), upsert: vi.fn() },
   settlementStatusMap: { findMany: vi.fn() },
   alertRule: { findUnique: vi.fn() },

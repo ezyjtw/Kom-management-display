@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth-options";
 import { sessionState, updateLastActive } from "@/lib/session-revocation";
 import { logger } from "@/lib/logger";
 import { recordDeniedForCurrentRequest } from "@/modules/security/record";
+import { BACKGROUND_REQUEST_HEADER } from "@/lib/background-request";
 
 /** HTTP methods that change state — these get a fail-closed revocation policy. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -95,7 +96,9 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
   }
 
   // Update lastActiveAt for the idle timeout (this session only; non-blocking).
-  if (jti) {
+  // Automatic refreshes carry x-kom-background and do not count as activity,
+  // so an open tab still reaches the idle sign-out (load review, Phase 12n).
+  if (jti && !(await isBackgroundRequest())) {
     updateLastActive(jti).catch(() => {});
   }
 
@@ -107,6 +110,15 @@ export async function requireAuth(): Promise<AuthUser | NextResponse> {
     employeeId: session.user.employeeId ?? null,
     team: session.user.team ?? null,
   };
+}
+
+/** True for requests marked as automatic refreshes (src/lib/client/background-fetch.ts). */
+export async function isBackgroundRequest(): Promise<boolean> {
+  try {
+    return (await headers()).get(BACKGROUND_REQUEST_HEADER) === "1";
+  } catch {
+    return false;
+  }
 }
 
 /**

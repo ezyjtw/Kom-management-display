@@ -201,9 +201,19 @@ export async function linkTicket(confirmationId: string, userId: string, ticketR
   });
 }
 
+/** Direct custody lookups per run for confirmations the pollers have not seen. */
+export const MAX_DIRECT_LOOKUPS = 20;
+
 /**
  * Close open confirmations whose request/transaction is no longer PENDING in
  * the custody API. Returns the number closed.
+ *
+ * The request and transaction pollers already read every PENDING record every
+ * 1-2 minutes into SourceRecord, and mark records that leave the pending set as
+ * `no_longer_listed`. So the status is read from there, in one query, instead
+ * of one API call per open confirmation (load review, Phase 12n). Only
+ * confirmations the pollers have never seen are looked up directly, at most
+ * MAX_DIRECT_LOOKUPS per run. If polling stops, nothing is closed (safe side).
  */
 export async function syncConfirmationsWithSource(): Promise<number> {
   if (!isCustodyConfigured()) return 0;
@@ -213,14 +223,36 @@ export async function syncConfirmationsWithSource(): Promise<number> {
     select: { id: true, transactionId: true, requestId: true },
     take: 200,
   });
+  if (open.length === 0) return 0;
+
+  const records = await prisma.sourceRecord.findMany({
+    where: {
+      source: "custody_api",
+      OR: [
+        { kind: "request", externalId: { in: open.flatMap((c) => (c.requestId ? [c.requestId] : [])) } },
+        { kind: "transaction", externalId: { in: open.filter((c) => !c.requestId).map((c) => c.transactionId) } },
+      ],
+    },
+    select: { kind: true, externalId: true, status: true, mappedStatus: true },
+  });
+  const seen = new Map(records.map((r) => [`${r.kind}:${r.externalId}`, r]));
 
   let closed = 0;
+  let direct = 0;
   for (const conf of open) {
     try {
-      const sourceStatus = conf.requestId
-        ? (await fetchRequest(conf.requestId)).status
-        : (await fetchTransaction(conf.transactionId)).status;
-      if (sourceStatus === "PENDING") continue;
+      const rec = conf.requestId ? seen.get(`request:${conf.requestId}`) : seen.get(`transaction:${conf.transactionId}`);
+      let sourceStatus: string | null;
+      if (rec) {
+        sourceStatus = rec.mappedStatus === "no_longer_listed" ? "no_longer_listed" : rec.status;
+      } else {
+        if (direct >= MAX_DIRECT_LOOKUPS) continue;
+        direct++;
+        sourceStatus = conf.requestId
+          ? (await fetchRequest(conf.requestId)).status
+          : (await fetchTransaction(conf.transactionId)).status;
+      }
+      if (!sourceStatus || sourceStatus === "PENDING") continue;
 
       await prisma.transactionConfirmation.update({
         where: { id: conf.id },

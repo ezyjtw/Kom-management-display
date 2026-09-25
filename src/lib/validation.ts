@@ -357,7 +357,7 @@ export const revokeSessionSchema = z.object({
 // ─── Background Job Schemas ───
 
 const jobTypeSchema = z.enum([
-  "sync_jira", "check_sla", "check_staking", "check_confirmations", "cleanup_sessions",
+  "sync_jira", "check_staking", "check_confirmations", "cleanup_sessions",
   "sync_slack", "sync_slack_replies", "slack_event",
   "classify_thread", "draft_client_comms", "poll_status_pages", "score_vendor_reliability",
   "custody_poll_requests", "custody_poll_transactions", "custody_poll_collateral",

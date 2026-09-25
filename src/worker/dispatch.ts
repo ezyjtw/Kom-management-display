@@ -43,21 +43,6 @@ export const JOB_HANDLERS: Record<JobType, Handler> = {
     return syncJiraIssues();
   },
 
-  async check_sla() {
-    const now = new Date();
-    const breached = await prisma.commsThread.count({
-      where: {
-        status: { notIn: ["Done", "Closed"] },
-        OR: [
-          { ttoDeadline: { lt: now } },
-          { ttfaDeadline: { lt: now } },
-          { tslaDeadline: { lt: now } },
-        ],
-      },
-    });
-    return { breachedThreads: breached };
-  },
-
   async check_staking() {
     const overdue = await prisma.stakingWallet.count({
       where: { status: "active", expectedNextRewardAt: { lt: new Date() } },

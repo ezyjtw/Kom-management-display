@@ -8,6 +8,7 @@ import { EmailPreviewPanel } from "./EmailPreviewPanel";
 import { ActionSidebar } from "./ActionSidebar";
 import { StatusBanners } from "./StatusBanners";
 import { formatAmount } from "@/lib/decimal";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 /** Strip dangerous tags/attributes from HTML to prevent XSS */
 function sanitizeHtml(html: string): string {
@@ -114,15 +115,15 @@ export default function CaseDetailPage() {
     beneficiaryName: string | null;
   } | null>(null);
 
-  function fetchActivity() {
-    fetch(`/api/travel-rule/cases/${params.id}/activity`)
+  function fetchActivity(background = false) {
+    (background ? backgroundFetch : fetch)(`/api/travel-rule/cases/${params.id}/activity`)
       .then((r) => r.json())
       .then((json) => { if (json.success) setActivities(json.data); })
       .catch(console.error);
   }
 
-  async function refreshCase() {
-    const fresh = await fetch(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
+  async function refreshCase(background = false) {
+    const fresh = await (background ? backgroundFetch : fetch)(`/api/travel-rule/cases/${params.id}`).then((r) => r.json());
     if (fresh.success) setCaseData(fresh.data);
   }
 
@@ -149,8 +150,8 @@ export default function CaseDetailPage() {
     if (!params.id) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
-      refreshCase();
-      fetchActivity();
+      refreshCase(true);
+      fetchActivity(true);
     }, 45_000);
     return () => clearInterval(interval);
   }, [params.id]);

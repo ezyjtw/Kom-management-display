@@ -50,7 +50,7 @@ Read from the custody provider (GET only), Platform, Confluence and imports. Add
 
 | Model | Contents | Source | Retention |
 |---|---|---|---|
-| SourceRecord | Normalised records from each source (identifiers and the fields the checks use) | custody API, Platform, imports | CONFIRM-RETENTION |
+| SourceRecord | Normalised records from each source (identifiers and the fields the checks use) | custody API, Platform, imports | Proposed: 365 days after the source last returned it (policy "Source records no longer seen"; runs when retention is enabled, CONFIRM-RETENTION) |
 | OesSettlement, OesWindow, SettlementStatusMap, SettlementNote | Exchange settlements, windows, status mapping, notes | The custody provider, admin | CONFIRM-RETENTION |
 | TransactionConfirmation | Transaction confirmation records | Staff | CONFIRM-RETENTION |
 | TravelRuleCase, CaseNote, VaspContact | Travel-rule cases (Notabene off, H11) | Staff | CONFIRM-RETENTION (regulatory) |
@@ -75,7 +75,7 @@ Read from the custody provider (GET only), Platform, Confluence and imports. Add
 
 | Model | Contents | Source | Retention |
 |---|---|---|---|
-| JiraProjectConfig, JiraIssueEvent, ExternalTicketEvent | Jira project settings and ticket events | Jira | CONFIRM-RETENTION |
+| JiraProjectConfig, JiraIssueEvent, ExternalTicketEvent | Jira project settings and ticket events | Jira | JiraIssueEvent proposed 180 days (policy "Old Jira issue events"); others CONFIRM-RETENTION |
 | SlackChannel | Registered Slack channels and their client mapping | Admin | Configuration |
 | WebhookEvent | Inbound webhook ids for replay protection | Slack, Jira | CONFIRM-RETENTION |
 

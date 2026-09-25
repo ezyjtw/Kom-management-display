@@ -18,7 +18,7 @@ import {
 } from "@/lib/integrations/graph/client";
 import { recordHeartbeat } from "@/modules/integrations/heartbeat";
 import { recordPollCycle } from "@/modules/integrations/poll-cycles";
-import { upsertSourceRecords } from "@/modules/integrations/source-records";
+import { changedExternalIds, upsertSourceRecords } from "@/modules/integrations/source-records";
 import { parseVendorEmail, VENDOR_PARSERS, type VendorParser } from "@/modules/integrations/graph/vendor-parsers";
 import { handleEmailIntake, handleTeamsIntake } from "@/modules/intake/graph-intake-service";
 import { createTicketForWorkItem } from "@/modules/work-items/tickets";
@@ -248,7 +248,7 @@ export async function syncGraphTeams() {
   let total = 0;
   for (const ch of channels) {
     const messages = (await listChannelMessages(ch.teamId, ch.channelId)).filter((m) => (m.messageType ?? "message") === "message");
-    await upsertSourceRecords("graph_teams", "teams_message", messages.map((m) => ({
+    const records = messages.map((m) => ({
       externalId: `${ch.channelId}:${m.id}`,
       occurredAt: m.createdDateTime ? new Date(m.createdDateTime) : null,
       sourceUpdatedAt: m.lastModifiedDateTime ? new Date(m.lastModifiedDateTime) : null,
@@ -257,14 +257,23 @@ export async function syncGraphTeams() {
         from: m.from?.user?.displayName ?? m.from?.application?.displayName ?? null,
         text: stripHtml(m.body?.content ?? "").slice(0, 2000),
       },
-    })));
+    }));
+    // Only new or edited messages go through intake (the channel read has no cursor, so
+    // the same messages come back every cycle). A message whose intake fails is not
+    // stored, so it is retried next cycle.
+    const changed = await changedExternalIds("graph_teams", "teams_message", records);
+    const failed = new Set<string>();
     for (const m of messages) {
+      const id = `${ch.channelId}:${m.id}`;
+      if (!changed.has(id)) continue;
       try {
         await handleTeamsIntake(ch.channelId, m);
       } catch (error) {
+        failed.add(id);
         logger.error("Teams intake failed", { channel: ch.label, error: error instanceof Error ? error.message : String(error) });
       }
     }
+    await upsertSourceRecords("graph_teams", "teams_message", records.filter((r) => !failed.has(r.externalId)));
     const newest = messages.reduce<Date | null>((acc, m) => {
       const t = m.createdDateTime ? new Date(m.createdDateTime) : null;
       return t && (!acc || t > acc) ? t : acc;

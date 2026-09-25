@@ -46,6 +46,8 @@ import { useBranding } from "@/lib/use-branding";
 import { useState, useEffect } from "react";
 import type { SafetyFlagKey } from "@/lib/feature-flags";
 import { DesktopAlertsToggle } from "@/components/shared/DesktopAlerts";
+import { useVisiblePolling } from "@/hooks/useVisiblePolling";
+import { backgroundFetch } from "@/lib/client/background-fetch";
 
 interface NavItem {
   href: string;
@@ -184,25 +186,20 @@ export function Sidebar({ user }: SidebarProps) {
       .catch(() => {});
   }, []);
 
-  // Fetch client comms draft count
-  useEffect(() => {
-    async function fetchDraftCount() {
-      try {
-        const res = await fetch("/api/client-comms?status=draft");
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          const total = json.data.reduce(
-            (acc: number, g: { drafts: unknown[] }) => acc + (g.drafts?.length || 0),
-            0,
-          );
-          setClientCommsDraftCount(total);
-        }
-      } catch { /* silent */ }
-    }
-    fetchDraftCount();
-    const interval = setInterval(fetchDraftCount, 60_000);
-    return () => clearInterval(interval);
-  }, []);
+  // Client comms draft count: refreshed while the tab is visible; not user activity.
+  useVisiblePolling(async () => {
+    try {
+      const res = await backgroundFetch("/api/client-comms?status=draft");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const total = json.data.reduce(
+          (acc: number, g: { drafts: unknown[] }) => acc + (g.drafts?.length || 0),
+          0,
+        );
+        setClientCommsDraftCount(total);
+      }
+    } catch { /* silent */ }
+  }, 60_000);
 
   // Close sidebar on route change
   useEffect(() => {

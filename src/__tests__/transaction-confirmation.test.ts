@@ -10,6 +10,7 @@ const prismaMock = vi.hoisted(() => ({
     findUniqueOrThrow: vi.fn(),
   },
   auditLog: { create: vi.fn() },
+  sourceRecord: { findMany: vi.fn() },
 }));
 const custody = vi.hoisted(() => ({
   isCustodyConfigured: vi.fn(),
@@ -38,6 +39,7 @@ describe("syncConfirmationsWithSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     custody.isCustodyConfigured.mockReturnValue(true);
+    prismaMock.sourceRecord.findMany.mockResolvedValue([]);
   });
 
   it("closes items no longer PENDING in the custody API and keeps pending ones open", async () => {
@@ -57,6 +59,32 @@ describe("syncConfirmationsWithSource", () => {
     for (const call of prismaMock.transactionConfirmation.update.mock.calls) {
       expect(call[0].data.status).toBe("closed_in_source");
     }
+  });
+
+  it("reads status from the polled records, with no API call per confirmation", async () => {
+    prismaMock.transactionConfirmation.findMany.mockResolvedValue([
+      { id: "c1", transactionId: "tx1", requestId: "req1" },
+      { id: "c2", transactionId: "tx2", requestId: null },
+      { id: "c3", transactionId: "tx3", requestId: "req3" },
+    ]);
+    prismaMock.sourceRecord.findMany.mockResolvedValue([
+      { kind: "request", externalId: "req1", status: "PENDING", mappedStatus: "no_longer_listed" },
+      { kind: "transaction", externalId: "tx2", status: "BROADCASTED", mappedStatus: null },
+      { kind: "request", externalId: "req3", status: "PENDING", mappedStatus: null },
+    ]);
+    expect(await confirmation.syncConfirmationsWithSource()).toBe(2);
+    expect(custody.fetchRequest).not.toHaveBeenCalled();
+    expect(custody.fetchTransaction).not.toHaveBeenCalled();
+    expect(prismaMock.transactionConfirmation.update.mock.calls.map((c) => c[0].where.id).sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("looks up at most MAX_DIRECT_LOOKUPS unseen confirmations per run", async () => {
+    prismaMock.transactionConfirmation.findMany.mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `c${i}`, transactionId: `tx${i}`, requestId: `req${i}` })),
+    );
+    custody.fetchRequest.mockResolvedValue({ status: "PENDING" });
+    await confirmation.syncConfirmationsWithSource();
+    expect(custody.fetchRequest).toHaveBeenCalledTimes(confirmation.MAX_DIRECT_LOOKUPS);
   });
 
   it("does nothing when the custody API is not configured", async () => {
