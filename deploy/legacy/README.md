@@ -1,5 +1,5 @@
 # Legacy deployment notes
 
-An early demo used Railway. Its `railway.toml` was removed in Phase 12 (hard constraint H10: no Railway config in the repository). If it is ever needed for reference, it is in the git history. Production runs on the Azure runtime described in `deploy/azure/README.md`.
+An early demo used Railway. Its `railway.toml` was removed in Phase 12 and is in the git history if ever needed. Railway settings live in the Railway dashboard.
 
-Railway may host the **demo tier** only (`KOM_ENVIRONMENT=demo`, synthetic data, a DEMO banner, no live systems), configured in the Railway dashboard. It is never the production host. See `docs/phase1/go-live.md`.
+Railway hosts the **demo tier** (synthetic data, a DEMO banner, no live systems). Since 2026-09-25 the owner also permits Railway as the **production** host (hard constraint H10 removed): set `KOM_ENVIRONMENT=production` on a separate service with its own database. See `docs/phase1/go-live.md`.

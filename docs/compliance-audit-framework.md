@@ -4,7 +4,7 @@
 >
 > - KOMmand has **no transaction authorisation or maker-checker control on settlements**. It has no approval path at all (H1).
 > - Maker/checker exists only on the USDC ramp, which is off by default.
-> - Deployment is Azure, not Railway.
+> - Deployment is Azure; since 2026-09-25 the owner also permits Railway as the production host (H10 removed, `docs/phase1/go-live.md`).
 > - The 7-year retention claim was replaced: audit retention is CONFIRM-AUDIT-RETENTION, and the application cannot delete audit records.
 > - The removed `ApprovalAuditEntry` model is no longer cited.
 > - Sessions are Entra SSO with a 12 h lifetime, not 24 h password sessions.

@@ -22,8 +22,9 @@ done
 
 # Deployment tier (src/lib/deployment-tier.ts): a production build is the
 # production tier unless KOM_ENVIRONMENT=demo names the demo tier explicitly,
-# or it runs on Railway with KOM_ENVIRONMENT unset (Railway is never the
-# production host, H10). KOM_ENVIRONMENT=production always wins.
+# or it runs on Railway with KOM_ENVIRONMENT unset (the Railway service is the
+# demo unless named otherwise). Railway may host production:
+# KOM_ENVIRONMENT=production always wins (docs/phase1/go-live.md).
 ON_RAILWAY="false"
 if [ -n "${RAILWAY_PROJECT_ID}" ] || [ -n "${RAILWAY_ENVIRONMENT_NAME}" ] || [ -n "${RAILWAY_SERVICE_ID}" ]; then
   ON_RAILWAY="true"

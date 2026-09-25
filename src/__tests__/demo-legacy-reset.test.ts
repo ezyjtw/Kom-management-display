@@ -35,7 +35,7 @@ describe("demo-legacy-reset", () => {
     expect(decide({ env: { KOM_ENVIRONMENT: "demo", KOM_DEMO_RESET_LEGACY: "true" }, applied: legacy, local, markerPresent: false }).action).toBe("reset");
   });
 
-  it("on Railway, an unset tier is demo and the rebuild is implied (Railway is never production, H10)", () => {
+  it("on Railway, an unset tier is demo and the rebuild is implied; a Railway production service is never touched", () => {
     const railway = { RAILWAY_PROJECT_ID: "p1" };
     expect(decide({ env: railway, applied: legacy, local, markerPresent: false }).action).toBe("reset");
     expect(decide({ env: { ...railway, KOM_DEMO_RESET_LEGACY: "false" }, applied: legacy, local, markerPresent: false }).action).toBe("refuse");

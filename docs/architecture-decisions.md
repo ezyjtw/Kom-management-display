@@ -35,7 +35,7 @@
 
 **Decision**: PostgreSQL via Prisma ORM, migration-based schema management
 
-**Context**: Production runs on Azure Database for PostgreSQL (originally Railway PostgreSQL; superseded in Phase 12, H10). Local development uses PostgreSQL (via Docker or native install).
+**Context**: Production runs on Azure Database for PostgreSQL or, since 2026-09-25, Railway PostgreSQL (H10 removed; see docs/phase1/go-live.md). Local development uses PostgreSQL (via Docker or native install).
 
 **Rationale**:
 - PostgreSQL for production-grade reliability, JSON support, and full-text search capability

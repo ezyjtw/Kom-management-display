@@ -4,8 +4,8 @@ KOMmand Centre runs in one of three **deployment tiers** (`KOM_ENVIRONMENT`, `sr
 
 | | `demo` | `production` |
 |---|---|---|
-| Purpose | Show the product on synthetic data (e.g. Railway) | The live service (Azure) |
-| Secrets | Environment variables allowed | Files in `SECRETS_DIR` only (Key Vault on tmpfs); an environment-variable secret stops startup |
+| Purpose | Show the product on synthetic data (e.g. Railway) | The live service (Azure, or Railway since 2026-09-25) |
+| Secrets | Environment variables allowed | Azure: files in `SECRETS_DIR` only (Key Vault on tmpfs); an environment-variable secret stops startup. Railway: Railway variables |
 | Sign-in | Local username/password if `ALLOW_LOCAL_LOGIN=true`; Entra if configured | Entra ID only; any other sign-in raises ALR-SEC-04 |
 | Data | Seeded with synthetic data if `ALLOW_SEED=true`; the database is marked as demo | Never seeded; **refuses to start on a database marked as demo** |
 | Banner | "DEMO environment: synthetic data only" on every page | None |
@@ -15,7 +15,7 @@ A production build is the production tier unless `KOM_ENVIRONMENT=demo` is set. 
 
 ## Running the demo (Railway)
 
-Railway is never the production host (H10). The app detects Railway from the variables Railway injects (`RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_NAME`, `RAILWAY_SERVICE_ID`), and with `KOM_ENVIRONMENT` unset it runs as the **demo tier** (Phase 12o). So the demo needs no tier variable.
+The existing Railway service is the demo. The app detects Railway from the variables Railway injects (`RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_NAME`, `RAILWAY_SERVICE_ID`), and with `KOM_ENVIRONMENT` unset it runs as the **demo tier** (Phase 12o). So the demo needs no tier variable.
 
 Set these service variables:
 
@@ -38,13 +38,25 @@ SEED_LEAD_PASSWORD=<strong, demo only>
 
 **Upgrading a demo database from before the Phase 12l baseline.** The migration history was consolidated into `0001_baseline`, so a demo database built with the old history cannot take it. On the demo tier, `start.sh` runs `prisma/demo-legacy-reset.cjs` first: if the database has the old history and carries the demo-data marker, it drops and recreates the schema, then migrates and reseeds the same synthetic data. A demo database seeded before the marker existed is refused with a message; set `KOM_DEMO_RESET_LEGACY=true` once, deploy, then remove it. On Railway this opt-in is implied (set `KOM_DEMO_RESET_LEGACY=false` to refuse instead). The script never acts outside the demo tier.
 
-There is no Railway configuration in the repository (H10). The settings above live in the Railway dashboard, and Railway is never the production host.
+There is no Railway configuration in the repository; the settings above live in the Railway dashboard. Railway may also host production (see below).
+
+## Production on Railway
+
+The owner removed hard constraint H10 on 2026-09-25: Railway may host the production tier. Differences from the Azure path:
+
+- **Tier:** set `KOM_ENVIRONMENT=production` on the service. It always wins over the Railway demo default.
+- **Secrets:** Railway variables (Railway cannot mount Key Vault files). Mark each secret as a sealed variable in the dashboard so it cannot be read back. Setting `SECRETS_DIR` still switches to files.
+- **Database:** a **new** Railway Postgres, not the demo one. Production refuses a database carrying the demo marker. `DATABASE_URL` carries a password (no managed identity on Railway, CONFIRM-DB-IDENTITY), and `db-roles.sql` can still be applied.
+- **Worker:** a second Railway service from the same repository, with start command `node worker.js` and `KOM_WORKLOAD=worker`. Without it nothing polls and ALR-HB-WORKER fires.
+- **Sign-in:** Entra SSO only (`AZURE_AD_*`, `ROLE_GROUP_MAP`). Local login stays off in production, on Railway too.
+- **Network:** Railway has no private endpoints or Azure egress controls. The app-level egress allowlist (`src/lib/http/allowed-hosts.ts`) still applies. Record the accepted difference in the threat model's exceptions.
+- **Go-live check:** run it inside the service (`railway run npm run go-live:check`) so the Railway variables are present. It accepts Railway variables as the secret source there and checks everything else as for Azure.
 
 ## Going live
 
 Going live means **a fresh database**, not cleaning the demo one. The demo database holds synthetic users, employees and work, and its audit log is append-only by design (triggers and database role). Deleting the fake data would need exactly the privileges the audit controls exist to deny. So the demo database is retired, not promoted, and startup enforces this: a production-tier start refuses a database carrying the demo marker.
 
-1. **Provision** the production runtime (`deploy/azure/README.md`):
+1. **Provision** the production runtime (`deploy/azure/README.md`, or Railway as above):
    - web and worker containers;
    - a **new** Azure Database for PostgreSQL;
    - Key Vault secrets mounted as files;
@@ -80,4 +92,4 @@ Going live means **a fresh database**, not cleaning the demo one. The demo datab
 
 6. **Security review route** (`threat-model.md` §9). Sign-off comes before any production credential is issued.
 7. **Switch traffic** to the production tier. The startup log shows `Deployment tier: production`.
-8. **Retire the demo:** remove the Railway service and its database, or keep it clearly labelled as a demo, disconnected from live systems.
+8. **Retire the demo:** remove the Railway demo service and its database, or keep it clearly labelled as a demo, disconnected from live systems. If production is also on Railway, keep them in separate Railway environments or projects.

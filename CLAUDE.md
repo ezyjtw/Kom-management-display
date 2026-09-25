@@ -30,7 +30,7 @@ These constraints apply to **every** phase and must never be violated:
 | H7  | No secrets in code — all credentials via env vars; `.env` is in `.gitignore` |
 | H8  | Redact sensitive data in logs — PII, keys, addresses masked in all log output |
 | H9  | No production targets — `.env.example` must never contain real API endpoints |
-| H10 | Remove Railway config — no `railway.json`, `railway.toml`, or `Procfile` |
+| H10 | ~~Remove Railway config~~ **Removed by the owner, 2026-09-25:** Railway may host production. A Railway production service sets `KOM_ENVIRONMENT=production`; its secrets are Railway variables. Settings live in the Railway dashboard (no Railway config files are needed) |
 | H11 | Notabene disabled — feature flag `integration.notabene.enabled` defaults to `false` |
 | H12 | Client-visible content is human-written and client-scoped — client-facing JSM requests and public comments contain only that client's information, are written or approved by a named person, never generated automatically or by AI; compliance-sensitive categories never create client-visible tickets without a recorded Compliance decision (tipping-off risk) |
 

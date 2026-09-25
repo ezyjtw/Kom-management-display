@@ -6,7 +6,7 @@
  *
  * It acts only when all of these hold:
  *   - the demo tier: KOM_ENVIRONMENT=demo, or Railway with KOM_ENVIRONMENT
- *     unset (Railway is never the production host, H10);
+ *     unset (a Railway production service sets KOM_ENVIRONMENT=production);
  *   - _prisma_migrations lists a migration that is not in prisma/migrations;
  *   - the database carries the demo-data marker (AppSetting system.dataOrigin),
  *     or KOM_DEMO_RESET_LEGACY=true is set for a demo database seeded before

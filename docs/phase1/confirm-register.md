@@ -73,7 +73,7 @@ added to the spec's register, or its owner agreed, at the next spec revision.
 | CONFIRM-CSP-STYLES | `docs/phase1/threat-model.md`, `src/lib/security-policy.ts` |
 | CONFIRM-CUSTODY-OPENAPI | `docs/integration-guide.md`, `docs/phase1/alerting.md`, `scripts/check-custody-api-spec.ts`, `src/__tests__/integration/custody-api-contract.test.ts` +5 |
 | CONFIRM-DATA-OWNERS | `docs/phase1/data-inventory.md` |
-| CONFIRM-DB-IDENTITY | `deploy/azure/README.md`, `docs/phase1/credentials.md`, `docs/phase1/threat-model.md`, `src/lib/secrets.ts` |
+| CONFIRM-DB-IDENTITY | `deploy/azure/README.md`, `docs/phase1/credentials.md`, `docs/phase1/go-live.md`, `docs/phase1/threat-model.md` +1 |
 | CONFIRM-DB-ROLES | `docs/compliance-audit-framework.md`, `docs/phase1/credentials.md`, `docs/phase1/db-roles.sql` |
 | CONFIRM-DETECT-SECRETS-BASELINE | `.github/workflows/ci.yml` |
 | CONFIRM-DUE-TIMES | `src/modules/daily-checks/definitions.ts` |

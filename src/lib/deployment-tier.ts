@@ -4,7 +4,7 @@
  * - production: the live service. Everything strict: secrets only from files
  *   (SECRETS_DIR), Entra SSO only, never seeded, refuses a database that holds
  *   demo data (start.sh, scripts/go-live-check.ts).
- * - demo: a hosted demonstration on synthetic data (e.g. Railway). Secrets may
+ * - demo: a hosted demonstration on synthetic data. Secrets may
  *   come from environment variables, local login and seeding may be switched
  *   on explicitly, and every page shows a DEMO banner. Never connect a demo to
  *   production APIs or data (H9). Reviewed exception: docs/phase1/threat-model.md.
@@ -12,8 +12,10 @@
  *
  * A production build is production unless KOM_ENVIRONMENT=demo says otherwise,
  * with one exception: on Railway (detected by the variables Railway injects)
- * an unset KOM_ENVIRONMENT means demo, because Railway is never the production
- * host (H10, docs/phase1/go-live.md). KOM_ENVIRONMENT=production still wins.
+ * an unset KOM_ENVIRONMENT means demo, because the existing Railway service
+ * is the demo. Railway may also host production (owner decision 2026-09-25,
+ * H10 removed): set KOM_ENVIRONMENT=production there, which always wins, and
+ * secrets then come from Railway variables (src/lib/secrets.ts).
  * Edge-safe (no Node imports).
  */
 export type DeploymentTier = "production" | "demo" | "development";
